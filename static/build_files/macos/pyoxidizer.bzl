@@ -23,7 +23,7 @@ def make_client(dist, policy):
         config=python_config,
     )
     
-    client.add_python_resources(client.pip_install(["--prefer-binary", "-r", "requirements_macos.txt"]))
+    client.add_python_resources(client.pip_install(["--prefer-binary", "-r", "requirements.txt"]))
 
     return client
 
