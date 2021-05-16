@@ -1,9 +1,9 @@
-# This is a template for populating your own docker-compose.override.yml file.
-# To use it, make a copy of this file, called docker-compose.override.yml, in the same directory as your
-# docker-compose.yml file. Remove or overwrite ALL of the various example values! Then add whatever you like. Anything
+# This is a template for populating your own compose.override.yml file.
+# To use it, make a copy of this file, called compose.override.yml, in the same directory as your
+# compose.yaml file. Remove or overwrite ALL of the various example values! Then add whatever you like. Anything
 # you include here will automatically be added to your docker compose configuration, overwriting any existing values.
 
-# Using a docker-compose.override.yml file will allow you to do things like:
+# Using a compose.override.yml file will allow you to do things like:
 # - Mount the Hydrus DB on your machine so it has some persistence (you probably want to do this)
 # - Include or override environment variables
 # - Avoid having to fork the code just to make some small customizations
