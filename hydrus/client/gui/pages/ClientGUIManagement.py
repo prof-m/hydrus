@@ -1,6 +1,5 @@
 import os
 import random
-import time
 import typing
 
 from qtpy import QtCore as QC
@@ -12,7 +11,6 @@ from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusSerialisable
 from hydrus.core import HydrusTags
-from hydrus.core import HydrusThreading
 from hydrus.core.networking import HydrusNetwork
 
 from hydrus.client import ClientConstants as CC
@@ -30,8 +28,6 @@ from hydrus.client.gui import ClientGUIFunctions
 from hydrus.client.gui import ClientGUIImport
 from hydrus.client.gui import ClientGUIMenus
 from hydrus.client.gui import ClientGUIParsing
-from hydrus.client.gui import ClientGUIResults
-from hydrus.client.gui import ClientGUIResultsSortCollect
 from hydrus.client.gui import ClientGUIScrolledPanels
 from hydrus.client.gui import ClientGUIFileSeedCache
 from hydrus.client.gui import ClientGUIGallerySeedLog
@@ -45,8 +41,9 @@ from hydrus.client.gui.lists import ClientGUIListConstants as CGLC
 from hydrus.client.gui.lists import ClientGUIListCtrl
 from hydrus.client.gui.networking import ClientGUIHydrusNetwork
 from hydrus.client.gui.networking import ClientGUINetworkJobControl
+from hydrus.client.gui.pages import ClientGUIResults
+from hydrus.client.gui.pages import ClientGUIResultsSortCollect
 from hydrus.client.gui.search import ClientGUIACDropdown
-from hydrus.client.gui.search import ClientGUISearch
 from hydrus.client.gui.widgets import ClientGUICommon
 from hydrus.client.gui.widgets import ClientGUIControls
 from hydrus.client.gui.widgets import ClientGUIMenuButton
@@ -93,11 +90,13 @@ def CreateManagementController( page_name, management_type, file_service_key = N
     
 def CreateManagementControllerDuplicateFilter():
     
-    file_service_key = CC.LOCAL_FILE_SERVICE_KEY
+    default_local_file_service_key = HG.client_controller.services_manager.GetDefaultLocalFileServiceKey()
     
-    management_controller = CreateManagementController( 'duplicates', MANAGEMENT_TYPE_DUPLICATE_FILTER, file_service_key = file_service_key )
+    location_search_context = ClientSearch.LocationSearchContext( current_service_keys = [ default_local_file_service_key ] )
     
-    file_search_context = ClientSearch.FileSearchContext( file_service_key = file_service_key, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING ) ] )
+    management_controller = CreateManagementController( 'duplicates', MANAGEMENT_TYPE_DUPLICATE_FILTER, file_service_key = default_local_file_service_key )
+    
+    file_search_context = ClientSearch.FileSearchContext( location_search_context = location_search_context, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING ) ] )
     
     management_controller.SetVariable( 'file_search_context', file_search_context )
     management_controller.SetVariable( 'both_files_match', False )
@@ -233,11 +232,14 @@ class ManagementController( HydrusSerialisable.SerialisableBase ):
     
     def _GetSerialisableInfo( self ):
         
-        serialisable_keys = { name : value.hex() for ( name, value ) in list(self._keys.items()) }
+        # don't save these
+        TRANSITORY_KEYS = { 'page' }
+        
+        serialisable_keys = { name : value.hex() for ( name, value ) in self._keys.items() if name not in TRANSITORY_KEYS }
         
         serialisable_simples = dict( self._simples )
         
-        serialisable_serialisables = { name : value.GetSerialisableTuple() for ( name, value ) in list(self._serialisables.items()) }
+        serialisable_serialisables = { name : value.GetSerialisableTuple() for ( name, value ) in self._serialisables.items() }
         
         return ( self._page_name, self._management_type, serialisable_keys, serialisable_simples, serialisable_serialisables )
         
@@ -255,7 +257,7 @@ class ManagementController( HydrusSerialisable.SerialisableBase ):
         
         self._keys.update( { name : bytes.fromhex( key ) for ( name, key ) in list(serialisable_keys.items()) } )
         
-        if 'file_service' in self._keys:
+        if 'file_service' in self._keys and HG.client_controller.IsBooted():
             
             if not HG.client_controller.services_manager.ServiceExists( self._keys[ 'file_service' ] ):
                 
@@ -428,7 +430,9 @@ class ManagementController( HydrusSerialisable.SerialisableBase ):
                     del serialisable_keys[ 'duplicate_filter_file_domain' ]
                     
                 
-                file_search_context = ClientSearch.FileSearchContext( file_service_key = CC.LOCAL_FILE_SERVICE_KEY, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING ) ] )
+                location_search_context = ClientSearch.LocationSearchContext( current_service_keys = [ CC.LOCAL_FILE_SERVICE_KEY ] )
+                
+                file_search_context = ClientSearch.FileSearchContext( location_search_context = location_search_context, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING ) ] )
                 
                 serialisable_serialisables[ 'file_search_context' ] = file_search_context.GetSerialisableTuple()
                 

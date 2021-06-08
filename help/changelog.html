@@ -8,6 +8,98 @@
 		<div class="content">
 			<h3 id="changelog"><a href="#changelog">changelog</a></h3>
 			<ul>
+				<li><h3 id="version_442"><a href="#version_442">version 442</a></h3></li>
+				<ul>
+					<li>gui sessions:</li>
+					<li>gui sessions are no longer a monolithic object! now, each page is stored in the database separately, and when a session saves, only those pages that have had changes since the last save are written to db. this will massively reduce long-term HDD writes for clients with large sessions and generally reduce lag during session save intervals</li>
+					<li>the new gui sessions are resilient against database damage--if a page fails to load, or is missing from the new store, its information will be recorded and saved, but the rest of the session will load</li>
+					<li>the new page storage can now be shared across sessions. multiple backups of a session that use the same page now point to the same record, which massively reduces the size of client.db for large-sessioned clients</li>
+					<li>your existing sessions and their backups will obviously be converted to the new system on update. if any fail to load or convert, a backup of the original object will be written to your database directory. the conversion shouldn't take more than a minute or two</li>
+					<li>the old max-object limit at which a session would fail to save was around 10M files and/or 500k urls total. it equated to a saved object of larger than 1Gb, which hit an internal SQLite limit. sessions overall now have no storage limit, but individual pages now inherit the old limit. Please do not hurry to try to test this out with giganto pages. if you want to make do a heap of large long-term downloaders, please spread the job across several pages</li>
+					<li>it seems URLs were the real killer here, so I am rebalancing it so URLs now count for 20 weight each. the weight limit at which point a _page_ will now fail to save, and the client will start generally moaning at you for the whole session (which can be turned off in the options), is therefore raised to 10M. most of the checks are still session-wide for now, but I will do more work here in future</li>
+					<li>if you are in advanced mode, then each page now gives its weight (including combined weight for 'page of pages') from its tab right-click menu. with the new URL weight, let's get a new sense of where the memory is actually hanging around IRL</li>
+					<li>the page and session objects are now more healthily plugged into my serialisation system, so it should be much easier to update them in future (e.g. adding memory for tag sort or current file selection)</li>
+					<li>.</li>
+					<li>the rest:</li>
+					<li>when subscriptions die, the little reporting popup now includes the death file velocity ('it found fewer than 1 files in the last 90 days' etc...)		</li>
+					<li>the client no longer does vacuums automatically in idle time, and the soft/full maintenance action is removed. as average database size has grown, this old maintenance function has increasingly proved more trouble than it is worth. it will return in future as a per-file thing, with better information to the user on past vacuums and empty pages and estimates on duration to completion, and perhaps some database interrupt tech so it can be cancelled. if you really want to do a vacuum for now, do it outside the program through a SQLite intepreter on the files separately</li>
+					<li>thanks to a user submission, a yande.re post parser is added that should grab tags correct if you are logged in. the existing moebooru post parser default has its yande.re example url removed, so the url_class-parser link should move over on update</li>
+					<li>for file repositories, the client will not try to sync thumbnails until the repository store counts as 'caught up' (on a busy repo, it was trying to pull thumbs that had been deleted 'in the future'). furthermore, a 404 error due a thumb being pulled out of sync will no longer print a load of error info to the log. more work will be needed here in future</li>
+					<li>I fixed another stupid IPFS pin-commit bug, sorry for the trouble! (issue #894)</li>
+					<li>some maintenance-triggered file delete actions are now better about saving a good attached file delition reason</li>
+					<li>when the file maintenance manager does a popup with a lot of thumbnail or file integrity checks, the 'num thumbs regenned/files missing or invalid' number is now preserved through the batches of 256 jobs</li>
+					<li>thoroughly tested and brushed up the 'check for missing/invalid files' maintenance code, particularly in relation to its automatic triggering after a repository processing problem, but I still could not figure out specifically why it is not working for some users. we will have to investigate and try some more things</li>
+					<li>fixed a typo in client api help regarding the 'service_names_to_statuses_to_display_tags' variable name (I had 'displayed' before, which is incorrect)</li>
+					<li>.</li>
+					<li>build fixes:</li>
+					<li>fixed the new Linux and Windows extract builds being tucked into a little 'ubuntu'/'windows' subfolder, sorry for the trouble! They should both now have the same (note Caps) 'Hydrus Network' as their first directory</li>
+					<li>fixed the new Linux buld having borked permissions on the executables, sorry for the trouble!</li>
+					<li>since I fixed the urllib3 problem we had with serialised sessions and Retry objects, I removed it from the requirements.txts. now 'requests' can pull what it likes</li>
+					<li>after testing it with the new build, it looks like I was mistaken years ago that anyone could run hydrus from source when inside a 'built' release (due to dll conflicts in CWD vs your python install). maybe this is now only true in py3 where dll loading is a little different, but it was likely always true and my old tests only ever worked because I was in the same/so-similar environment so the dlls were not conflicting. in any case the builds no longer include the .py/.pyw files and the 'hydrus' source folder, since it just doesn't seem to work. if you want to run from source, grab the actual source release in a fresh, non-conflicting directory. I've updated the help regarding this, sorry for any trouble or confusion you have ever run into here</li>
+					<li>updated the running from source document to talk more about actually getting the source and fleshed out the info about running the scripts</li>
+					<li>.</li>
+					<li>misc boring refactoring and db updates:</li>
+					<li>created a new 'pages' gui module and moved Pages, Thumbs, Sort/Collect widgets, Management panel, and the new split Session code into it</li>
+					<li>wrote new container objects for sessions, notebook pages, and media pages, and wrote a new hash-based data object for a media page's management info and file list</li>
+					<li>added a table to the database for storing serialised objects by their hash, and updated the load/save code to work with the new session objects and manage shared page data in the hashed storage</li>
+					<li>a new maintenance routine checks which hashed serialisables are still needed by master containers and deletes the orphans. it can be manually fired from the _database->maintenance_ menu. this routine otherwise runs just after boot and then every 24 hours or every 512MB of new hashed serialisables added, whichever comes first</li>
+					<li>management controllers now discard the random per-session 'page key' from their serialised key lookup, meaning they serialise the same across sessions (making the above hash-page stuff work better!)</li>
+					<li>improved a bunch of access and error code around serialised object load/save</li>
+					<li>improved a heap of session code all over</li>
+					<li>improved serialised object hashing code</li>
+				</ul>
+				<li><h3 id="version_441"><a href="#version_441">version 441</a></h3></li>
+				<ul>
+					<li>misc:</li>
+					<li>after successful testing, all the master builds are now made on github rather than my home dev situation. the clients now work off python 3.8, and several security libraries (e.g. OpenSSL) are now always going to be latest, so there should be several quiet performance and reliability improvements across the program. there are no special install instructions--normal update seems to go fine--but let me know if you do have any trouble. big thanks to the user who did the leg work on developing the workflow build scripts here</li>
+					<li>if you are in advanced mode, namespace file sorting now allows you to set the 'tag display context' on which it will sort. this appears as a new menu button or a button list selection dialog wherever you edit namespace file sorts. if you are not in advanced mode, the default is the 'display tags' I switched to last week (i.e. before any tags are hidden by your tag display options)</li>
+					<li>namespace sort has some related code cleanup. the 'defaults' object is updated and moved to the newer options object</li>
+					<li>the new tiled renderer now checks for rounding errors in zoom calc, which in some cases was giving a single extra (non-existing) native pixel row or column on rightmost or bottommost tile samples</li>
+					<li>the new tiled renderer now double-checks clip regions for validity before attempting to crop</li>
+					<li>improved the reported error information when a tile fails to render</li>
+					<li>when pasting an uneven number of tags into manage siblings/parents, the error is now a nicer popup dialog. I'm pursuing a related error here--if you get this a bunch, please let me know what more info you discover</li>
+					<li>when repositories fail to fetch the update hashes to process, they now force a metadata resync. any processing error should force a metadata resync now</li>
+					<li>added a default url class for the new pixiv _artist_ page format</li>
+					<li>fixed a recent typo bug with ipfs pinning</li>
+					<li>.</li>
+					<li>client api additions:</li>
+					<li>the client api has a new /manage_headers/set_user_agent call, which is a simple hack for now for external programs to set the 'Global' User-Agent. it should allow for some CloudFlare solutions when just copying cookies is not enough</li>
+					<li>the client api has a new /get_services call, which talks about more services and also exposes service_keys for the first time, which are likely to be useful in future. check out the help for an example. the old /add_tags/get_tag_services call is now deprecated, please move to the new call</li>
+					<li>the client api /version call now responds with 'hydrus_version' as well, which this week will be 441</li>
+					<li>the client api now has a semi-experimental /manage_database/lock system, just like the server's. a new 'manage database' permission is added for this. don't play around with this system idly.</li>
+					<li>the client api should now support sha256 hash parameters if they start with a type prefix like 'sha256:0123789abcdef...'</li>
+					<li>the client and server's database lock commands now wait up to five seconds for the database to finish disconnecting to respond</li>
+					<li>expanded client api unit tests to cover the above</li>
+					<li>the client api version is now 17</li>
+					<li>.</li>
+					<li>boring multiple local file services work:</li>
+					<li>the main search object now stores the file domain using a new 'location context' object that will in future hold multiple file services and can say whether we should search files currently in a domain, or those once deleted from it. a variety of back-end search code has been updated to deal with this more flexible situation</li>
+					<li>removed more static references to the single 'my files' domain in db and related code. in a couple places, like mr. bones, it now fetches 'all local files', but this will likely be updated in future to a new umbrella 'all non-trash, non-repo-update-files local files' service</li>
+				</ul>
+				<li><h3 id="version_440"><a href="#version_440">version 440</a></h3></li>
+				<ul>
+					<li>tiled renderer:</li>
+					<li>the tiled renderer now has an additional error catching layer for tile rendering and coordinate calculation and _should_ be immune to to the crashes we have seen from unhandled errors inside Qt paint events</li>
+					<li>when a tile fails to render, a full black square will be used instead. additional error information is quickly printed to the log</li>
+					<li>fixed a tile coordinate bug related to viewer initialisation and shutdown. when the coordinate space is currently bugnuts, now nothing is drawn</li>
+					<li>if the image renderer encounters a file that appears to have a different resolution to that stored in the db, it now gives you a popup and automatically schedules a metadata regen job for that file. this should catch legacy files with EXIF rotation that were imported before hydrus understood that info</li>
+					<li>when a file completes a metadata regen, if the resolution changed it now schedules a force-regen of the thumbnail too</li>
+					<li>.</li>
+					<li>the rest:</li>
+					<li>added a prototype 'delete lock' for archived files to _options->files and trash_ (issue #846). this will be expanded in future when the metadata conditional object is made to lock various other file states, and there will be some better UI feedback, a padlock icon or similar, and some improved dialog texts. if you use this, let me know how you get on!</li>
+					<li>you can now set a custom namespace sort in the file sort menu. you have to type it manually, like when setting defaults in the options, but it will save with the page and should load up again nicely in the dialog if you edit it. this is an experiment in prep for better namespace sort edit UI</li>
+					<li>fixed an issue sorting by namespaces when one of those namespaces was hidden in the 'single media' tag context. now all 'display' tags are used for sort comparison groups. if users desire the old behaviour, we'll have to add an option, so let me know</li>
+					<li>the various service-level processing errors when update files are missing or janked out now report the actual hash of the bad update file. I am chasing down one of these errors with a couple of users and cannot quite figure out why the repair code is not auto-fixing things</li>
+					<li>fixed a problem when the system tray gets an activate event at unlucky moments</li>
+					<li>the default media viewer zoom centerpoint is now the mouse</li>
+					<li>fixed a typo in the client api with wildcard/namespace tag search--sorry for the trouble!</li>
+					<li>.</li>
+					<li>some boring multiple local file services cleanup:</li>
+					<li>if you have a mixture of trash and normal thumbnails selected, the right-click menu now has separate choices for 'delete trash' and 'delete selected' 'physically now'</li>
+					<li>if you have a mixture of trash and normal thumbnails selected, the advanced delete dialog now similarly provides separate 'physical delete' options for the trashed vs all</li>
+					<li>media viewer, preview viewer, and thumbnail view delete menu service actions are now populated dynamically. it should say 'delete from my files' instead of just 'delete'</li>
+					<li>in some file selection contexts, the 'remote' filter is renamed to 'not local'</li>
+				</ul>
 				<li><h3 id="version_439"><a href="#version_439">version 439</a></h3></li>
 				<ul>
 					<li>tiled image renderer improvements:</li>

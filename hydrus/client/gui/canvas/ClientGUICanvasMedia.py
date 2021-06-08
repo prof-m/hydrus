@@ -1741,6 +1741,17 @@ class StaticImage( QW.QWidget ):
         
         native_clip_rect = QC.QRect( canvas_topLeft / self._zoom, canvas_size / self._zoom )
         
+        # dealing with rounding errors with zoom calc
+        if native_clip_rect.width() + native_clip_rect.x() > media_width:
+            
+            native_clip_rect.setWidth( media_width - native_clip_rect.x() )
+            
+        
+        if native_clip_rect.height() + native_clip_rect.y() > media_height:
+            
+            native_clip_rect.setHeight( media_height - native_clip_rect.y() )
+            
+        
         if native_clip_rect.width() == 0:
             
             native_clip_rect.setWidth( 1 )

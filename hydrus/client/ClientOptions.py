@@ -405,8 +405,6 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'noneable_integers' ][ 'num_recent_tags' ] = 20
         
-        self._dictionary[ 'noneable_integers' ][ 'maintenance_vacuum_period_days' ] = 30
-        
         self._dictionary[ 'noneable_integers' ][ 'duplicate_background_switch_intensity' ] = 3
         
         self._dictionary[ 'noneable_integers' ][ 'last_review_bandwidth_search_distance' ] = 7 * 86400
@@ -470,6 +468,18 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         #
         
         self._dictionary[ 'favourite_tag_filters' ] = HydrusSerialisable.SerialisableDictionary()
+        
+        #
+        
+        from hydrus.client.media import ClientMedia
+        from hydrus.client.metadata import ClientTags
+        
+        default_namespace_sorts = HydrusSerialisable.SerialisableList()
+        
+        default_namespace_sorts.append( ClientMedia.MediaSort( sort_type = ( 'namespaces', ( ( 'series', 'creator', 'title', 'volume', 'chapter', 'page' ), ClientTags.TAG_DISPLAY_ACTUAL ) ) ) )
+        default_namespace_sorts.append( ClientMedia.MediaSort( sort_type = ( 'namespaces', ( ( 'creator', 'series', 'title', 'volume', 'chapter', 'page' ), ClientTags.TAG_DISPLAY_ACTUAL ) ) ) )
+        
+        self._dictionary[ 'default_namespace_sorts' ] = default_namespace_sorts
         
         #
         
@@ -899,6 +909,14 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
+    def GetDefaultNamespaceSorts( self ):
+        
+        with self._lock:
+            
+            return list( self._dictionary[ 'default_namespace_sorts' ] )
+            
+        
+    
     def GetDefaultSort( self ):
         
         with self._lock:
@@ -1308,6 +1326,21 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         with self._lock:
             
             self._dictionary[ 'misc' ][ 'default_subscription_checker_options' ] = checker_options
+            
+        
+    
+    def SetDefaultNamespaceSorts( self, namespace_sorts ):
+        
+        with self._lock:
+            
+            default_namespace_sorts = HydrusSerialisable.SerialisableList()
+            
+            for namespace_sort in namespace_sorts:
+                
+                default_namespace_sorts.append( namespace_sort )
+                
+            
+            self._dictionary[ 'default_namespace_sorts' ] = default_namespace_sorts
             
         
     

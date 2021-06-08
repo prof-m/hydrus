@@ -1548,7 +1548,7 @@ class ServiceRepository( ServiceRestricted ):
             
             with self._lock:
                 
-                if do_a_full_metadata_resync:
+                if self._do_a_full_metadata_resync:
                     
                     self._metadata = HydrusNetwork.Metadata()
                     
@@ -1628,6 +1628,8 @@ class ServiceRepository( ServiceRestricted ):
                         return
                         
                     except HydrusExceptions.NetworkException as e:
+                        
+                        self._DelayFutureRequests( str( e ) )
                         
                         HydrusData.Print( 'Attempting to download an update for ' + name + ' resulted in a network error:' )
                         
@@ -1800,8 +1802,6 @@ class ServiceRepository( ServiceRestricted ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_INTEGRITY_PRESENCE )
                         
-                        self._do_a_full_metadata_resync = True
-                        
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) was missing. Your repository should be paused, and all update files have been scheduled for a presence check. Please permit file maintenance to check them, or tell it to do so manually, before unpausing your repository.'.format( definition_hash.hex() ) )
                         
                     
@@ -1818,16 +1818,12 @@ class ServiceRepository( ServiceRestricted ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_INTEGRITY_DATA )
                         
-                        self._do_a_full_metadata_resync = True
-                        
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) was invalid. Your repository should be paused, and all update files have been scheduled for an integrity check. Please permit file maintenance to check them, or tell it to do so manually, before unpausing your repository.'.format( definition_hash.hex() ) )
                         
                     
                     if not isinstance( definition_update, HydrusNetwork.DefinitionsUpdate ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_METADATA )
-                        
-                        self._do_a_full_metadata_resync = True
                         
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) has incorrect metadata. Your repository should be paused, and all update files have been scheduled for a metadata rescan. Please permit file maintenance to fix them, or tell it to do so manually, before unpausing your repository.'.format( definition_hash.hex() ) )
                         
@@ -1934,8 +1930,6 @@ class ServiceRepository( ServiceRestricted ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_INTEGRITY_PRESENCE )
                         
-                        self._do_a_full_metadata_resync = True
-                        
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) was missing. Your repository should be paused, and all update files have been scheduled for a presence check. Please permit file maintenance to check them, or tell it to do so manually, before unpausing your repository.'.format( content_hash.hex() ) )
                         
                     
@@ -1952,16 +1946,12 @@ class ServiceRepository( ServiceRestricted ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_INTEGRITY_DATA )
                         
-                        self._do_a_full_metadata_resync = True
-                        
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) was invalid. Your repository should be paused, and all update files have been scheduled for an integrity check. Please permit file maintenance to check them, or tell it to do so manually, before unpausing your repository.'.format( content_hash.hex() ) )
                         
                     
                     if not isinstance( content_update, HydrusNetwork.ContentUpdate ):
                         
                         HG.client_controller.WriteSynchronous( 'schedule_repository_update_file_maintenance', self._service_key, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_METADATA )
-                        
-                        self._do_a_full_metadata_resync = True
                         
                         raise Exception( 'An unusual error has occured during repository processing: an update file ({}) has incorrect metadata. Your repository should be paused, and all update files have been scheduled for a metadata rescan. Please permit file maintenance to fix them, or tell it to do so manually, before unpausing your repository.'.format( content_hash.hex() ) )
                         
@@ -2057,6 +2047,8 @@ class ServiceRepository( ServiceRestricted ):
                 HydrusData.ShowText( message )
                 
                 HydrusData.ShowException( e )
+                
+                self._do_a_full_metadata_resync = True
                 
                 self._update_processing_paused = True
                 
@@ -2334,7 +2326,10 @@ class ServiceRepository( ServiceRestricted ):
                 
                 self._SyncDownloadUpdates( stop_time )
                 
-                self.SyncThumbnails( stop_time )
+                if self._is_mostly_caught_up is not None and self._is_mostly_caught_up:
+                    
+                    self.SyncThumbnails( stop_time )
+                    
                 
             except HydrusExceptions.ShutdownException:
                 
@@ -2430,6 +2425,10 @@ class ServiceRepository( ServiceRestricted ):
                     except HydrusExceptions.CancelledException as e:
                         
                         self._DelayFutureRequests( str( e ) )
+                        
+                        return
+                        
+                    except HydrusExceptions.NotFoundException:
                         
                         return
                         
@@ -2840,7 +2839,7 @@ class ServiceIPFS( ServiceRemote ):
                         
                     except HydrusExceptions.DataMissing:
                         
-                        HydrusData.ShowText( 'File {} could not be pinned!'.format( hash.hexh() ) )
+                        HydrusData.ShowText( 'File {} could not be pinned!'.format( hash.hex() ) )
                         
                         continue
                         
