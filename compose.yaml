@@ -27,8 +27,4 @@ services:
       - GID=1000
     tmpfs:
       - /tmp #optional for SPEEEEEEEEEEEEEEEEEEEEEEEEED and less disk access
-    ports:
-      # - EXPOSED_PORT:CONTAINER_PORT
-      - "45870:45870" #Server Admin
-      - "45871:45871" #Tag Server
-      - "45872:45872" #File Server
+    #ports: This should be set in compose.override.yaml

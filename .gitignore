@@ -50,5 +50,7 @@ db/client_files/
 db/server_files/
 db/missing_and_invalid_files/
 
-# Ignoring compose.override.yml so that it can contain Sekrets
-compose.override.yml
+# Ignoring compose.local.yaml so that it can contain Sekrets
+compose.local.yaml
+compose.test.yaml
+compose.cloud.yaml
