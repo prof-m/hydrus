@@ -1,0 +1,8 @@
+services:
+  hydrus-server:
+    image: "profmes/hydrus-server-cloud"
+    ports:
+      # - EXPOSED_PORT:CONTAINER_PORT
+      - "45870:45870" #Server Admin
+      - "45871:45871" #Tag Server
+      - "45872:45872" #File Server
