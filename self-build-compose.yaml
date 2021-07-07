@@ -1,6 +1,8 @@
 services:
   hydrus-client:
-    image: ghcr.io/hydrusnetwork/hydrus:latest
+    build:
+      context: .
+      dockerfile: ./static/build_files/docker/client
     container_name: hydrus_client
     restart: unless-stopped
     environment:
@@ -15,7 +17,9 @@ services:
       - 45868:45868 #Booru
       - 45869:45869 #API
   hydrus-server:
-    image: ghcr.io/hydrusnetwork/hydrus:server
+    build:
+      context: .
+      dockerfile: ./static/build_files/docker/server/Dockerfile
     container_name: hydrus-server
     restart: unless-stopped
     environment:
