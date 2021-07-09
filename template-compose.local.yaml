@@ -1,0 +1,38 @@
+# This is a template for populating your own compose.local.yaml file.
+# To use it, make a copy of this file, called compose.local.yaml, in the same directory as your compose.base.yaml file.
+# Remove or overwrite ALL of the various example values! Then add whatever you like. Anything you include here will
+# automatically be added to your docker compose configuration, overwriting any existing values.
+
+# Some reasons to use a compose.local.yaml file:
+# - Mount the Hydrus DB on your machine so it has some persistence (you probably want to do this)
+# - Avoid including personal details in your repo if you commit your image somewhere
+# - Include or override environment variables
+# - Avoid having to fork the code just to make some small customizations
+# - Really any kind of customization that can be done with docker
+
+services:
+  hydrus-client:
+    volumes:
+      # Mounts the Hydrus client DB on the local folder you specify
+      - /absolute/path/to/your_local/client_db/folder:/opt/hydrus/db
+      # Mounts a local folder into the docker image so you can use it for importing in VNC
+      - /absolute/path/to/stuff/for/importing:/import/mystuff
+    ports: #These are set to the default values that Hydrus and VNC use, but change them if you want to.
+      # - EXPOSED_PORT:CONTAINER_PORT
+      - "5800:5800"   #noVNC
+      - "5900:5900"   #VNC
+      - "45868:45868" #Booru
+      - "45869:45869" #API
+  hydrus-server:
+    # Mounts the Hydrus server DB on the local folder you specify
+    volumes:
+      - /absolute/path/to/your_local/server_db/folder:/opt/hydrus/db:/opt/hydrus/db
+    # Adds in environment variables from a local .env file.
+    # Variables in the .env file override any existing variables with the same name that are already set.
+    env_file:
+      - ./some_env_variables.env
+    ports: #These are set to the default values that Hydrus and VNC use, but change them if you want to.
+      # - EXPOSED_PORT:CONTAINER_PORT
+      - "45870:45870" #Server Admin
+      - "45871:45871" #Tag Server
+      - "45872:45872" #File Server
