@@ -17,7 +17,7 @@
 services:
   hydrus-client:
     image: ghcr.io/hydrusnetwork/hydrus:latest
-    container_name: hydrus_client
+    container_name: hydrus-client
     restart: unless-stopped
     environment:
       - UID=1000
