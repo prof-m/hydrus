@@ -1,0 +1,39 @@
+# Version: Compose Specification - https://github.com/compose-spec/compose-spec/blob/master/spec.md
+
+# This is a Docker Compose file for running the Hydrus Client and Server docker images on your own platforms. Only
+# the bare bones are included in this `compose.base.yaml` file. To get these images up and running, follow the
+# instructions in `template-compose.local.yaml` to make your own `compose.local.yaml` file.
+
+# AFTER creating your own compose.local.yaml file the docker images can be started by navigating to their folder
+# in your command-line terminal, and executing the following command:
+# `docker compose -f compose.base.yaml -f compose.local.yaml up`
+#
+# To start up only the Hydrus CLIENT image, use the following command instead:
+# `docker compose -f compose.base.yaml -f compose.local.yaml up hydrus-server`
+#
+# To start up only the Hydrus SERVER image, use the following command instead:
+# `docker compose -f compose.base.yaml -f compose.local.yaml up hydrus-client`
+
+services:
+  nginx-reverse-proxy:
+    build: nginx
+    restart: always
+    ports:
+      - 80:80
+      - 8080:8080
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+      - HY_SERVER_HOST=hydrus-server
+      - HY_SERVER_ADMIN_PORT=45870
+      - HY_SERVER_TAGS_PORT=45871
+      - HY_SERVER_FILES_PORT=45872
+  hydrus-server:
+    image: ghcr.io/hydrusnetwork/hydrus:server
+    container_name: hydrus-server
+    restart: unless-stopped
+    environment:
+      - UID=1000
+      - GID=1000
+    tmpfs:
+      - /tmp #optional for SPEEEEEEEEEEEEEEEEEEEEEEEEED and less disk access
+    #ports: This should be set in compose.override.yaml
