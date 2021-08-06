@@ -7,6 +7,9 @@ list:
 server-local:
 	docker compose -f compose.base.yaml -f compose.local.yaml up hydrus-server
 
+server-local-n:
+	docker compose -f compose.nginx-server.base.yaml -f compose.local.yaml up
+
 server-test:
 	docker compose -f compose.base.yaml -f compose.test.yaml up hydrus-server
 
