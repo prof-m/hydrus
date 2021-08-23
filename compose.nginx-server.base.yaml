@@ -25,8 +25,8 @@ services:
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - HY_SERVER_HOST=hydrus-server
       - HY_SERVER_ADMIN_PORT=45870
-      - HY_SERVER_TAGS_PORT=45871
-      - HY_SERVER_FILES_PORT=45872
+      - HY_SERVER_FILES_PORT=45871
+      - HY_SERVER_TAGS_PORT=45872
   hydrus-server:
     image: ghcr.io/hydrusnetwork/hydrus:server
     container_name: hydrus-server
