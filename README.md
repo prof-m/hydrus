@@ -8,6 +8,8 @@ This github repository is currently a weekly sync with my home dev environment, 
 
 The client can do quite a lot! Please check out the help inside the release or [here](https://hydrusnetwork.github.io/hydrus/help), which includes a comprehensive getting started guide.
 
+A rudimentary documentation for the [container](https://github.com/hydrusnetwork/hydrus/pkgs/container/hydrus) setup can be found [here](https://github.com/hydrusnetwork/hydrus/blob/master/static/build_files/docker/README.md).
+
 * [homepage](https://hydrusnetwork.github.io/hydrus/)
 * [issue tracker](https://github.com/hydrusnetwork/hydrus/issues)
 * [email](mailto:hydrus.admin@gmail.com)
