@@ -306,6 +306,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'integers' ][ 'serverside_bandwidth_wait_time' ] = 60
         
         self._dictionary[ 'integers' ][ 'thumbnail_visibility_scroll_percent' ] = 75
+        self._dictionary[ 'integers' ][ 'ideal_tile_dimension' ] = 768
         
         self._dictionary[ 'integers' ][ 'total_pages_warning' ] = 165
         
@@ -389,6 +390,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'integers' ][ 'system_busy_cpu_percent' ] = 50
         
+        self._dictionary[ 'integers' ][ 'human_bytes_sig_figs' ] = 3
+        
         #
         
         self._dictionary[ 'keys' ] = {}
@@ -444,6 +447,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'noneable_strings' ][ 'no_proxy' ] = '127.0.0.1'
         self._dictionary[ 'noneable_strings' ][ 'qt_style_name' ] = None
         self._dictionary[ 'noneable_strings' ][ 'qt_stylesheet_name' ] = None
+        self._dictionary[ 'noneable_strings' ][ 'last_advanced_file_deletion_reason' ] = None
         
         self._dictionary[ 'strings' ] = {}
         

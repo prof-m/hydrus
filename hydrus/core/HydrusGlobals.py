@@ -30,8 +30,8 @@ export_folders_running = False
 profile_mode = False
 
 db_profile_min_job_time_ms = 16
-callto_profile_min_job_time_ms = 5
-server_profile_min_job_time_ms = 5
+callto_profile_min_job_time_ms = 10
+server_profile_min_job_time_ms = 10
 menu_profile_min_job_time_ms = 16
 pubsub_profile_min_job_time_ms = 5
 ui_timer_profile_min_job_time_ms = 5
@@ -45,6 +45,8 @@ profile_start_time = 0
 profile_slow_count = 0
 profile_fast_count = 0
 profile_counter_lock = threading.Lock()
+
+canvas_tile_outline_mode = False
 
 db_ui_hang_relief_mode = False
 callto_report_mode = False
