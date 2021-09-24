@@ -1334,7 +1334,7 @@ class ServiceRestricted( ServiceRemote ):
                     
                     ( message, message_created ) = self._account.GetMessageAndTimestamp()
                     
-                    if message_created != original_message_created and not HydrusData.TimeHasPassed( message_created + ( 86400 * 5 ) ):
+                    if message != '' and message_created != original_message_created and not HydrusData.TimeHasPassed( message_created + ( 86400 * 5 ) ):
                         
                         m = 'New message for your account on {}:'.format( self._name )
                         m += os.linesep * 2
@@ -2191,9 +2191,16 @@ class ServiceRepository( ServiceRestricted ):
             service_key = self._service_key
             
         
+        content_types_we_are_processing = self._GetContentTypesWeAreProcessing()
+        
         ( num_local_updates, num_updates, content_types_to_num_processed_updates, content_types_to_num_updates ) = HG.client_controller.Read( 'repository_progress', service_key )
         
         for ( content_type, num_processed_updates ) in content_types_to_num_processed_updates.items():
+            
+            if content_type not in content_types_we_are_processing:
+                
+                continue
+                
             
             if num_processed_updates < content_types_to_num_updates[ content_type ]:
                 
