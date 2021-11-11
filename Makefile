@@ -10,6 +10,9 @@ server-local:
 server-local-n:
 	docker compose -f compose.nginx-server.base.yaml -f compose.local.yaml up
 
+server-local-n-self:
+	docker compose -f self-build-compose.nginx-server.base.yaml -f compose.local.yaml up
+
 server-test:
 	docker compose -f compose.base.yaml -f compose.test.yaml up hydrus-server
 
