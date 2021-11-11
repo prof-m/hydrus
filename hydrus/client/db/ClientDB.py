@@ -15,6 +15,7 @@ from qtpy import QtWidgets as QW
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
 from hydrus.core import HydrusDB
+from hydrus.core import HydrusDBBase
 from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusPaths
@@ -33,6 +34,7 @@ from hydrus.client import ClientServices
 from hydrus.client import ClientThreading
 from hydrus.client.db import ClientDBDefinitionsCache
 from hydrus.client.db import ClientDBFilesMaintenance
+from hydrus.client.db import ClientDBFilesMaintenanceQueue
 from hydrus.client.db import ClientDBFilesMetadataBasic
 from hydrus.client.db import ClientDBFilesStorage
 from hydrus.client.db import ClientDBMaintenance
@@ -2943,7 +2945,7 @@ class DB( HydrusDB.HydrusDB ):
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
-                    possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
+                    possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                     
                     previous_chain_tag_ids_to_implied_by = self._CacheTagDisplayGetTagsToImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, possibly_affected_tag_ids )
                     
@@ -2965,7 +2967,7 @@ class DB( HydrusDB.HydrusDB ):
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                     possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
-                    possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
+                    possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                     
                     previous_chain_tag_ids_to_implied_by = self._CacheTagDisplayGetTagsToImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, possibly_affected_tag_ids )
                     
@@ -3025,7 +3027,7 @@ class DB( HydrusDB.HydrusDB ):
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
-                        possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
+                        possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                         
                         previous_chain_tag_ids_to_implied_by = self._CacheTagDisplayGetTagsToImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, possibly_affected_tag_ids )
                         
@@ -3047,7 +3049,7 @@ class DB( HydrusDB.HydrusDB ):
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                         possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
-                        possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, a ) )
+                        possibly_affected_tag_ids.update( self._CacheTagDisplayGetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, b ) )
                         
                         previous_chain_tag_ids_to_implied_by = self._CacheTagDisplayGetTagsToImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, possibly_affected_tag_ids )
                         
@@ -4191,7 +4193,7 @@ class DB( HydrusDB.HydrusDB ):
             self.modules_similar_files.StopSearchingFile( hash_id )
             
         
-        self.modules_files_maintenance.CancelFiles( hash_ids )
+        self.modules_files_maintenance_queue.CancelFiles( hash_ids )
         
         pending_upload_hash_ids = self.modules_files_storage.FilterAllPendingHashIds( hash_ids )
         
@@ -7356,13 +7358,18 @@ class DB( HydrusDB.HydrusDB ):
             # this is likely a 'all known files' query, which means we are in deep water without a cache
             # time to compute manually, which is semi hell mode, but not dreadful
             
-            display_tag_data = [ ( hash_id, ( tag_service_id, status, tag_id ) ) for ( hash_id, ( tag_service_id, status, tag_id ) ) in storage_tag_data if status in ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) ]
+            current_and_pending_storage_tag_data = [ ( hash_id, ( tag_service_id, status, tag_id ) ) for ( hash_id, ( tag_service_id, status, tag_id ) ) in storage_tag_data if status in ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) ]
             
-            seen_service_ids_to_seen_tag_ids = HydrusData.BuildKeyToSetDict( ( ( tag_service_id, tag_id ) for ( hash_id, ( tag_service_id, status, tag_id ) ) in display_tag_data ) )
+            seen_service_ids_to_seen_tag_ids = HydrusData.BuildKeyToSetDict( ( ( tag_service_id, tag_id ) for ( hash_id, ( tag_service_id, status, tag_id ) ) in current_and_pending_storage_tag_data ) )
             
-            seen_service_ids_to_tag_ids_to_ideal_tag_ids = { tag_service_id : self.modules_tag_siblings.GetTagsToIdeals( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, tag_ids ) for ( tag_service_id, tag_ids ) in seen_service_ids_to_seen_tag_ids.items() }
+            seen_service_ids_to_tag_ids_to_implied_tag_ids = { tag_service_id : self._CacheTagDisplayGetTagsToImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, tag_ids ) for ( tag_service_id, tag_ids ) in seen_service_ids_to_seen_tag_ids.items() }
             
-            display_tag_data = [ ( hash_id, ( tag_service_id, status, seen_service_ids_to_tag_ids_to_ideal_tag_ids[ tag_service_id ][ tag_id ] ) ) for ( hash_id, ( tag_service_id, status, tag_id ) ) in display_tag_data ]
+            display_tag_data = []
+            
+            for ( hash_id, ( tag_service_id, status, tag_id ) ) in current_and_pending_storage_tag_data:
+                
+                display_tag_data.extend( ( ( hash_id, ( tag_service_id, status, implied_tag_id ) ) for implied_tag_id in seen_service_ids_to_tag_ids_to_implied_tag_ids[ tag_service_id ][ tag_id ] ) )
+                
             
         
         return ( storage_tag_data, display_tag_data )
@@ -11718,15 +11725,21 @@ class DB( HydrusDB.HydrusDB ):
         
         #
         
-        self.modules_files_maintenance = ClientDBFilesMaintenance.ClientDBFilesMaintenance( self._c, self.modules_hashes, self.modules_hashes_local_cache, self.modules_files_metadata_basic, self.modules_similar_files, self._weakref_media_result_cache )
+        self.modules_files_maintenance_queue = ClientDBFilesMaintenanceQueue.ClientDBFilesMaintenanceQueue( self._c, self.modules_hashes_local_cache )
         
-        self._modules.append( self.modules_files_maintenance )
+        self._modules.append( self.modules_files_maintenance_queue )
         
         #
         
-        self.modules_repositories = ClientDBRepositories.ClientDBRepositories( self._c, self._cursor_transaction_wrapper, self.modules_services, self.modules_files_storage, self.modules_files_metadata_basic, self.modules_hashes_local_cache, self.modules_tags_local_cache, self.modules_files_maintenance )
+        self.modules_repositories = ClientDBRepositories.ClientDBRepositories( self._c, self._cursor_transaction_wrapper, self.modules_services, self.modules_files_storage, self.modules_files_metadata_basic, self.modules_hashes_local_cache, self.modules_tags_local_cache, self.modules_files_maintenance_queue )
         
         self._modules.append( self.modules_repositories )
+        
+        #
+        
+        self.modules_files_maintenance = ClientDBFilesMaintenance.ClientDBFilesMaintenance( self._c, self.modules_files_maintenance_queue, self.modules_hashes, self.modules_hashes_local_cache, self.modules_files_metadata_basic, self.modules_similar_files, self.modules_repositories, self._weakref_media_result_cache )
+        
+        self._modules.append( self.modules_files_maintenance )
         
     
     def _ManageDBError( self, job, e ):
@@ -12194,9 +12207,9 @@ class DB( HydrusDB.HydrusDB ):
                                 
                                 if service_type in ( HC.LOCAL_FILE_DOMAIN, HC.COMBINED_LOCAL_FILE ):
                                     
-                                    reason = content_update.GetReason()
-                                    
-                                    if reason is not None:
+                                    if content_update.HasReason():
+                                        
+                                        reason = content_update.GetReason()
                                         
                                         self.modules_files_storage.SetFileDeletionReason( hash_ids, reason )
                                         
@@ -12250,7 +12263,14 @@ class DB( HydrusDB.HydrusDB ):
                                 
                                 self.modules_files_storage.RescindPendFiles( service_id, hash_ids )
                                 
-                                notify_new_pending = True
+                                if service_key == CC.COMBINED_LOCAL_FILE_SERVICE_KEY:
+                                    
+                                    notify_new_downloads = True
+                                    
+                                else:
+                                    
+                                    notify_new_pending = True
+                                    
                                 
                             elif action == HC.CONTENT_UPDATE_RESCIND_PETITION:
                                 
@@ -12439,6 +12459,11 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_parent_tag_ids.update( ( child_tag_id, parent_tag_id ) )
                             
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
+                            
                         elif action in ( HC.CONTENT_UPDATE_PEND, HC.CONTENT_UPDATE_PETITION ):
                             
                             ( child_tag, parent_tag ) = row
@@ -12471,7 +12496,10 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_parent_tag_ids.update( ( child_tag_id, parent_tag_id ) )
                             
-                            notify_new_pending = True
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
                             
                         elif action in ( HC.CONTENT_UPDATE_RESCIND_PEND, HC.CONTENT_UPDATE_RESCIND_PETITION ):
                             
@@ -12501,7 +12529,10 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_parent_tag_ids.update( ( child_tag_id, parent_tag_id ) )
                             
-                            notify_new_pending = True
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
                             
                         
                         notify_new_parents = True
@@ -12536,6 +12567,11 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_sibling_tag_ids.update( ( bad_tag_id, good_tag_id ) )
                             
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
+                            
                         elif action in ( HC.CONTENT_UPDATE_PEND, HC.CONTENT_UPDATE_PETITION ):
                             
                             ( bad_tag, good_tag ) = row
@@ -12568,7 +12604,10 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_sibling_tag_ids.update( ( bad_tag_id, good_tag_id ) )
                             
-                            notify_new_pending = True
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
                             
                         elif action in ( HC.CONTENT_UPDATE_RESCIND_PEND, HC.CONTENT_UPDATE_RESCIND_PETITION ):
                             
@@ -12598,7 +12637,10 @@ class DB( HydrusDB.HydrusDB ):
                             
                             changed_sibling_tag_ids.update( ( bad_tag_id, good_tag_id ) )
                             
-                            notify_new_pending = True
+                            if service_type == HC.TAG_REPOSITORY:
+                                
+                                notify_new_pending = True
+                                
                             
                         
                         notify_new_siblings = True
@@ -12698,7 +12740,10 @@ class DB( HydrusDB.HydrusDB ):
                 
                 self._UpdateMappings( service_id, mappings_ids = ultimate_mappings_ids, deleted_mappings_ids = ultimate_deleted_mappings_ids, pending_mappings_ids = ultimate_pending_mappings_ids, pending_rescinded_mappings_ids = ultimate_pending_rescinded_mappings_ids, petitioned_mappings_ids = ultimate_petitioned_mappings_ids, petitioned_rescinded_mappings_ids = ultimate_petitioned_rescinded_mappings_ids )
                 
-                notify_new_pending = True
+                if service_type == HC.TAG_REPOSITORY:
+                    
+                    notify_new_pending = True
+                    
                 
             
             if len( changed_sibling_tag_ids ) > 0:
@@ -13091,8 +13136,8 @@ class DB( HydrusDB.HydrusDB ):
         elif action == 'file_duplicate_hashes': result = self._DuplicatesGetFileHashesByDuplicateType( *args, **kwargs )
         elif action == 'file_duplicate_info': result = self._DuplicatesGetFileDuplicateInfo( *args, **kwargs )
         elif action == 'file_hashes': result = self.modules_hashes.GetFileHashes( *args, **kwargs )
-        elif action == 'file_maintenance_get_job': result = self.modules_files_maintenance.GetJob( *args, **kwargs )
-        elif action == 'file_maintenance_get_job_counts': result = self.modules_files_maintenance.GetJobCounts( *args, **kwargs )
+        elif action == 'file_maintenance_get_job': result = self.modules_files_maintenance_queue.GetJob( *args, **kwargs )
+        elif action == 'file_maintenance_get_job_counts': result = self.modules_files_maintenance_queue.GetJobCounts( *args, **kwargs )
         elif action == 'file_query_ids': result = self._GetHashIdsFromQuery( *args, **kwargs )
         elif action == 'file_system_predicates': result = self._GetFileSystemPredicates( *args, **kwargs )
         elif action == 'filter_existing_tags': result = self._FilterExistingTags( *args, **kwargs )
@@ -16005,7 +16050,7 @@ class DB( HydrusDB.HydrusDB ):
                 
                 try:
                     
-                    HydrusPaths.CheckHasSpaceForDBTransaction( self._db_dir, space_needed )
+                    HydrusDBBase.CheckHasSpaceForDBTransaction( self._db_dir, space_needed )
                     
                 except Exception as e:
                     
@@ -16231,7 +16276,7 @@ class DB( HydrusDB.HydrusDB ):
                 
                 from hydrus.client import ClientFiles
                 
-                self.modules_files_maintenance.AddJobs( hash_ids, ClientFiles.REGENERATE_FILE_DATA_JOB_FORCE_THUMBNAIL )
+                self.modules_files_maintenance_queue.AddJobs( hash_ids, ClientFiles.REGENERATE_FILE_DATA_JOB_FORCE_THUMBNAIL )
                 
             except:
                 
@@ -16458,6 +16503,35 @@ class DB( HydrusDB.HydrusDB ):
                     
                 
                 self._Execute( 'DROP TABLE {};'.format( cache_files_table_name ) )
+                
+            
+        
+        if version == 459:
+            
+            try:
+                
+                self._controller.frame_splash_status.SetSubtext( 'scheduling clip and apng files for regen' )
+                
+                table_join = self.modules_files_storage.GetTableJoinLimitedByFileDomain( self.modules_services.combined_local_file_service_id, 'files_info', HC.CONTENT_STATUS_CURRENT )
+                
+                from hydrus.client import ClientFiles
+                
+                hash_ids = self._STL( self._Execute( 'SELECT hash_id FROM {} WHERE mime = ?;'.format( table_join ), ( HC.APPLICATION_CLIP, ) ) )
+                
+                self.modules_files_maintenance_queue.AddJobs( hash_ids, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_METADATA )
+                self.modules_files_maintenance_queue.AddJobs( hash_ids, ClientFiles.REGENERATE_FILE_DATA_JOB_FORCE_THUMBNAIL )
+                
+                hash_ids = self._STL( self._Execute( 'SELECT hash_id FROM {} WHERE mime = ?;'.format( table_join ), ( HC.IMAGE_APNG, ) ) )
+                
+                self.modules_files_maintenance_queue.AddJobs( hash_ids, ClientFiles.REGENERATE_FILE_DATA_JOB_FILE_METADATA )
+                
+            except:
+                
+                HydrusData.PrintException( e )
+                
+                message = 'Trying to schedule clip and apng files for maintenance failed! Please let hydrus dev know!'
+                
+                self.pub_initial_message( message )
                 
             
         
@@ -16954,9 +17028,9 @@ class DB( HydrusDB.HydrusDB ):
         elif action == 'dissolve_duplicates_group': self._DuplicatesDissolveMediaIdFromHashes( *args, **kwargs )
         elif action == 'duplicate_pair_status': self._DuplicatesSetDuplicatePairStatus( *args, **kwargs )
         elif action == 'duplicate_set_king': self._DuplicatesSetKingFromHash( *args, **kwargs )
-        elif action == 'file_maintenance_add_jobs': self.modules_files_maintenance.AddJobs( *args, **kwargs )
-        elif action == 'file_maintenance_add_jobs_hashes': self.modules_files_maintenance.AddJobsHashes( *args, **kwargs )
-        elif action == 'file_maintenance_cancel_jobs': self.modules_files_maintenance.CancelJobs( *args, **kwargs )
+        elif action == 'file_maintenance_add_jobs': self.modules_files_maintenance_queue.AddJobs( *args, **kwargs )
+        elif action == 'file_maintenance_add_jobs_hashes': self.modules_files_maintenance_queue.AddJobsHashes( *args, **kwargs )
+        elif action == 'file_maintenance_cancel_jobs': self.modules_files_maintenance_queue.CancelJobs( *args, **kwargs )
         elif action == 'file_maintenance_clear_jobs': self.modules_files_maintenance.ClearJobs( *args, **kwargs )
         elif action == 'fix_logically_inconsistent_mappings': self._FixLogicallyInconsistentMappings( *args, **kwargs )
         elif action == 'imageboard': self.modules_serialisable.SetYAMLDump( ClientDBSerialisable.YAML_DUMP_ID_IMAGEBOARD, *args, **kwargs )

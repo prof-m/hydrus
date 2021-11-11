@@ -320,27 +320,23 @@ def GetHashesFromParseResults( results ):
     
     return hash_results
     
-def GetHTMLTagString( tag ):
+def GetHTMLTagString( tag: bs4.Tag ):
+    
+    # don't mess about with tag.string, tag.strings or tag.get_text
+    # on a version update, these suddenly went semi bonkers and wouldn't pull text unless the types of the subtag were explicitly set
+    # so we'll just do it ourselves
     
     try:
         
-        all_strings = [ s for s in tag.strings if len( s ) > 0 ]
+        all_strings = [ str( c ) for c in tag.descendants if isinstance( c, ( bs4.NavigableString, bs4.CData ) ) ]
+        all_strings = [ s for s in all_strings if len( s ) > 0 ]
         
     except:
         
-        return ''
+        all_strings = []
         
     
-    if len( all_strings ) == 0:
-        
-        result = ''
-        
-    else:
-        
-        result = all_strings[0]
-        
-    
-    return result
+    return ''.join( all_strings )
     
 def GetNamespacesFromParsableContent( parsable_content ):
     
@@ -1704,7 +1700,16 @@ class ParseFormulaJSON( ParseFormula ):
             
         except Exception as e:
             
-            message = 'Unable to parse that JSON: {}. JSON sample: {}'.format( str( e ), parsing_text[:1024] )
+            if HydrusText.LooksLikeHTML( parsing_text ):
+                
+                message = 'Unable to parse: Appeared to receive HTML instead of JSON.'
+                
+            else:
+                
+                message = 'Unable to parse that JSON: {}.'.format( str( e ) )
+                
+            
+            message += ' Parsing text sample: {}'.format( parsing_text[:1024] )
             
             raise HydrusExceptions.ParseException( message )
             
@@ -2393,6 +2398,16 @@ class PageParser( HydrusSerialisable.SerialisableBaseNamed ):
         return self._string_converter
         
     
+    def NullifyTestData( self ):
+        
+        self._example_parsing_context = {}
+        
+        for ( formula, page_parser ) in self._sub_page_parsers:
+            
+            page_parser.NullifyTestData()
+            
+        
+    
     def Parse( self, parsing_context, parsing_text ):
         
         try:
@@ -2411,7 +2426,6 @@ class PageParser( HydrusSerialisable.SerialisableBaseNamed ):
             
             raise e
             
-        
         
         #
         

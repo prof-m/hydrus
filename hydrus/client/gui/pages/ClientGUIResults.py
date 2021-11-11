@@ -551,7 +551,9 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
             
         else:
             
-            num_files_string = HydrusData.ToHumanInt( num_files ) + ' ' + num_files_descriptor + 's'
+            suffix = '' if num_files_descriptor.endswith( 's' ) else 's'
+            
+            num_files_string = '{} {}{}'.format( HydrusData.ToHumanInt( num_files ), num_files_descriptor, suffix )
             
         
         s = num_files_string # 23 files
@@ -575,7 +577,9 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
                 
             else:
                 
-                selected_files_string = HydrusData.ToHumanInt( num_selected ) + ' ' + selected_files_descriptor + 's'
+                suffix = '' if selected_files_descriptor.endswith( 's' ) else 's'
+                
+                selected_files_string = '{} {}{}'.format( HydrusData.ToHumanInt( num_selected ), selected_files_descriptor, suffix )
                 
             
             if num_selected == 1: # 23 files - 1 video selected, file_info
@@ -732,7 +736,7 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
     
     def _GetSortedSelectedMimeDescriptors( self ):
         
-        def GetDescriptor( classes ):
+        def GetDescriptor( classes, num_collections ):
             
             if len( classes ) == 0:
                 
@@ -743,7 +747,14 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
                 
                 ( mime, ) = classes
                 
-                return HC.mime_string_lookup[ mime ]
+                if mime == HC.APPLICATION_HYDRUS_CLIENT_COLLECTION:
+                    
+                    return 'files in {} collections'.format( HydrusData.ToHumanInt( num_collections ) )
+                    
+                else:
+                    
+                    return HC.mime_string_lookup[ mime ]
+                    
                 
             
             if len( classes.difference( HC.IMAGES ) ) == 0:
@@ -776,7 +787,16 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
             
             sorted_mimes = { media.GetMime() for media in self._sorted_media }
             
-            sorted_mime_descriptor = GetDescriptor( sorted_mimes )
+            if HC.APPLICATION_HYDRUS_CLIENT_COLLECTION in sorted_mimes:
+                
+                num_collections = len( [ media for media in self._sorted_media if isinstance( media, ClientMedia.MediaCollection ) ] )
+                
+            else:
+                
+                num_collections = 0
+                
+            
+            sorted_mime_descriptor = GetDescriptor( sorted_mimes, num_collections )
             
         
         if len( self._selected_media ) > 1000:
@@ -787,7 +807,16 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
             
             selected_mimes = { media.GetMime() for media in self._selected_media }
             
-            selected_mime_descriptor = GetDescriptor( selected_mimes )
+            if HC.APPLICATION_HYDRUS_CLIENT_COLLECTION in selected_mimes:
+                
+                num_collections = len( [ media for media in self._selected_media if isinstance( media, ClientMedia.MediaCollection ) ] )
+                
+            else:
+                
+                num_collections = 0
+                
+            
+            selected_mime_descriptor = GetDescriptor( selected_mimes, num_collections )
             
         
         return ( sorted_mime_descriptor, selected_mime_descriptor )
@@ -2193,11 +2222,11 @@ class MediaPanel( ClientMedia.ListeningMediaList, QW.QScrollArea ):
             
         
     
-    def SelectByTags( self, page_key, and_or_or, tags ):
+    def SelectByTags( self, page_key, tag_service_key, and_or_or, tags ):
         
         if page_key == self._page_key:
             
-            self._Select( ClientMedia.FileFilter( ClientMedia.FILE_FILTER_TAGS, ( and_or_or, tags ) ) )
+            self._Select( ClientMedia.FileFilter( ClientMedia.FILE_FILTER_TAGS, ( tag_service_key, and_or_or, tags ) ) )
             
             self.setFocus( QC.Qt.OtherFocusReason )
             
@@ -4772,7 +4801,7 @@ class Thumbnail( Selectable ):
         
         painter.setBrush( QG.QBrush( new_options.GetColour( background_colour_type ) ) )
         
-        painter.drawRect( thumbnail_border, thumbnail_border, width-(thumbnail_border*2), height-(thumbnail_border*2) )
+        painter.drawRect( thumbnail_border, thumbnail_border, width - ( thumbnail_border * 2 ), height - ( thumbnail_border * 2 ) )
         
         thumbnail_fill = HG.client_controller.new_options.GetBoolean( 'thumbnail_fill' )
         
@@ -4948,6 +4977,8 @@ class Thumbnail( Selectable ):
             painter.drawRects( rectangles )
             
         
+        ICON_MARGIN = 1
+        
         locations_manager = self.GetLocationsManager()
         
         icons_to_draw = []
@@ -4974,19 +5005,26 @@ class Thumbnail( Selectable ):
         
         if len( icons_to_draw ) > 0:
             
-            icon_x = -thumbnail_border
+            icon_x = - ( thumbnail_border + ICON_MARGIN )
             
             for icon in icons_to_draw:
                 
-                painter.drawPixmap( width + icon_x - 18, thumbnail_border, icon )
+                icon_x -= icon.width()
                 
-                icon_x -= 18
+                painter.drawPixmap( width + icon_x, thumbnail_border, icon )
+                
+                icon_x -= 2 * ICON_MARGIN
                 
             
         
         if self.IsCollection():
             
-            painter.drawPixmap( 1, height-17, CC.global_pixmaps().collection )
+            icon = CC.global_pixmaps().collection
+            
+            icon_x = thumbnail_border + ICON_MARGIN
+            icon_y = ( height - 1 ) - thumbnail_border - ICON_MARGIN - icon.height()
+            
+            painter.drawPixmap( icon_x, icon_y, icon )
             
             num_files_str = HydrusData.ToHumanInt( self.GetNumFiles() )
             
@@ -5001,11 +5039,19 @@ class Thumbnail( Selectable ):
             
             painter.setPen( QC.Qt.NoPen )
             
-            painter.drawRect( 17, height - text_height - 3, text_width + 2, text_height + 2 )
+            box_width = text_width + ( ICON_MARGIN * 2 )
+            box_x = icon_x + icon.width() + ICON_MARGIN
+            box_height = text_height + ( ICON_MARGIN * 2 )
+            box_y = ( height - 1 ) - box_height
+            
+            painter.drawRect( box_x, height - text_height - 3, box_width, box_height )
             
             painter.setPen( QG.QPen( CC.COLOUR_SELECTED_DARK ) )
             
-            ClientGUIFunctions.DrawText( painter, 18, height - text_height - 2, num_files_str )
+            text_x = box_x + ICON_MARGIN
+            text_y = box_y + ICON_MARGIN
+            
+            ClientGUIFunctions.DrawText( painter, text_x, text_y, num_files_str )
             
         
         # top left icons
@@ -5073,16 +5119,13 @@ class Thumbnail( Selectable ):
             icons_to_draw.append( CC.global_pixmaps().ipfs_petitioned )
             
         
-        ICON_MARGIN = 1
-        ICON_SPACING = 2
-        
         top_left_x = thumbnail_border + ICON_MARGIN
         
         for icon_to_draw in icons_to_draw:
             
             painter.drawPixmap( top_left_x, thumbnail_border + ICON_MARGIN, icon_to_draw )
             
-            top_left_x += icon_to_draw.width() + ICON_SPACING
+            top_left_x += icon_to_draw.width() + ( ICON_MARGIN * 2 )
             
         
         return qt_image
