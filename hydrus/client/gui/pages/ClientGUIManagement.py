@@ -306,12 +306,13 @@ class ManagementController( HydrusSerialisable.SerialisableBase ):
                 max_resolution = None
                 
                 automatic_archive = advanced_import_options[ 'automatic_archive' ]
+                associate_primary_urls = True
                 associate_source_urls = True
                 
                 file_import_options = FileImportOptions.FileImportOptions()
                 
                 file_import_options.SetPreImportOptions( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
-                file_import_options.SetPostImportOptions( automatic_archive, associate_source_urls )
+                file_import_options.SetPostImportOptions( automatic_archive, associate_primary_urls, associate_source_urls )
                 
                 paths_to_tags = { path : { bytes.fromhex( service_key ) : tags for ( service_key, tags ) in additional_service_keys_to_tags } for ( path, additional_service_keys_to_tags ) in paths_to_tags.items() }
                 
@@ -3700,9 +3701,23 @@ class ManagementPanelImporterSimpleDownloader( ManagementPanelImporter ):
         
         ( file_network_job, page_network_job ) = self._simple_downloader_import.GetNetworkJobs()
         
-        self._file_download_control.SetNetworkJob( file_network_job )
+        if file_network_job is None:
+            
+            self._file_download_control.ClearNetworkJob()
+            
+        else:
+            
+            self._file_download_control.SetNetworkJob( file_network_job )
+            
         
-        self._page_download_control.SetNetworkJob( page_network_job )
+        if page_network_job is None:
+            
+            self._page_download_control.ClearNetworkJob()
+            
+        else:
+            
+            self._page_download_control.SetNetworkJob( page_network_job )
+            
         
     
     def CheckAbleToClose( self ):
@@ -3923,9 +3938,23 @@ class ManagementPanelImporterURLs( ManagementPanelImporter ):
         
         ( file_network_job, gallery_network_job ) = self._urls_import.GetNetworkJobs()
         
-        self._file_download_control.SetNetworkJob( file_network_job )
+        if file_network_job is None:
+            
+            self._file_download_control.ClearNetworkJob()
+            
+        else:
+            
+            self._file_download_control.SetNetworkJob( file_network_job )
+            
         
-        self._gallery_download_control.SetNetworkJob( gallery_network_job )
+        if gallery_network_job is None:
+            
+            self._gallery_download_control.ClearNetworkJob()
+            
+        else:
+            
+            self._gallery_download_control.SetNetworkJob( gallery_network_job )
+            
         
     
     def CheckAbleToClose( self ):
