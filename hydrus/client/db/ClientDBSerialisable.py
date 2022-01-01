@@ -43,7 +43,9 @@ def ExportBrokenHashedJSONDump( db_dir, dump, dump_descriptor ):
         f.write( dump )
         
     
-def DealWithBrokenJSONDump( db_dir, dump, dump_descriptor ):
+def DealWithBrokenJSONDump( db_dir, dump, dump_object_descriptor, dump_descriptor ):
+    
+    HydrusData.Print( 'I am exporting a broken dump. The full object descriptor is: {}'.format( dump_object_descriptor ) )
     
     timestamp_string = time.strftime( '%Y-%m-%d %H-%M-%S' )
     hex_chars = os.urandom( 4 ).hex()
@@ -165,11 +167,11 @@ class ClientDBSerialisable( ClientDBModule.ClientDBModule ):
     def _GetInitialTableGenerationDict( self ) -> dict:
         
         return {
-            'main.json_dict' : ( 'CREATE TABLE {} ( name TEXT PRIMARY KEY, dump BLOB_BYTES );', 400 ),
-            'main.json_dumps' : ( 'CREATE TABLE {} ( dump_type INTEGER PRIMARY KEY, version INTEGER, dump BLOB_BYTES );', 400 ),
-            'main.json_dumps_named' : ( 'CREATE TABLE {} ( dump_type INTEGER, dump_name TEXT, version INTEGER, timestamp INTEGER, dump BLOB_BYTES, PRIMARY KEY ( dump_type, dump_name, timestamp ) );', 400 ),
-            'main.json_dumps_hashed' : ( 'CREATE TABLE {} ( hash BLOB_BYTES PRIMARY KEY, dump_type INTEGER, version INTEGER, dump BLOB_BYTES );', 442 ),
-            'main.yaml_dumps' : ( 'CREATE TABLE {} ( dump_type INTEGER, dump_name TEXT, dump TEXT_YAML, PRIMARY KEY ( dump_type, dump_name ) );', 400 )
+            'main.json_dict' : ( 'CREATE TABLE IF NOT EXISTS {} ( name TEXT PRIMARY KEY, dump BLOB_BYTES );', 400 ),
+            'main.json_dumps' : ( 'CREATE TABLE IF NOT EXISTS {} ( dump_type INTEGER PRIMARY KEY, version INTEGER, dump BLOB_BYTES );', 400 ),
+            'main.json_dumps_named' : ( 'CREATE TABLE IF NOT EXISTS {} ( dump_type INTEGER, dump_name TEXT, version INTEGER, timestamp INTEGER, dump BLOB_BYTES, PRIMARY KEY ( dump_type, dump_name, timestamp ) );', 400 ),
+            'main.json_dumps_hashed' : ( 'CREATE TABLE IF NOT EXISTS {} ( hash BLOB_BYTES PRIMARY KEY, dump_type INTEGER, version INTEGER, dump BLOB_BYTES );', 442 ),
+            'main.yaml_dumps' : ( 'CREATE TABLE IF NOT EXISTS {} ( dump_type INTEGER, dump_name TEXT, dump TEXT_YAML, PRIMARY KEY ( dump_type, dump_name ) );', 400 )
         }
         
     
@@ -357,7 +359,7 @@ class ClientDBSerialisable( ClientDBModule.ClientDBModule ):
                 
                 self._cursor_transaction_wrapper.CommitAndBegin()
                 
-                DealWithBrokenJSONDump( self._db_dir, dump, 'dump_type {}'.format( dump_type ) )
+                DealWithBrokenJSONDump( self._db_dir, dump, ( dump_type, version ), 'dump_type {} version {}'.format( dump_type, version ) )
                 
             
             obj = HydrusSerialisable.CreateFromSerialisableTuple( ( dump_type, version, serialisable_info ) )
@@ -406,7 +408,7 @@ class ClientDBSerialisable( ClientDBModule.ClientDBModule ):
                     
                     self._cursor_transaction_wrapper.CommitAndBegin()
                     
-                    DealWithBrokenJSONDump( self._db_dir, dump, 'dump_type {} dump_name {} timestamp {}'.format( dump_type, dump_name[:10], timestamp ) )
+                    DealWithBrokenJSONDump( self._db_dir, dump, ( dump_type, dump_name, version, object_timestamp ), 'dump_type {} dump_name {} version {} timestamp {}'.format( dump_type, dump_name[:10], version, object_timestamp ) )
                     
                 
             
@@ -445,7 +447,7 @@ class ClientDBSerialisable( ClientDBModule.ClientDBModule ):
                 
                 self._cursor_transaction_wrapper.CommitAndBegin()
                 
-                DealWithBrokenJSONDump( self._db_dir, dump, 'dump_type {} dump_name {} timestamp {}'.format( dump_type, dump_name[:10], object_timestamp ) )
+                DealWithBrokenJSONDump( self._db_dir, dump, ( dump_type, dump_name, version, object_timestamp ), 'dump_type {} dump_name {} version {} timestamp {}'.format( dump_type, dump_name[:10], version, object_timestamp ) )
                 
             
             return HydrusSerialisable.CreateFromSerialisableTuple( ( dump_type, dump_name, version, serialisable_info ) )

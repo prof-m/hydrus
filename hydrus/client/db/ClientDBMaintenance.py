@@ -24,9 +24,9 @@ class ClientDBMaintenance( ClientDBModule.ClientDBModule ):
     def _GetInitialTableGenerationDict( self ) -> dict:
         
         return {
-            'main.last_shutdown_work_time' : ( 'CREATE TABLE {} ( last_shutdown_work_time INTEGER );', 400 ),
-            'main.analyze_timestamps' : ( 'CREATE TABLE {} ( name TEXT, num_rows INTEGER, timestamp INTEGER );', 400 ),
-            'main.vacuum_timestamps' : ( 'CREATE TABLE {} ( name TEXT, timestamp INTEGER );', 400 )
+            'main.last_shutdown_work_time' : ( 'CREATE TABLE IF NOT EXISTS {} ( last_shutdown_work_time INTEGER );', 400 ),
+            'main.analyze_timestamps' : ( 'CREATE TABLE IF NOT EXISTS {} ( name TEXT, num_rows INTEGER, timestamp INTEGER );', 400 ),
+            'main.vacuum_timestamps' : ( 'CREATE TABLE IF NOT EXISTS {} ( name TEXT, timestamp INTEGER );', 400 )
         }
         
     
@@ -292,4 +292,11 @@ class ClientDBMaintenance( ClientDBModule.ClientDBModule ):
         self._Execute( 'DELETE FROM vacuum_timestamps WHERE name = ?;', ( name, ) )
         
         self._Execute( 'INSERT OR IGNORE INTO vacuum_timestamps ( name, timestamp ) VALUES ( ?, ? );', ( name, HydrusData.GetNow() ) )
+        
+    
+    def TouchAnalyzeNewTables( self ):
+        
+        # just a little thing to run after creating and populating tables that will scan any actual new stuff
+        
+        self.GetTableNamesDueAnalysis()
         

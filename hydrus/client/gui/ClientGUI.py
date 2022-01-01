@@ -20,6 +20,7 @@ from qtpy import QtCore as QC
 from qtpy import QtWidgets as QW
 from qtpy import QtGui as QG
 
+from hydrus.core import HydrusCompression
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
 from hydrus.core import HydrusExceptions
@@ -673,7 +674,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         library_versions.append( ( 'html5lib present: ', str( ClientParsing.HTML5LIB_IS_OK ) ) )
         library_versions.append( ( 'lxml present: ', str( ClientParsing.LXML_IS_OK ) ) )
         library_versions.append( ( 'chardet present: ', str( HydrusText.CHARDET_OK ) ) )
-        library_versions.append( ( 'lz4 present: ', str( ClientRendering.LZ4_OK ) ) )
+        library_versions.append( ( 'lz4 present: ', str( HydrusCompression.LZ4_OK ) ) )
         library_versions.append( ( 'install dir', HC.BASE_DIR ) )
         library_versions.append( ( 'db dir', HG.client_controller.db_dir ) )
         library_versions.append( ( 'temp dir', HydrusTemp.GetCurrentTempDir() ) )
@@ -937,7 +938,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _CheckDBIntegrity( self ):
         
-        message = 'This will check the database for missing and invalid entries. It may take several minutes to complete.'
+        message = 'This will check the SQLite database files for missing and invalid data. It may take several minutes to complete.'
         
         result = ClientGUIDialogsQuick.GetYesNo( self, message, title = 'Run integrity check?', yes_label = 'do it', no_label = 'forget it' )
         
@@ -1035,7 +1036,9 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _ClearOrphanFileRecords( self ):
         
-        text = 'This will instruct the database to review its file records and delete any orphans. You typically do not ever see these files and they are basically harmless, but they can offset some file counts confusingly. You probably only need to run this if you can\'t process the apparent last handful of duplicate filter pairs or hydrus dev otherwise told you to try it.'
+        text = 'DO NOT RUN THIS UNLESS YOU KNOW YOU NEED TO'
+        text += os.linesep * 2
+        text += 'This will instruct the database to review its file records and delete any orphans. You typically do not ever see these files and they are basically harmless, but they can offset some file counts confusingly. You probably only need to run this if you can\'t process the apparent last handful of duplicate filter pairs or hydrus dev otherwise told you to try it.'
         text += os.linesep * 2
         text += 'It will create a popup message while it works and inform you of the number of orphan records found.'
         
@@ -1049,7 +1052,9 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _ClearOrphanHashedSerialisables( self ):
         
-        text = 'This force-runs a routine that regularly removes some spare data from the database. You most likely do not need to run it.'
+        text = 'DO NOT RUN THIS UNLESS YOU KNOW YOU NEED TO'
+        text += os.linesep * 2
+        text += 'This force-runs a routine that regularly removes some spare data from the database. You most likely do not need to run it.'
         
         result = ClientGUIDialogsQuick.GetYesNo( self, text, yes_label = 'do it', no_label = 'forget it' )
         
@@ -1079,7 +1084,9 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _ClearOrphanTables( self ):
         
-        text = 'This will instruct the database to review its service tables and delete any orphans. This will typically do nothing, but hydrus dev may tell you to run this, just to check. Be sure you have a semi-recent backup before you run this.'
+        text = 'DO NOT RUN THIS UNLESS YOU KNOW YOU NEED TO'
+        text += os.linesep * 2
+        text += 'This will instruct the database to review its service tables and delete any orphans. This will typically do nothing, but hydrus dev may tell you to run this, just to check. Be sure you have a recent backup before you run this--if it deletes something important by accident, you will want to roll back!'
         text += os.linesep * 2
         text += 'It will create popups if it finds anything to delete.'
         
@@ -3124,7 +3131,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'mpv report mode', 'Have the client report significant mpv debug information.', HG.mpv_report_mode, self._SwitchBoolean, 'mpv_report_mode' )
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'network report mode', 'Have the network engine report new jobs.', HG.network_report_mode, self._SwitchBoolean, 'network_report_mode' )
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'pubsub report mode', 'Report info about every pubsub processed.', HG.pubsub_report_mode, self._SwitchBoolean, 'pubsub_report_mode' )
-        ClientGUIMenus.AppendMenuCheckItem( report_modes, 'similar files metadata generation report mode', 'Have the phash generation routine report its progress.', HG.phash_generation_report_mode, self._SwitchBoolean, 'phash_generation_report_mode' )
+        ClientGUIMenus.AppendMenuCheckItem( report_modes, 'similar files metadata generation report mode', 'Have the perceptual_hash generation routine report its progress.', HG.phash_generation_report_mode, self._SwitchBoolean, 'phash_generation_report_mode' )
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'shortcut report mode', 'Have the new shortcut system report what shortcuts it catches and whether it matches an action.', HG.shortcut_report_mode, self._SwitchBoolean, 'shortcut_report_mode' )
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'subprocess report mode', 'Report whenever an external process is called.', HG.subprocess_report_mode, self._SwitchBoolean, 'subprocess_report_mode' )
         ClientGUIMenus.AppendMenuCheckItem( report_modes, 'subscription report mode', 'Have the subscription system report what it is doing.', HG.subscription_report_mode, self._SwitchBoolean, 'subscription_report_mode' )
@@ -3134,6 +3141,21 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         gui_actions = QW.QMenu( debug )
         
         default_local_file_service_key = HG.client_controller.services_manager.GetDefaultLocalFileServiceKey()
+        
+        def flip_macos_antiflicker():
+            
+            HG.macos_antiflicker_test = not HG.macos_antiflicker_test
+            
+            if HG.macos_antiflicker_test:
+                
+                HydrusData.ShowText( 'Hey, the macOS safety code is now disabled. Please open a new media viewer and see if a mix of video and images show ok, no 100% CPU problems.' )
+                
+            
+        
+        if HC.PLATFORM_MACOS:
+            
+            ClientGUIMenus.AppendMenuItem( gui_actions, 'macos anti-flicker test', 'Try it out, let me know how it goes.', flip_macos_antiflicker )
+            
         
         ClientGUIMenus.AppendMenuItem( gui_actions, 'make some popups', 'Throw some varied popups at the message manager, just to check it is working.', self._DebugMakeSomePopups )
         ClientGUIMenus.AppendMenuItem( gui_actions, 'make a long text popup', 'Make a popup with text that will grow in size.', self._DebugLongTextPopup )
@@ -4299,7 +4321,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _ManageSubscriptions( self ):
         
-        def qt_do_it( subscriptions, missing_query_log_container_names, surplus_query_log_container_names, original_pause_status ):
+        def qt_do_it( subscriptions, missing_query_log_container_names, surplus_query_log_container_names ):
             
             if len( missing_query_log_container_names ) > 0:
                 
@@ -4382,7 +4404,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
             with ClientGUITopLevelWindowsPanels.DialogEdit( self, title, frame_key ) as dlg:
                 
-                panel = ClientGUISubscriptions.EditSubscriptionsPanel( dlg, subscriptions, original_pause_status )
+                panel = ClientGUISubscriptions.EditSubscriptionsPanel( dlg, subscriptions )
                 
                 dlg.SetPanel( panel )
                 
@@ -4413,20 +4435,15 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                     
                     try:
                         
-                        original_pause_status = controller.options[ 'pause_subs_sync' ]
+                        HG.client_controller.subscriptions_manager.PauseSubscriptionsForEditing()
                         
-                        controller.options[ 'pause_subs_sync' ] = True
-                        
-                        if HG.client_controller.subscriptions_manager.SubscriptionsRunning():
+                        while HG.client_controller.subscriptions_manager.SubscriptionsRunning():
                             
-                            while HG.client_controller.subscriptions_manager.SubscriptionsRunning():
+                            time.sleep( 0.1 )
+                            
+                            if HG.view_shutdown:
                                 
-                                time.sleep( 0.1 )
-                                
-                                if HG.view_shutdown:
-                                    
-                                    return
-                                    
+                                return
                                 
                             
                         
@@ -4454,7 +4471,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                         
                         done_job_key = ClientThreading.JobKey()
                         
-                        ( subscriptions, edited_query_log_containers, deletee_query_log_container_names ) = controller.CallBlockingToQt( self, qt_do_it, subscriptions, missing_query_log_container_names, surplus_query_log_container_names, original_pause_status )
+                        ( subscriptions, edited_query_log_containers, deletee_query_log_container_names ) = controller.CallBlockingToQt( self, qt_do_it, subscriptions, missing_query_log_container_names, surplus_query_log_container_names )
                         
                         done_job_key.SetVariable( 'popup_text_1', 'Saving subscription changes.' )
                         
@@ -4484,7 +4501,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                     
                 finally:
                     
-                    controller.options[ 'pause_subs_sync' ] = original_pause_status
+                    HG.client_controller.subscriptions_manager.ResumeSubscriptionsAfterEditing()
                     
                 
             
@@ -4632,11 +4649,11 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _MigrateTags( self ):
         
-        default_tag_repository_key = HC.options[ 'default_tag_repository' ]
+        default_tag_service_key = self._controller.new_options.GetKey( 'default_tag_service_tab' )
         
         frame = ClientGUITopLevelWindowsPanels.FrameThatTakesScrollablePanel( self, 'migrate tags' )
         
-        panel = ClientGUIScrolledPanelsReview.MigrateTagsPanel( frame, default_tag_repository_key )
+        panel = ClientGUIScrolledPanelsReview.MigrateTagsPanel( frame, default_tag_service_key )
         
         frame.SetPanel( panel )
         
@@ -7200,6 +7217,10 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
             elif action == CAC.SIMPLE_GLOBAL_PROFILE_MODE_FLIP:
                 
                 HG.client_controller.FlipProfileMode()
+                
+            elif action == CAC.SIMPLE_GLOBAL_FORCE_ANIMATION_SCANBAR_SHOW:
+                
+                HG.client_controller.new_options.FlipBoolean( 'force_animation_scanbar_show' )
                 
             elif action == CAC.SIMPLE_SHOW_HIDE_SPLITTERS:
                 

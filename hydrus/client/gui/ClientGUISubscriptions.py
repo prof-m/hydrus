@@ -208,7 +208,7 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
         
         self._checker_options = ClientGUIImport.CheckerOptionsButton( self._file_limits_panel, checker_options, update_callable = self._CheckerOptionsUpdated )
         
-        self._file_presentation_panel = ClientGUICommon.StaticBox( self, 'presentation' )
+        self._file_presentation_panel = ClientGUICommon.StaticBox( self, 'file publication' )
         
         self._show_a_popup_while_working = QW.QCheckBox( self._file_presentation_panel )
         self._show_a_popup_while_working.setToolTip( 'Careful with this! Leave it on to begin with, just in case it goes wrong!' )
@@ -282,11 +282,19 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
         
         #
         
+        label = 'If you like, the subscription can send its files to popup buttons or pages directly. The files it sends are shaped by the \'presentation\' options in _file import options_.'
+        
+        st = ClientGUICommon.BetterStaticText( self._file_presentation_panel, label = label )
+        
+        st.setWordWrap( True )
+        
+        self._file_presentation_panel.Add( st, CC.FLAGS_EXPAND_PERPENDICULAR )
+        
         rows = []
         
         rows.append( ( 'show a popup while working: ', self._show_a_popup_while_working ) )
-        rows.append( ( 'publish new files to a popup button: ', self._publish_files_to_popup_button ) )
-        rows.append( ( 'publish new files to a page: ', self._publish_files_to_page ) )
+        rows.append( ( 'publish presented files to a popup button: ', self._publish_files_to_popup_button ) )
+        rows.append( ( 'publish presented files to a page: ', self._publish_files_to_page ) )
         rows.append( ( 'publish to a specific label: ', self._publish_label_override ) )
         rows.append( ( 'publish all queries to the same page/popup button: ', self._merge_query_publish_events ) )
         
@@ -377,7 +385,7 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
                 
             else:
                 
-                query_header.SetQueryLogContainerStatus( ClientImportSubscriptionQuery.LOG_CONTAINER_UNSYNCED )
+                query_header.SetQueryLogContainerStatus( ClientImportSubscriptionQuery.LOG_CONTAINER_UNSYNCED, pretty_velocity_override = 'will recalculate on next run' )
                 
             
         
@@ -776,7 +784,7 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
     
     def _PasteQueries( self ):
         
-        message = 'This will add new queries by pulling them from your clipboard. It assumes they are currently in your clipboard and newline separated. Queries that are already in the subscription (with any combination of upper/lower case) will not be re-added. Is that ok?'
+        message = 'This will add new queries by pulling them from your clipboard. It assumes they are currently in your clipboard and newline separated. Queries that are already in the subscription (with any combination of upper/lower case) will not be duplicated, but if they are DEAD, they will be revived. Is that ok?'
         
         result = ClientGUIDialogsQuick.GetYesNo( self, message )
         
@@ -833,6 +841,8 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
                 
             
         
+        DEAD_query_headers = { query_header for query_header in self._query_headers.GetData() if query_header.GetQueryText() in already_existing_query_texts and query_header.IsDead() }
+        
         already_existing_query_texts = sorted( already_existing_query_texts )
         new_query_texts = sorted( new_query_texts )
         
@@ -860,6 +870,35 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
                 message += aeqt_separator.join( already_existing_query_texts )
                 message += os.linesep * 2
                 message += 'Were already in the subscription.'
+                
+            
+            if len( DEAD_query_headers ) > 0:
+                
+                message += os.linesep * 2
+                
+                if len( DEAD_query_headers ) > 50:
+                    
+                    message += '{} DEAD queries were revived.'.format( HydrusData.ToHumanInt( len( DEAD_query_headers ) ) )
+                    
+                else:
+                    
+                    DEAD_query_texts = sorted( query_header.GetQueryText() for query_header in DEAD_query_headers )
+                    
+                    if len( DEAD_query_texts ) > 5:
+                        
+                        aeqt_separator = ', '
+                        
+                    else:
+                        
+                        aeqt_separator = os.linesep
+                        
+                    
+                    message += 'The DEAD queries:'
+                    message += os.linesep * 2
+                    message += aeqt_separator.join( DEAD_query_texts )
+                    message += os.linesep * 2
+                    message += 'Were revived.'
+                    
                 
             
         
@@ -915,8 +954,14 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
             self._names_to_edited_query_log_containers[ query_log_container_name ] = query_log_container
             
         
+        for query_header in DEAD_query_headers:
+            
+            query_header.CheckNow()
+            
+        
         self._query_headers.AddDatas( query_headers )
         
+        self._query_headers.UpdateDatas( DEAD_query_headers )
         
     
     def _PausePlay( self ):
@@ -1172,7 +1217,17 @@ class EditSubscriptionQueryPanel( ClientGUIScrolledPanels.EditPanel ):
         QP.AddToLayout( vbox, self._file_seed_cache_control, CC.FLAGS_EXPAND_PERPENDICULAR )
         QP.AddToLayout( vbox, self._gallery_seed_log_control, CC.FLAGS_EXPAND_PERPENDICULAR )
         QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+        
+        label = 'The tag import options here is only for setting \'additional tags\' for this single query! If you want to change the parsed tags or do subscription-wide \'additional tags\', jump up a level to the edit subscriptions dialog.'
+        
+        st = ClientGUICommon.BetterStaticText( self, label = label )
+        
+        st.setWordWrap( True )
+        
+        QP.AddToLayout( vbox, st, CC.FLAGS_EXPAND_PERPENDICULAR )
         QP.AddToLayout( vbox, self._tag_import_options, CC.FLAGS_EXPAND_PERPENDICULAR )
+        
+        vbox.addStretch( 1 )
         
         self.widget().setLayout( vbox )
         
@@ -1224,7 +1279,7 @@ class EditSubscriptionQueryPanel( ClientGUIScrolledPanels.EditPanel ):
     
 class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
     
-    def __init__( self, parent: QW.QWidget, subscriptions: typing.Collection[ ClientImportSubscriptions.Subscription ], subs_are_globally_paused: bool = False ):
+    def __init__( self, parent: QW.QWidget, subscriptions: typing.Collection[ ClientImportSubscriptions.Subscription ] ):
         
         subscriptions = [ subscription.Duplicate() for subscription in subscriptions ]
         
@@ -1308,7 +1363,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         QP.AddToLayout( vbox, help_hbox, CC.FLAGS_ON_RIGHT )
         
-        if subs_are_globally_paused:
+        if HG.client_controller.options[ 'pause_subs_sync' ]:
             
             message = 'SUBSCRIPTIONS ARE CURRENTLY GLOBALLY PAUSED! CHECK THE NETWORK MENU TO UNPAUSE THEM.'
             
@@ -2562,20 +2617,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
             return
             
         
-        if num_queries > 100:
-            
-            message = 'This is a large subscription. It is difficult to separate it on a per-query basis, so instead the system will automatically cut it into two halves. Is this ok?'
-            
-            result = ClientGUIDialogsQuick.GetYesNo( self, message )
-            
-            if result != QW.QDialog.Accepted:
-                
-                return
-                
-            
-            action = 'half'
-            
-        elif num_queries > 2:
+        if num_queries > 2:
             
             message = 'Are you sure you want to separate the selected subscriptions? Separating breaks merged subscriptions apart into smaller pieces.'
             yes_tuples = [ ( 'break it in half', 'half' ), ( 'break it all into single-query subscriptions', 'whole' ), ( 'only extract some of the subscription', 'part' ) ]
@@ -2699,7 +2741,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
             
         elif action == 'half':
             
-            query_headers = subscription.GetQueryHeaders()
+            query_headers = sorted( subscription.GetQueryHeaders(), key = lambda q: q.GetQueryText() )
             
             query_headers_to_extract = query_headers[ : len( query_headers ) // 2 ]
             
@@ -2755,7 +2797,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
                 
                 for subscription in subscriptions:
                     
-                    subscription.SetCheckerOptions( checker_options )
+                    subscription.SetCheckerOptions( checker_options, names_to_query_log_containers = self._names_to_edited_query_log_containers )
                     
                 
                 self._subscriptions.UpdateDatas( subscriptions )

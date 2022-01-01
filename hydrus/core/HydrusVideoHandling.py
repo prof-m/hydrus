@@ -448,8 +448,14 @@ def GetMime( path ):
         
     elif mime_text == 'ogg':
         
-        return HC.AUDIO_OGG
-        
+        if has_video:
+            
+            return HC.VIDEO_OGV
+            
+        else:
+            
+            return HC.AUDIO_OGG
+            
         
     elif 'rm' in mime_text:
         
@@ -546,18 +552,13 @@ def ParseFFMPEGDuration( lines ):
             
             start_offset = float( line[ m.start() + 7 : m.end() ] )
             
-            if abs( start_offset ) > 1.0: # once had a file with start offset of 957499 seconds jej
-                
-                start_offset = 0
-                
-            
         else:
             
             start_offset = 0
             
         
-        match = re.search("[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9]", line)
-        hms = [ float( float_string ) for float_string in line[match.start()+1:match.end()].split(':') ]
+        match = re.search("[0-9]+:[0-9][0-9]:[0-9][0-9].[0-9][0-9]", line)
+        hms = [ float( float_string ) for float_string in line[match.start():match.end()].split(':') ]
         
         if len( hms ) == 1:
             
@@ -575,6 +576,19 @@ def ParseFFMPEGDuration( lines ):
         if duration == 0:
             
             return ( None, None )
+            
+        
+        if start_offset > 0.85 * duration:
+            
+            # as an example, Duration: 127:57:31.25, start: 460633.291000 lmao
+            
+            return ( None, None )
+            
+        
+        # we'll keep this for now I think
+        if start_offset > 1:
+            
+            start_offset = 0
             
         
         file_duration = duration + start_offset
@@ -703,7 +717,24 @@ def ParseFFMPEGFPSPossibleResults( video_line ):
     
     possible_results.discard( 0 )
     
-    confident = len( possible_results ) <= 1
+    if len( possible_results ) == 0:
+        
+        confident = False
+        
+    else:
+        
+        # if we have 60 and 59.99, that's fine mate
+        max_fps = max( possible_results )
+        
+        if False not in ( possible_fps >= max_fps * 0.95 for possible_fps in possible_results ):
+            
+            confident = True
+            
+        else:
+            
+            confident = len( possible_results ) <= 1
+            
+        
     
     return ( possible_results, confident )
     

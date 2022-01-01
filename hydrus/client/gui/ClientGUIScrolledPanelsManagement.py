@@ -69,7 +69,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
         self._listbook.AddPage( 'colours', 'colours', self._ColoursPanel( self._listbook ) )
         self._listbook.AddPage( 'popups', 'popups', self._PopupPanel( self._listbook, self._new_options ) )
         self._listbook.AddPage( 'regex favourites', 'regex favourites', self._RegexPanel( self._listbook ) )
-        self._listbook.AddPage( 'sort/collect', 'sort/collect', self._SortCollectPanel( self._listbook ) )
+        self._listbook.AddPage( 'sort/collect', 'sort/collect', self._SortCollectPanel( self._listbook, self._new_options ) )
         self._listbook.AddPage( 'downloading', 'downloading', self._DownloadingPanel( self._listbook, self._new_options ) )
         self._listbook.AddPage( 'duplicates', 'duplicates', self._DuplicatesPanel( self._listbook, self._new_options ) )
         self._listbook.AddPage( 'importing', 'importing', self._ImportingPanel( self._listbook, self._new_options ) )
@@ -745,42 +745,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
         
     
-    class _SearchPanel( QW.QWidget ):
-        
-        def __init__( self, parent, new_options ):
-            
-            QW.QWidget.__init__( self, parent )
-            
-            self._new_options = new_options
-            
-            self._always_show_system_everything = QW.QCheckBox( 'show system:everything even if total files is over 10,000', self )
-            self._always_show_system_everything.setToolTip( 'After users get some experience with the program and a larger collection, they tend to have less use for system:everything.' )
-            
-            self._always_show_system_everything.setChecked( self._new_options.GetBoolean( 'always_show_system_everything' ) )
-            
-            self._filter_inbox_and_archive_predicates = QW.QCheckBox( 'hide inbox and archive system predicates if either has no files', self )
-            
-            self._filter_inbox_and_archive_predicates.setChecked( self._new_options.GetBoolean( 'filter_inbox_and_archive_predicates' ) )
-            
-            #
-            
-            vbox = QP.VBoxLayout()
-            
-            QP.AddToLayout( vbox, self._always_show_system_everything, CC.FLAGS_EXPAND_PERPENDICULAR )
-            QP.AddToLayout( vbox, self._filter_inbox_and_archive_predicates, CC.FLAGS_EXPAND_PERPENDICULAR )
-            
-            vbox.addStretch( 1 )
-            
-            self.setLayout( vbox )
-            
-        
-        def UpdateOptions( self ):
-            
-            self._new_options.SetBoolean( 'always_show_system_everything', self._always_show_system_everything.isChecked() )
-            self._new_options.SetBoolean( 'filter_inbox_and_archive_predicates', self._filter_inbox_and_archive_predicates.isChecked() )
-            
-        
-    
     class _ExternalProgramsPanel( QW.QWidget ):
         
         def __init__( self, parent ):
@@ -1430,7 +1394,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 self._notebook_tab_alignment.addItem( CC.directions_alignment_string_lookup[ value ], value )
                 
             
-            self._total_pages_warning = QP.MakeQSpinBox( self._pages_panel, min=5, max=500 )
+            self._total_pages_warning = QP.MakeQSpinBox( self._pages_panel, min=5, max=65565 )
+            
+            tt = 'If you have a gigantic session, or you have very page-spammy subscriptions, you can try boosting this, but be warned it may lead to resource limit crashes. The best solution to a large session is to make it smaller!'
+            
+            self._total_pages_warning.setToolTip( tt )
             
             self._reverse_page_shift_drag_behaviour = QW.QCheckBox( self._pages_panel )
             self._reverse_page_shift_drag_behaviour.setToolTip( 'By default, holding down shift when you drop off a page tab means the client will not \'chase\' the page tab. This makes this behaviour default, with shift-drop meaning to chase.' )
@@ -1454,22 +1422,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             #
             
             self._controls_panel = ClientGUICommon.StaticBox( self, 'controls' )
-            
-            self._autocomplete_float_main_gui = QW.QCheckBox( self._controls_panel )
-            tt = 'The autocomplete dropdown can either \'float\' on top of the main window, or if that does not work well for you, it can embed into the parent panel.'
-            self._autocomplete_float_main_gui.setToolTip( tt )
-            
-            self._autocomplete_float_frames = QW.QCheckBox( self._controls_panel )
-            tt = 'The autocomplete dropdown can either \'float\' on top of dialogs like _manage tags_, or if that does not work well for you (it can sometimes annoyingly overlap the ok/cancel buttons), it can embed into the parent dialog panel.'
-            self._autocomplete_float_frames.setToolTip( tt )
-            
-            self._ac_read_list_height_num_chars = QP.MakeQSpinBox( self._controls_panel, min = 1, max = 128 )
-            tt = 'Read autocompletes are those in search pages, where you are looking through existing tags.'
-            self._ac_read_list_height_num_chars.setToolTip( tt )
-            
-            self._ac_write_list_height_num_chars = QP.MakeQSpinBox( self._controls_panel, min = 1, max = 128 )
-            tt = 'Write autocompletes are those in most dialogs, where you are adding new tags to files.'
-            self._ac_write_list_height_num_chars.setToolTip( tt )
             
             self._set_search_focus_on_page_change = QW.QCheckBox( self._controls_panel )
             
@@ -1523,12 +1475,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._total_pages_warning.setValue( self._new_options.GetInteger( 'total_pages_warning' ) )
             
             self._reverse_page_shift_drag_behaviour.setChecked( self._new_options.GetBoolean( 'reverse_page_shift_drag_behaviour' ) )
-            
-            self._autocomplete_float_main_gui.setChecked( self._new_options.GetBoolean( 'autocomplete_float_main_gui' ) )
-            self._autocomplete_float_frames.setChecked( self._new_options.GetBoolean( 'autocomplete_float_frames' ) )
-            
-            self._ac_read_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_read_list_height_num_chars' ) )
-            self._ac_write_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_write_list_height_num_chars' ) )
             
             self._set_search_focus_on_page_change.setChecked( self._new_options.GetBoolean( 'set_search_focus_on_page_change' ) )
             
@@ -1585,18 +1531,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._pages_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
             self._pages_panel.Add( self._page_names_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
             
-            message = 'The autocomplete dropdown list is the panel that hangs below the tag input text box on search pages.'
-            
-            st = ClientGUICommon.BetterStaticText( self._controls_panel, label = message )
-            
-            self._controls_panel.Add( st, CC.FLAGS_CENTER )
-            
             rows = []
             
-            rows.append( ( 'Autocomplete results float in main gui: ', self._autocomplete_float_main_gui ) )
-            rows.append( ( 'Autocomplete results float in other windows: ', self._autocomplete_float_frames ) )
-            rows.append( ( '\'Read\' autocomplete list height: ', self._ac_read_list_height_num_chars ) )
-            rows.append( ( '\'Write\' autocomplete list height: ', self._ac_write_list_height_num_chars ) )
             rows.append( ( 'When switching to a page, focus its text input field (if any): ', self._set_search_focus_on_page_change ) )
             rows.append( ( 'Hide the bottom-left preview window: ', self._hide_preview ) )
             
@@ -1640,12 +1576,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'total_pages_warning', self._total_pages_warning.value() )
             
             self._new_options.SetBoolean( 'reverse_page_shift_drag_behaviour', self._reverse_page_shift_drag_behaviour.isChecked() )
-            
-            self._new_options.SetBoolean( 'autocomplete_float_main_gui', self._autocomplete_float_main_gui.isChecked() )
-            self._new_options.SetBoolean( 'autocomplete_float_frames', self._autocomplete_float_frames.isChecked() )
-            
-            self._new_options.SetInteger( 'ac_read_list_height_num_chars', self._ac_read_list_height_num_chars.value() )
-            self._new_options.SetInteger( 'ac_write_list_height_num_chars', self._ac_write_list_height_num_chars.value() )
             
             self._new_options.SetBoolean( 'set_search_focus_on_page_change', self._set_search_focus_on_page_change.isChecked() )
             
@@ -2457,27 +2387,136 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
         
     
-    class _SortCollectPanel( QW.QWidget ):
+    class _SearchPanel( QW.QWidget ):
         
-        def __init__( self, parent ):
+        def __init__( self, parent, new_options ):
             
             QW.QWidget.__init__( self, parent )
             
-            self._default_media_sort = ClientGUIResultsSortCollect.MediaSortControl( self )
+            self._new_options = new_options
             
-            self._fallback_media_sort = ClientGUIResultsSortCollect.MediaSortControl( self )
+            #
             
-            self._save_page_sort_on_change = QW.QCheckBox( self )
+            self._autocomplete_panel = ClientGUICommon.StaticBox( self, 'autocomplete' )
             
-            self._default_media_collect = ClientGUIResultsSortCollect.MediaCollectControl( self, silent = True )
+            self._default_search_synchronised = QW.QCheckBox( self._autocomplete_panel )
+            tt = 'This refers to the button on the autocomplete dropdown that enables new searches to start. If this is on, then new search pages will search as soon as you enter the first search predicate. If off, no search will happen until you switch it back on.'
+            self._default_search_synchronised.setToolTip( tt )
             
-            namespace_sorting_box = ClientGUICommon.StaticBox( self, 'namespace sorting' )
+            self._autocomplete_float_main_gui = QW.QCheckBox( self._autocomplete_panel )
+            tt = 'The autocomplete dropdown can either \'float\' on top of the main window, or if that does not work well for you, it can embed into the parent panel.'
+            self._autocomplete_float_main_gui.setToolTip( tt )
+            
+            self._autocomplete_float_frames = QW.QCheckBox( self._autocomplete_panel )
+            tt = 'The autocomplete dropdown can either \'float\' on top of dialogs like _manage tags_, or if that does not work well for you (it can sometimes annoyingly overlap the ok/cancel buttons), it can embed into the parent dialog panel.'
+            self._autocomplete_float_frames.setToolTip( tt )
+            
+            self._ac_read_list_height_num_chars = QP.MakeQSpinBox( self._autocomplete_panel, min = 1, max = 128 )
+            tt = 'Read autocompletes are those in search pages, where you are looking through existing tags to find your files.'
+            self._ac_read_list_height_num_chars.setToolTip( tt )
+            
+            self._ac_write_list_height_num_chars = QP.MakeQSpinBox( self._autocomplete_panel, min = 1, max = 128 )
+            tt = 'Write autocompletes are those in most dialogs, where you are adding new tags to files.'
+            self._ac_write_list_height_num_chars.setToolTip( tt )
+            
+            self._always_show_system_everything = QW.QCheckBox( self._autocomplete_panel )
+            tt = 'After users get some experience with the program and a larger collection, they tend to have less use for system:everything.'
+            self._always_show_system_everything.setToolTip( tt )
+            
+            self._filter_inbox_and_archive_predicates = QW.QCheckBox( self._autocomplete_panel )
+            tt = 'If everything is current in the inbox (or archive), then there is no use listing it or its opposite--it either does not change the search or it produces nothing. If you find it jarring though, turn it off here!'
+            self._filter_inbox_and_archive_predicates.setToolTip( tt )
+            
+            #
+            
+            self._default_search_synchronised.setChecked( self._new_options.GetBoolean( 'default_search_synchronised' ) )
+            
+            self._autocomplete_float_main_gui.setChecked( self._new_options.GetBoolean( 'autocomplete_float_main_gui' ) )
+            self._autocomplete_float_frames.setChecked( self._new_options.GetBoolean( 'autocomplete_float_frames' ) )
+            
+            self._ac_read_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_read_list_height_num_chars' ) )
+            self._ac_write_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_write_list_height_num_chars' ) )
+            
+            self._always_show_system_everything.setChecked( self._new_options.GetBoolean( 'always_show_system_everything' ) )
+            
+            self._filter_inbox_and_archive_predicates.setChecked( self._new_options.GetBoolean( 'filter_inbox_and_archive_predicates' ) )
+            
+            #
+            
+            vbox = QP.VBoxLayout()
+            
+            message = 'The autocomplete dropdown list is the panel that hangs below the tag input text box on search pages.'
+            
+            st = ClientGUICommon.BetterStaticText( self._autocomplete_panel, label = message )
+            
+            self._autocomplete_panel.Add( st, CC.FLAGS_CENTER )
+            
+            rows = []
+            
+            #
+            
+            rows.append( ( 'Start new search pages in \'searching immediately\': ', self._default_search_synchronised ) )
+            rows.append( ( 'Autocomplete results float in main gui: ', self._autocomplete_float_main_gui ) )
+            rows.append( ( 'Autocomplete results float in other windows: ', self._autocomplete_float_frames ) )
+            rows.append( ( '\'Read\' autocomplete list height: ', self._ac_read_list_height_num_chars ) )
+            rows.append( ( '\'Write\' autocomplete list height: ', self._ac_write_list_height_num_chars ) )
+            rows.append( ( 'show system:everything even if total files is over 10,000: ', self._always_show_system_everything ) )
+            rows.append( ( 'hide inbox and archive system predicates if either has no files: ', self._filter_inbox_and_archive_predicates ) )
+            
+            gridbox = ClientGUICommon.WrapInGrid( self._autocomplete_panel, rows )
+            
+            self._autocomplete_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+            
+            #
+            
+            QP.AddToLayout( vbox, self._autocomplete_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            vbox.addStretch( 1 )
+            
+            self.setLayout( vbox )
+            
+        
+        def UpdateOptions( self ):
+            
+            self._new_options.SetBoolean( 'default_search_synchronised', self._default_search_synchronised.isChecked() )
+            
+            self._new_options.SetBoolean( 'autocomplete_float_main_gui', self._autocomplete_float_main_gui.isChecked() )
+            self._new_options.SetBoolean( 'autocomplete_float_frames', self._autocomplete_float_frames.isChecked() )
+            
+            self._new_options.SetInteger( 'ac_read_list_height_num_chars', self._ac_read_list_height_num_chars.value() )
+            self._new_options.SetInteger( 'ac_write_list_height_num_chars', self._ac_write_list_height_num_chars.value() )
+            
+            self._new_options.SetBoolean( 'always_show_system_everything', self._always_show_system_everything.isChecked() )
+            self._new_options.SetBoolean( 'filter_inbox_and_archive_predicates', self._filter_inbox_and_archive_predicates.isChecked() )
+            
+        
+    
+    class _SortCollectPanel( QW.QWidget ):
+        
+        def __init__( self, parent, new_options ):
+            
+            QW.QWidget.__init__( self, parent )
+            
+            self._new_options = new_options
+            
+            self._tag_sort_panel = ClientGUICommon.StaticBox( self, 'tag sort' )
+            
+            self._default_tag_sort = ClientGUITagSorting.TagSortControl( self._tag_sort_panel, self._new_options.GetDefaultTagSort(), show_siblings = True )
+            
+            self._file_sort_panel = ClientGUICommon.StaticBox( self, 'file sort' )
+            
+            self._default_media_sort = ClientGUIResultsSortCollect.MediaSortControl( self._file_sort_panel )
+            
+            self._fallback_media_sort = ClientGUIResultsSortCollect.MediaSortControl( self._file_sort_panel )
+            
+            self._save_page_sort_on_change = QW.QCheckBox( self._file_sort_panel )
+            
+            self._default_media_collect = ClientGUIResultsSortCollect.MediaCollectControl( self._file_sort_panel, silent = True )
+            
+            namespace_sorting_box = ClientGUICommon.StaticBox( self._file_sort_panel, 'namespace file sorting' )
             
             self._namespace_sort_by = ClientGUIListBoxes.QueueListBox( namespace_sorting_box, 8, self._ConvertNamespaceTupleToSortString, self._AddNamespaceSort, self._EditNamespaceSort )
             
             #
-            
-            self._new_options = HG.client_controller.new_options
             
             try:
                 
@@ -2516,19 +2555,34 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             namespace_sorting_box.Add( ClientGUICommon.BetterStaticText( namespace_sorting_box, sort_by_text ), CC.FLAGS_EXPAND_PERPENDICULAR )
             namespace_sorting_box.Add( self._namespace_sort_by, CC.FLAGS_EXPAND_BOTH_WAYS )
             
+            #
+            
             rows = []
             
-            rows.append( ( 'Default sort: ', self._default_media_sort ) )
-            rows.append( ( 'Secondary sort (when primary gives two equal values): ', self._fallback_media_sort ) )
-            rows.append( ( 'Update default sort every time a new sort is manually chosen: ', self._save_page_sort_on_change ) )
+            rows.append( ( 'Default tag sort: ', self._default_tag_sort ) )
+            
+            gridbox = ClientGUICommon.WrapInGrid( self._tag_sort_panel, rows )
+            
+            self._tag_sort_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            
+            #
+            
+            rows = []
+            
+            rows.append( ( 'Default file sort: ', self._default_media_sort ) )
+            rows.append( ( 'Secondary file sort (when primary gives two equal values): ', self._fallback_media_sort ) )
+            rows.append( ( 'Update default file sort every time a new sort is manually chosen: ', self._save_page_sort_on_change ) )
             rows.append( ( 'Default collect: ', self._default_media_collect ) )
             
             gridbox = ClientGUICommon.WrapInGrid( self, rows )
             
+            self._file_sort_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            self._file_sort_panel.Add( namespace_sorting_box, CC.FLAGS_EXPAND_BOTH_WAYS )
+            
             vbox = QP.VBoxLayout()
             
-            QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
-            QP.AddToLayout( vbox, namespace_sorting_box, CC.FLAGS_EXPAND_BOTH_WAYS )
+            QP.AddToLayout( vbox, self._tag_sort_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, self._file_sort_panel, CC.FLAGS_EXPAND_BOTH_WAYS )
             
             self.setLayout( vbox )
             
@@ -2553,6 +2607,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
         
         def UpdateOptions( self ):
+            
+            self._new_options.SetDefaultTagSort( self._default_tag_sort.GetValue() )
             
             self._new_options.SetDefaultSort( self._default_media_sort.GetSort() )
             self._new_options.SetFallbackSort( self._fallback_media_sort.GetSort() )
@@ -3184,9 +3240,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             general_panel = ClientGUICommon.StaticBox( self, 'general tag options' )
             
-            self._default_tag_sort = ClientGUITagSorting.TagSortControl( general_panel, self._new_options.GetDefaultTagSort(), show_siblings = True )
+            self._default_tag_service_tab = ClientGUICommon.BetterChoice( general_panel )
             
-            self._default_tag_repository = ClientGUICommon.BetterChoice( general_panel )
+            self._save_default_tag_service_tab_on_change = QW.QCheckBox( general_panel )
             
             self._default_tag_service_search_page = ClientGUICommon.BetterChoice( general_panel )
             
@@ -3214,16 +3270,16 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             for service in services:
                 
-                self._default_tag_repository.addItem( service.GetName(), service.GetServiceKey() )
+                self._default_tag_service_tab.addItem( service.GetName(), service.GetServiceKey() )
                 
                 self._default_tag_service_search_page.addItem( service.GetName(), service.GetServiceKey() )
                 
             
-            default_tag_repository_key = HC.options[ 'default_tag_repository' ]
+            self._default_tag_service_tab.SetValue( self._new_options.GetKey( 'default_tag_service_tab' ) )
             
-            self._default_tag_repository.SetValue( default_tag_repository_key )
+            self._save_default_tag_service_tab_on_change.setChecked( self._new_options.GetBoolean( 'save_default_tag_service_tab_on_change' ) )
             
-            self._default_tag_service_search_page.SetValue( new_options.GetKey( 'default_tag_service_search_page' ) )
+            self._default_tag_service_search_page.SetValue( self._new_options.GetKey( 'default_tag_service_search_page' ) )
             
             self._expand_parents_on_storage_taglists.setChecked( self._new_options.GetBoolean( 'expand_parents_on_storage_taglists' ) )
             
@@ -3237,7 +3293,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            self._favourites.SetTags( new_options.GetStringList( 'favourite_tags' ) )
+            self._favourites.SetTags( self._new_options.GetStringList( 'favourite_tags' ) )
             
             #
             
@@ -3245,9 +3301,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'Default tag service in manage tag dialogs: ', self._default_tag_repository ) )
+            rows.append( ( 'Default tag service in manage tag dialogs: ', self._default_tag_service_tab ) )
+            rows.append( ( 'Remember last used default tag service in manage tag dialogs: ', self._save_default_tag_service_tab_on_change ) )
             rows.append( ( 'Default tag service in search pages: ', self._default_tag_service_search_page ) )
-            rows.append( ( 'Default tag sort: ', self._default_tag_sort ) )
             rows.append( ( 'Show parents expanded by default on edit/write taglists: ', self._expand_parents_on_storage_taglists ) )
             rows.append( ( 'Show parents expanded by default on edit/write autocomplete taglists: ', self._expand_parents_on_storage_autocomplete_taglists ) )
             rows.append( ( 'By default, select the first tag result with actual count in write-autocomplete: ', self._ac_select_first_with_count ) )
@@ -3270,17 +3326,30 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self.setLayout( vbox )
             
+            #
+            
+            self._save_default_tag_service_tab_on_change.clicked.connect( self._UpdateDefaultTagServiceControl )
+            
+            self._UpdateDefaultTagServiceControl()
+            
+        
+        def _UpdateDefaultTagServiceControl( self ):
+            
+            enabled = not self._save_default_tag_service_tab_on_change.isChecked()
+            
+            self._default_tag_service_tab.setEnabled( enabled )
+            
         
         def UpdateOptions( self ):
             
-            HC.options[ 'default_tag_repository' ] = self._default_tag_repository.GetValue()
-            self._new_options.SetDefaultTagSort( self._default_tag_sort.GetValue() )
+            self._new_options.SetKey( 'default_tag_service_tab', self._default_tag_service_tab.GetValue() )
+            self._new_options.SetBoolean( 'save_default_tag_service_tab_on_change', self._save_default_tag_service_tab_on_change.isChecked() )
+            
+            self._new_options.SetKey( 'default_tag_service_search_page', self._default_tag_service_search_page.GetValue() )
             
             self._new_options.SetBoolean( 'expand_parents_on_storage_taglists', self._expand_parents_on_storage_taglists.isChecked() )
             self._new_options.SetBoolean( 'expand_parents_on_storage_autocomplete_taglists', self._expand_parents_on_storage_autocomplete_taglists.isChecked() )
             self._new_options.SetBoolean( 'ac_select_first_with_count', self._ac_select_first_with_count.isChecked() )
-            
-            self._new_options.SetKey( 'default_tag_service_search_page', self._default_tag_service_search_page.GetValue() )
             
             #
             

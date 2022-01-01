@@ -10,13 +10,12 @@ model_shutdown = False
 
 server_action = 'start'
 
-no_daemons = False
 db_journal_mode = 'WAL'
 no_db_temp_files = False
 
 boot_debug = False
 
-db_cache_size = 200
+db_cache_size = 256
 db_transaction_commit_period = 30
 
 # if this is set to 1, transactions are not immediately synced to the journal so multiple can be undone following a power-loss
@@ -35,6 +34,8 @@ server_profile_min_job_time_ms = 10
 menu_profile_min_job_time_ms = 16
 pubsub_profile_min_job_time_ms = 5
 ui_timer_profile_min_job_time_ms = 5
+
+macos_antiflicker_test = False
 
 query_planner_mode = False
 

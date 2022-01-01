@@ -2768,9 +2768,11 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         # do chase - if we need to chase to an existing dest page on which we dropped files
         # do return - if we need to return to source page if we created a new one
         
-        if tab_index == -1 and dest_notebook.currentWidget() and dest_notebook.currentWidget().rect().contains( dest_notebook.currentWidget().mapFromGlobal( screen_position ) ):
+        current_widget = dest_notebook.currentWidget()
+        
+        if tab_index == -1 and current_widget is not None and not isinstance( current_widget, PagesNotebook ) and current_widget.rect().contains( current_widget.mapFromGlobal( screen_position ) ):
             
-            dest_page = dest_notebook.currentWidget()
+            dest_page = current_widget
             
         elif tab_index == -1:
             
@@ -2802,6 +2804,11 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         if dest_page is None:
             
             return # we somehow dropped onto a new notebook that has no pages
+            
+        
+        if isinstance( dest_page, PagesNotebook ):
+            
+            return # dropped on the edge of some notebook somehow
             
         
         if dest_page.GetPageKey() == source_page_key:
@@ -2906,7 +2913,7 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
             
         
         WARNING_TOTAL_PAGES = self._controller.new_options.GetInteger( 'total_pages_warning' )
-        MAX_TOTAL_PAGES = 500
+        MAX_TOTAL_PAGES = max( 500, WARNING_TOTAL_PAGES * 2 )
         
         (
             total_active_page_count,
@@ -2924,7 +2931,7 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         
         if not HG.no_page_limit_mode:
             
-            if total_active_page_count >= MAX_TOTAL_PAGES:
+            if total_active_page_count >= MAX_TOTAL_PAGES and not ClientGUIFunctions.DialogIsOpen():
                 
                 message = 'The client should not have more than ' + str( MAX_TOTAL_PAGES ) + ' pages open, as it leads to program instability! Are you sure you want to open more pages?'
                 

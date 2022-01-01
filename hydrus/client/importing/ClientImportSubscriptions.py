@@ -81,7 +81,7 @@ class Subscription( HydrusSerialisable.SerialisableBaseNamed ):
     
     def _CanDoWorkNow( self ):
         
-        p1 = not ( self._paused or HG.client_controller.options[ 'pause_subs_sync' ] or HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' ) )
+        p1 = not ( self._paused or HG.client_controller.options[ 'pause_subs_sync' ] or HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' ) or HG.client_controller.subscriptions_manager.SubscriptionsArePausedForEditing() )
         p2 = not ( HG.view_shutdown or self._stop_work_for_shutdown )
         p3 = self._NoDelays()
         
@@ -89,7 +89,7 @@ class Subscription( HydrusSerialisable.SerialisableBaseNamed ):
             
             message = 'Subscription "{}" CanDoWork check.'.format( self._name )
             message += os.linesep
-            message += 'Paused/Global/Network Pause: {}/{}/{}'.format( self._paused, HG.client_controller.options[ 'pause_subs_sync' ], HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' ) )
+            message += 'Paused/Global/Network/Dialog Pause: {}/{}/{}/{}'.format( self._paused, HG.client_controller.options[ 'pause_subs_sync' ], HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' ), HG.client_controller.subscriptions_manager.SubscriptionsArePausedForEditing() )
             message += os.linesep
             message += 'View/Sub shutdown: {}/{}'.format( HG.view_shutdown, self._stop_work_for_shutdown )
             message += os.linesep
@@ -1029,7 +1029,7 @@ class Subscription( HydrusSerialisable.SerialisableBaseNamed ):
                             
                         
                     
-                    if file_seed.ShouldPresent( self._file_import_options ):
+                    if file_seed.ShouldPresent( self._file_import_options.GetPresentationImportOptions() ):
                         
                         hash = file_seed.GetHash()
                         
@@ -1459,7 +1459,7 @@ class Subscription( HydrusSerialisable.SerialisableBaseNamed ):
         return subscriptions
         
     
-    def SetCheckerOptions( self, checker_options: ClientImportOptions.CheckerOptions ):
+    def SetCheckerOptions( self, checker_options: ClientImportOptions.CheckerOptions, names_to_query_log_containers = None ):
         
         changes_made = self._checker_options.GetSerialisableTuple() != checker_options.GetSerialisableTuple()
         
@@ -1469,7 +1469,21 @@ class Subscription( HydrusSerialisable.SerialisableBaseNamed ):
             
             for query_header in self._query_headers:
                 
-                query_header.SetQueryLogContainerStatus( ClientImportSubscriptionQuery.LOG_CONTAINER_UNSYNCED )
+                if names_to_query_log_containers is not None:
+                    
+                    name = query_header.GetQueryLogContainerName()
+                    
+                    if name in names_to_query_log_containers:
+                        
+                        query_log_container = names_to_query_log_containers[ name ]
+                        
+                        query_header.SyncToQueryLogContainer( checker_options, query_log_container )
+                        
+                        continue
+                        
+                    
+                
+                query_header.SetQueryLogContainerStatus( ClientImportSubscriptionQuery.LOG_CONTAINER_UNSYNCED, pretty_velocity_override = 'will recalculate on next run' )
                 
             
         
@@ -1711,11 +1725,14 @@ class SubscriptionsManager( object ):
         self._shutdown = False
         self._mainloop_finished = False
         
+        self._pause_subscriptions_for_editing = False
+        
         self._wake_event = threading.Event()
         
         self._big_pauser = HydrusData.BigJobPauser( wait_time = 0.8 )
         
         self._controller.sub( self, 'Shutdown', 'shutdown' )
+        self._controller.sub( self, 'Wake', 'notify_network_traffic_unpaused' )
         
     
     def _ClearFinishedSubscriptions( self ):
@@ -1763,7 +1780,7 @@ class SubscriptionsManager( object ):
     
     def _GetSubscriptionReadyToGo( self ):
         
-        p1 = HG.client_controller.options[ 'pause_subs_sync' ]
+        p1 = HG.client_controller.options[ 'pause_subs_sync' ] or self._pause_subscriptions_for_editing
         p2 = HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' )
         p3 = HG.view_shutdown
         
@@ -1844,7 +1861,7 @@ class SubscriptionsManager( object ):
                 
             else:
                 
-                p1 = HG.client_controller.options[ 'pause_subs_sync' ]
+                p1 = HG.client_controller.options[ 'pause_subs_sync' ] or self._pause_subscriptions_for_editing
                 p2 = HG.client_controller.new_options.GetBoolean( 'pause_all_new_network_traffic' )
                 
                 stopped_because_pause = p1 or p2
@@ -1911,6 +1928,8 @@ class SubscriptionsManager( object ):
             
         finally:
             
+            self.PauseSubscriptionsForEditing()
+            
             with self._lock:
                 
                 for ( job, subscription ) in self._names_to_running_subscription_info.values():
@@ -1935,6 +1954,22 @@ class SubscriptionsManager( object ):
                 
             
             self._mainloop_finished = True
+            
+        
+    
+    def ResumeSubscriptionsAfterEditing( self ):
+        
+        with self._lock:
+            
+            self._pause_subscriptions_for_editing = False
+            
+        
+    
+    def PauseSubscriptionsForEditing( self ):
+        
+        with self._lock:
+            
+            self._pause_subscriptions_for_editing = True
             
         
     
@@ -1984,12 +2019,22 @@ class SubscriptionsManager( object ):
         
         self._shutdown = True
         
+        self.PauseSubscriptionsForEditing()
+        
         self._wake_event.set()
         
     
     def Start( self ):
         
         self._controller.CallToThreadLongRunning( self.MainLoop )
+        
+    
+    def SubscriptionsArePausedForEditing( self ):
+        
+        with self._lock:
+            
+            return self._pause_subscriptions_for_editing
+            
         
     
     def SubscriptionsRunning( self ):

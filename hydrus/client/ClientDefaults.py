@@ -65,8 +65,6 @@ def GetClientDefaultOptions():
     
     options[ 'confirm_client_exit' ] = False
     
-    options[ 'default_tag_repository' ] = CC.DEFAULT_LOCAL_TAG_SERVICE_KEY
-    
     options[ 'pause_export_folders_sync' ] = False
     options[ 'pause_import_folders_sync' ] = False
     options[ 'pause_repo_sync' ] = False
@@ -267,8 +265,6 @@ def GetDefaultParsers():
     return GetDefaultObjectsFromPNGs( dir_path, ( ClientParsing.PageParser, ) )
     
 def GetDefaultScriptRows():
-    
-    from hydrus.core import HydrusData
     
     script_info = []
     
@@ -650,6 +646,18 @@ def SetDefaultDomainManagerData( domain_manager ):
     #
     
     domain_manager.TryToLinkURLClassesAndParsers()
+    
+    #
+    
+    from hydrus.client.importing.options import TagImportOptions
+    
+    service_tag_import_options = TagImportOptions.ServiceTagImportOptions( get_tags = True )
+    
+    service_keys_to_service_tag_import_options = { CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY : service_tag_import_options }
+    
+    tag_import_options = TagImportOptions.TagImportOptions( service_keys_to_service_tag_import_options = service_keys_to_service_tag_import_options )
+    
+    domain_manager.SetDefaultFilePostTagImportOptions( tag_import_options )
     
 def SetDefaultFavouriteSearchManagerData( favourite_search_manager ):
     

@@ -6,7 +6,7 @@ from hydrus.core import HydrusConstants as HC
 
 #
 
-BLANK_PHASH = b'\x80\x00\x00\x00\x00\x00\x00\x00' # first bit 1 but everything else 0 means only significant part of dct was [0,0], which represents flat colour
+BLANK_PERCEPTUAL_HASH = b'\x80\x00\x00\x00\x00\x00\x00\x00' # first bit 1 but everything else 0 means only significant part of dct was [0,0], which represents flat colour
 
 CAN_HIDE_MOUSE = True
 
@@ -120,6 +120,28 @@ RESTRICTION_MIN_RESOLUTION = 0
 RESTRICTION_MAX_RESOLUTION = 1
 RESTRICTION_MAX_FILE_SIZE = 2
 RESTRICTION_ALLOWED_MIMES = 3
+
+HAMMING_EXACT_MATCH = 0
+HAMMING_VERY_SIMILAR = 2
+HAMMING_SIMILAR = 4
+HAMMING_SPECULATIVE = 8
+
+hamming_string_lookup = {
+    HAMMING_EXACT_MATCH : 'exact match',
+    HAMMING_VERY_SIMILAR : 'very similar',
+    HAMMING_SIMILAR : 'similar',
+    HAMMING_SPECULATIVE : 'speculative'
+}
+
+SIMILAR_FILES_PIXEL_DUPES_REQUIRED = 0
+SIMILAR_FILES_PIXEL_DUPES_ALLOWED = 1
+SIMILAR_FILES_PIXEL_DUPES_EXCLUDED = 2
+
+similar_files_pixel_dupes_string_lookup = {
+    SIMILAR_FILES_PIXEL_DUPES_REQUIRED : 'must be pixel dupes',
+    SIMILAR_FILES_PIXEL_DUPES_ALLOWED : 'can be pixel dupes',
+    SIMILAR_FILES_PIXEL_DUPES_EXCLUDED : 'must not be pixel dupes'
+}
 
 IDLE_NOT_ON_SHUTDOWN = 0
 IDLE_ON_SHUTDOWN = 1
@@ -538,6 +560,8 @@ global_pixmaps = GlobalPixmaps.instance
 
 DEFAULT_LOCAL_TAG_SERVICE_KEY = b'local tags'
 
+DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY = b'downloader tags'
+
 LOCAL_FILE_SERVICE_KEY = b'local files'
 
 LOCAL_UPDATE_SERVICE_KEY = b'repository updates'
@@ -546,6 +570,8 @@ LOCAL_BOORU_SERVICE_KEY = b'local booru'
 
 LOCAL_NOTES_SERVICE_KEY = b'local notes'
 
+DEFAULT_FAVOURITES_RATING_SERVICE_KEY = b'favourites'
+
 CLIENT_API_SERVICE_KEY = b'client api'
 
 TRASH_SERVICE_KEY = b'trash'
@@ -553,6 +579,8 @@ TRASH_SERVICE_KEY = b'trash'
 COMBINED_LOCAL_FILE_SERVICE_KEY = b'all local files'
 
 COMBINED_FILE_SERVICE_KEY = b'all known files'
+
+COMBINED_DELETED_FILE_SERVICE_KEY = b'all deleted files'
 
 COMBINED_TAG_SERVICE_KEY = b'all known tags'
 

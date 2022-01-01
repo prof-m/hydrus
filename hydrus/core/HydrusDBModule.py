@@ -6,6 +6,8 @@ from hydrus.core import HydrusExceptions
 
 class HydrusDBModule( HydrusDBBase.DBBase ):
     
+    CAN_REPOPULATE_ALL_MISSING_DATA = False
+    
     def __init__( self, name, cursor: sqlite3.Cursor ):
         
         HydrusDBBase.DBBase.__init__( self )
@@ -64,6 +66,11 @@ class HydrusDBModule( HydrusDBBase.DBBase ):
             
         
         return table_generation_dict
+        
+    
+    def _GetServiceTablePrefixes( self ) -> typing.Collection:
+        
+        return set()
         
     
     def _GetServiceIdsWeGenerateDynamicTablesFor( self ):
@@ -156,6 +163,24 @@ class HydrusDBModule( HydrusDBBase.DBBase ):
         table_generation_dict = self._GetInitialTableGenerationDict()
         
         return list( table_generation_dict.keys() )
+        
+    
+    def GetSurplusServiceTableNames( self, all_table_names ) -> set:
+        
+        prefixes = self._GetServiceTablePrefixes()
+        
+        if len( prefixes ) == 0:
+            
+            return set()
+            
+        
+        all_service_table_names = { table_name for table_name in all_table_names if True in ( table_name.startswith( prefix ) or '.{}'.format( prefix ) in table_name for prefix in prefixes ) }
+        
+        good_service_table_names = self.GetExpectedServiceTableNames()
+        
+        surplus_table_names = all_service_table_names.difference( good_service_table_names )
+        
+        return surplus_table_names
         
     
     def GetTablesAndColumnsThatUseDefinitions( self, content_type: int ) -> typing.List[ typing.Tuple[ str, str ] ]:

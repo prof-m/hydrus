@@ -8,6 +8,278 @@
 		<div class="content">
 			<h3 id="changelog"><a href="#changelog">changelog</a></h3>
 			<ul>
+				<li><h3 id="version_467"><a href="#version_467">version 467</a></h3></li>
+				<ul>
+					<li>new scanbar cleanup:</li>
+					<li>the media container's scanbar and volume control are now combined on the same widget, meaning they now show/hide in sync and faster. their layout calculation is also more sensible. the new controls bar also has a thin border to make it pop better against a background video</li>
+					<li>improved the way some auto-hide anti-flicker tech on the scanbar now works. it all hides a frame faster sometimes</li>
+					<li>figured out some new anti-flicker tech to reduce/eliminate a frame of stretch when flicking from a static image to an mpv video, particularly for the first or second time in a session</li>
+					<li>fixed a bug where clicking the global mute/unmute on an mpv player meant that certain shortcut keys (usually those with arrow keys) would not work on that player again. (it was a focus issue on the button, which then captured some form navigation keys but they had nowhere to go)</li>
+					<li>brushed up some mouse coordinate testing logic across the program. some linux clients had trouble with the new animation scanbar popping up over mpv, I think I improved it!</li>
+					<li>fixed another type problem with newer python/PyQt5 on Arch, also in scanbar coordinate testing</li>
+					<li>fixed some dodgy colours in the scanbar initialisation and volume control border</li>
+					<li>macOS users: I undid a long-time paint hack on the media container and the static image canvas. Qt is responsible for clearing the background again, which allows me to remove some jank anti-flicker tech. HOWEVER, the original reason for this hack was because without it, old macOS went to 100% CPU whenever the media viewer was showing something. therefore, to be safe, this option is still on for macOS users for now. you'll get a little flicker when browsing. please try hitting _help->debug->gui actions->macOS anti-flicker test_ and do some mixed video/image browsing. does your whole damn client lock up?</li>
+					<li>.</li>
+					<li>misc:</li>
+					<li>the 'file log' and 'search log' buttons are now a new widget class that puts an arrow on the side that opens a menu. the secret right-click menus of these buttons is now exposed for all</li>
+					<li>fixed a bug affecting some greyscale pngs with ICC profiles--they were coming out pure white due to a colourspace conversion problem</li>
+					<li>fixed an import problem when PIL could not load a file (due to file malformation) but OpenCV could. this was causing a failed import from the new ICC profile detection code</li>
+					<li>when the downloader hits a broken image file that cannot be imported due to malformation, the status is now 'error' instead of the incorrect 'ignored'</li>
+					<li>fixed the duplicate file filesize comparison statement sometimes showing > in one direction and ≈ in the other. it happened when the larger file was between 20/19 and 21/20 times the size of the smaller, just a logic typo (issue #1028)</li>
+					<li>the trash maintenance daemon is moved from the old threaded daemon system to the new repeating job worker pool. this is the last daemon cleaned up, so I am retiring the old and mostly defunct 'no_daemons' launch argument. a variety of other daemon infrastructure for things like shutdown checks is similarly removed. the program also now waits for the newer daemon jobs to finish working on shutdown</li>
+					<li>moved most client daemon jobs like repository sync and dirty object save down so they start after the first session is loaded rather than right after boot</li>
+					<li>if a file is called to regen its thumbnail but currently has no dimension, this is now a no-op rather than an error. in the situation where users force thumb regen before metadata regen and encounter this, it is sorted out later when the metadata regen recognises new dimensions and reschedules the thumb regen</li>
+					<li>added an extensive user-written guide to the --db_synchronous_override launch argument to the launch arguments help page. it is possible and safe to run the program with synchronous=0 as long as certain caveats are obeyed. thanks to the user who figured this out and wrote it up</li>
+					<li>the downloader engine now discards source urls in an import job if they have the same domain as any existing primary url. this will ensure that if a booru has a link back to itself as a source url, when the 'source' is really an alternate rather than a dupe, it won't be added in hydrus as a known url for that imported file</li>
+					<li>misc cleanup in downloader system and file/search log UI</li>
+					<li>fixed a type bug in the file and search log 'import from png' action. if you have existing pngs previously exported from here, they will import ok now</li>
+					<li>refactored the various hydrus compression code to a new HydrusCompression file</li>
+					<li>exported serialisable data pngs such as from file or search log that hold simple Strings now always compress the data before embedding it in the png. existing pngs that hold uncompressed strings should still load ok</li>
+					<li>the payload in an exported png is now always compressed, and the payload description always states the uncompressed size</li>
+					<li>sped up client shutdown when network traffic has been paused the whole time and a repo sync job might have wanted to run. these jobs also do not hang on a thread worker if network traffic is paused, but they should wake immediately when it is unpaused</li>
+					<li>the hydrus login system is now resistant to connection failures; previously it was getting hung up and jamming the whole hydrus sync system when a server was down</li>
+					<li>.</li>
+					<li>client api:</li>
+					<li>added GET /manage_database/mr_bones to the Client API. it returns a JSON Object with the same numbers used in the _help->how boned am I?_ dialog</li>
+					<li>incremented Client API version to 23</li>
+				</ul>
+				<li><h3 id="version_466"><a href="#version_466">version 466</a></h3></li>
+				<ul>
+					<li>video scanbar autohide:</li>
+					<li>the scanbar that shows below audio and video is now embedded inside the video frame, and it show/hides based on how close your mouse is to it</li>
+					<li>I've wanted to do this for a long time, since it will allow you to watch 16:9 videos at true 100% in borderless fullscreen, but the hackery of how the media viewer works behind the scenes means this took more work than you'd think and is still a little jank. there's a small amount of flicker when it pops in and out, which I will work on in future. in any case, please have a play with it and let me know what you think. I expect to add some more options, like for the activation padding area around it, and I will be tidying up more layout stuff throughout the media viewer</li>
+					<li>if you are a mostly keyboard user, please check out the new 'global' shortcut to flip on/off a 'force the animation scanbar to show' mode</li>
+					<li>I don't really want to bring back the always-on hanging-below scanbar that just takes up space, but if you try this new embedded scanbar and really hate it, we'll see what we can do</li>
+					<li>.</li>
+					<li>more duplicate filter search options:</li>
+					<li>the duplicates page now has a dropdown on the search for 'must be/can be/excludes pixel dupes'!</li>
+					<li>the duplicates page now has a number control on the search for what distance the pair was found at! I am not sure how accurate this thing is in all cases, but it seems I started tracking this data some time ago and forgot I even had it</li>
+					<li>these new options are remembered in your session and _should_ remain fast in most normal cases. I put time into some complicated database work this week to get this going, please let me know if you have any trouble with it</li>
+					<li>.</li>
+					<li>misc:</li>
+					<li>when the export filename pattern in the export files dialog means many of the files share the same base and hence need to do 'filename (5)'-style suffixes to be unique, the number here is now calculated much more efficiently. opening this dialog on 10,000 files with an oft-duplicate pattern should now be a jolt of lag but not many minutes</li>
+					<li>when you choose to 'separate' a subscription with more than 100 queries, you are no longer forced to break it into half</li>
+					<li>when you do break a subscription in half, it now makes sure to sort the query texts before separating</li>
+					<li>if you are in advanced mode, the 'selection tags' list on the left of every page can now switch its tag display type between 'multiple media views', 'display', and 'storage'. this is experimental and a bunch of stuff like 'select files with this tag' won't work yet</li>
+					<li>janitors' petition pages now start with their tag list in 'storage' mode, so you can see the actual tags being changed rather than with siblings and parents calculated</li>
+					<li>rebalanced some janitor mapping petition weights. jannies _should_ see a smoother balance of 'lots of small petitions' vs 'a few larger petitions' amongst petitions all with the same reason and creator</li>
+					<li>.</li>
+					<li>boring cleanup and little fixes:</li>
+					<li>when you set the checker options in the edit subscription dialog, the queries now recalculate their file velocity better. previously, they would just set 'unknown' and recalc on the next run, but now they will actually recalculate if the query container is loaded into memory or otherwise put a status that says 'will calculate on next run'</li>
+					<li>removed the 'should be namespaced' reason from the manage tags quick petition reasons. this is now all handled by siblings, tidying up storage tags manually is busywork</li>
+					<li>when you click 'copy traceback' on an error popup, it also copies the software version, your platform, and if you are on a frozen build or running from source</li>
+					<li>the logger now prints version number for every block, just before the timestamp</li>
+					<li>cleaned up a variety of media viewer UI code while working on the scanbar, fixing some misc display bugs</li>
+					<li>moved pixel hash storage responsibility from 'file metadata' to 'similar files' module</li>
+					<li>the similar files system now searches pixel hashes when it is called to do any similar files search. they count as 'exact match' distance</li>
+					<li>when a file gets a new pixel hash, it now sees if any other files have that same hash. if so, it now gets queued up again in the similar files search system, ensuring this match is not missed</li>
+					<li>misc nomenclature cleanup--since we now have both 'pixel hashes' and 'phashes', phashes are now referred to as 'perceptual hashes' everywhere</li>
+					<li>massively refactored the primary table join that drives potential duplicates search. it should work a bit faster now and it is much easier to work with</li>
+					<li>I added pixel dupe and distance search to the standard search results version of the join and the 'system:everything' version, which has several optimisations</li>
+					<li>silenced some shutdown handling in file maintenance that was being printed to log as an error</li>
+					<li>fixed some 'broken object load' error handling to print the timestamp of the specific bad object, not whatever timestamp was requested. this error handling now also prints the full dump name and version to the log, and version to the exported filename. I was working with a user who had broken subs this week, and lacking this full info made things just a little trickier to put back together</li>
+					<li>fixed some drag and drop handling where it was possible to drop thumbnails on a certain location of a page of pages that held an empty page of pages but it would not create a new child media page to hold them</li>
+					<li>misc serverside db code cleanup</li>
+					<li>fixed python 3.10 type bugs in window coordinate saving and Qt image generation from buffer (issue #1027)</li>
+				</ul>
+				<li><h3 id="version_465"><a href="#version_465">version 465</a></h3></li>
+				<ul>
+					<li>misc:</li>
+					<li>fixed a recent bug in wildcard search where 't\*g' unnamespaced wildcards were not returning namespace results</li>
+					<li>sped up multi-predicate wildcard searches in some unusual file domains</li>
+					<li>the file maintenance manager is now more polite about how it works. no matter its speed settings, it now pauses regularly to check on and wait until the main UI is feeling good to start new work. this should relieve heavier clients on older machines who will get a bunch of new work to do this week</li>
+					<li>'all local files' in _review services_ now states how many files are awaiting physical deletion in the new deferred delete queue. this live updates when the values change but should be 0 pretty much all the time</li>
+					<li>'all known files' in _review services_ also gets a second safety yes/no dialog on its clear deleted files record button</li>
+					<li>updated the gelbooru 0.2.x gallery page parser, which at some point had been pulling 'delete from favourites' links when running the login-required 'gelbooru favorites by user id' downloader!!! it was deleting favourites, which I presume and hope was a recent change in gelbooru's html. in any case, the parser now skips over any deletion url (issue #1023)</li>
+					<li>fixed a bad index to label conversion in a common database progress method. it was commonly saying 22/21 progress instead of 21/21</li>
+					<li>fixed an error when manage tags dialog posts tags from the autocomplete during dialog shutdown</li>
+					<li>fixed a layout issue with the new presentation import options where the dropdowns could grow a little tall and make a sub-panel scrollbar</li>
+					<li>added handling for an error raised on loading an image with what seems to be a borked ICC profile</li>
+					<li>increased the default per-db-file cache size from 200MB up to 256MB</li>
+					<li>.</li>
+					<li>some new options:</li>
+					<li>the default tag service in the manage tags dialog (and some similar 'tag services in a row of tabs' dialogs) is reset this week. from now on, the last used service is remembered for the next time the dialog is opened. let's see how that works out. if you don't like it, you can go back to the old fixed default setting under the 'tags' options panel</li>
+					<li>added a checkbox to the 'search' options panel that controls whether new search pages are in 'searching immediately' or 'searching paused' state (issue #761)</li>
+					<li>moved default tag sort from 'tags' options panel to 'sort/collect'</li>
+					<li>.</li>
+					<li>deleted files and ipfs searchability:</li>
+					<li>wrote a new virtual file service to hold all previously deleted files of all real file services. this provides a mapping cache and tag lookup cache allowing for fast search of any deleted file domain in the future</li>
+					<li>ipfs services also now have mapping caches and tag search caches</li>
+					<li>ipfs services are now searchable in the main file search view! just select them from the autocomplete dropdown file domain button. they have tag counts and everything</li>
+					<li>it will take some time to populate the new ipfs and deleted files caches. if you don't have much deleted files history and no ipfs, it will be a few seconds. if you have a massive client with many deleted/ipfs files and many tags, it could be twenty minutes or more</li>
+					<li>.</li>
+					<li>'has icc profile' now cached in database:</li>
+					<li>the client database now keeps track of which image files have an icc profile. this data is added on file import</li>
+					<li>a new file maintenance task can generate it retroactively, and if a file is discovered to have an icc profile, it will be scheduled for a thumbnail regeneration too</li>
+					<li>a new system predicate, 'system:has icc profile', can now search this data. this system pred is weird, so I expect in future it will get tucked into an umbrella system pred for advanced/rare stuff</li>
+					<li>on update, all your existing image files are scheduled for the maintenance task. your 'has icc profile' will populate over time, and thumbnails will correct themselves</li>
+					<li>.</li>
+					<li>pixel hash now cached in database:</li>
+					<li>the client database now keeps track of image 'pixel hashes', which are fast unique identifiers that aggregate all that image's pixels. if two images have the same pixel hash, they are pixel duplicates. this data is added on file import</li>
+					<li>a new file maintenance task can generate it retroactively</li>
+					<li>on update, all your existing image files are scheduled for the maintenance task. it'll work lightly in the background in prep for future duplicate file system improvements</li>
+					<li>.</li>
+					<li>boring search code cleanup:</li>
+					<li>fixed a bug where the tag search cache could lose sibling/parent-chained values when their count was zeroed, even though they should always exist in a domain's lookup</li>
+					<li>fixed up some repository reset code that was regenerating surplus tag search data</li>
+					<li>with the new deleted files domain, simplified the new complex domain search pattern</li>
+					<li>converted basic tag search code to support multiple location domains</li>
+					<li>cleaned up some search cache and general table creation code to handle legacy orphan tables without error</li>
+					<li>misc tag and mapping cache code and combined local files code refactoring and cleanup</li>
+				</ul>
+				<li><h3 id="version_464"><a href="#version_464">version 464</a></h3></li>
+				<ul>
+					<li>image icc:</li>
+					<li>images with embedded icc colour metadata are now normalised (to sRGB) like the rest of media rendering in hydrus. ICC can often mean photos, where a nice camera will apply ICC data to compensate for camera defects or general lighting information, or it can mean normal digital images where the software attached extra colour data when it was saved</li>
+					<li>the image will now be rendered with 'fixed' colours in the media viewer, and new thumbnails should be good too. it applies early in image load and should work in all cases hereon, on both client and server</li>
+					<li>images with an ICC will take a little longer to initially load. I'd estimate 10-50ms extra for most. one user with many ICC images discovered 10% of their collection had an ICC. I don't think the delay will be terrible IRL, but see how you get on and let me know! maybe giganto patreon pngs will have a fresh surprise for us</li>
+					<li>future expansions here will be a database cache of ICC images and system:has icc, perhaps a button to click the ICC application on and off live in the media viewer, and then maybe options to load up and switch an ICC for your display</li>
+					<li>.</li>
+					<li>better physical file delete:</li>
+					<li>both client and server now physically delete files from storage more smoothly and reliably. the 'deferred file delete' list is now saved in the database itself and will survive reboots (and undo itself if a file is re-added before it can be deleted), and the physical delete daemons are able to work at a less spiky pace as a result. physical delete summaries are now logged as well</li>
+					<li>the server now physically deletes surplus files from its file storage! this never actually came up before jej--servers were just keeping all files forever</li>
+					<li>on update, all servers will scan to see which files it only has deletion records for and will queue them for a deferred delete</li>
+					<li>when deleting a service from the server, all its file repository files and/or general repository update files are now queued for deferred deletion if they are now orphaned</li>
+					<li>some advanced 'pending upload file delete' logical situations are now tidied up better, for instance if you have a file set to upload to a file repository or IPFS and then delete the file from the trash, the file will hang around until the upload is done and then it will be correctly scheduled for physically deletion. same for if you delete the file repository or clear all its pending. previously, this file would never delete and become an orphan</li>
+					<li>thumbnails for non-downloaded file repository files are now removed promptly from a client if a file repository deletes a file</li>
+					<li>.</li>
+					<li>misc:</li>
+					<li>fixed a typo error in last week's file filtering changes when doing wildcard tag searches in 'all known files' domain</li>
+					<li>fixed some bad namespace search optimisation also caused by last week's search updates that was making 'system:has x unnamespaced tags' search instead count all tags, not just unnamespaced (issue #1017)</li>
+					<li>fixed incorrect file type handling in thumbnail loading that was triggering a safe mode for gif file thumbs (which are actually jpeg/png), it should roughly double thumb load speed for gifs (and .ico too lol)</li>
+					<li>.</li>
+					<li>boring image stuff:</li>
+					<li>wrote some methods to check for and pull ICC profile bytes from an image with PIL</li>
+					<li>wrote ICC application in PIL on image load. we had figured out a way to do it with Qt, but this can happen right at the start of the rendering pipeline and will work for the server too</li>
+					<li>cleaned up some PIL/OpenCV image load and normalisation code</li>
+					<li>the decompression bomb check is now quicker for images with rotation</li>
+					<li>dequantization is now applied to PIL on all image load by default, it doesn't have to be invoked separately</li>
+					<li>some metadata parsing like 'get duration of gif frames' is now faster for images not in RGB or RGBA color</li>
+					<li>.</li>
+					<li>boring delete code cleanup:</li>
+					<li>wrote a heap of new 'is an orphan' filtering logic for client and server</li>
+					<li>wrote a daemon job for physical file deletion and plugged it into a new database queue for pending deferred file deletes</li>
+					<li>client physical file delete now works off the normal lightweight job scheduler, previously it had its own mainloop thread</li>
+					<li>optimised complex file domain file filtering a little</li>
+					<li>the 'clear orphan files' job in the client now uses the same updated orphan logic as the new physical delete code. it now won't clear out files in upload limbo</li>
+					<li>fixed an issue with re-storing a file in a server after one of its file repositories had previously deleted it. this never mattered previously, when files were never physically deleted, but now the code is brushed up to work properly</li>
+					<li>cleaned up some server db code, including the read command method lookup</li>
+					<li>moved client 'hash exists?' test down to the master definitions module</li>
+				</ul>
+				<li><h3 id="version_463"><a href="#version_463">version 463</a></h3></li>
+				<ul>
+					<li>misc:</li>
+					<li>ogv files (ogg with a video stream) are now recognised by the client! they will get resolution, duration, num frames and now show in the media viewer correctly as resizeable videos. all your existing ogg files will be scheduled for a rescan on update</li>
+					<li>wrote new downloader objects to fix deviant art tag search. all clients will automatically update and should with luck just be working again with the same old 'deviant art tag search' downloader</li>
+					<li>added prototype copy/paste buttons to the manage ratings dialog. the copy button also grabs 'null' ratings, let me know how you get on here and we'll tweak as needed</li>
+					<li>file searches with namespaced and unnamespaced tags should now run just a little faster</li>
+					<li>most file searches with multiple search predicates that include normal tags should now run just a little faster</li>
+					<li>the file log right-click menu now shows 'delete x yyy files from the queue' for deleted, ignored, failed, and skipped states separately</li>
+					<li>the tag siblings + parents display sync manager now forces more wait time before it does work. it now waits for the database and gui to be free of pending or current background work. this _should_ stop slower clients getting into hangs when the afterwork updates pile up and overwhelm the main work</li>
+					<li>the option 'warn at this many pages' under _options->gui pages_ now has a max value of 65535, up from 500. if you are a madman or you have very page-spammy subscriptions, feel free to try boosting this super high. be warned this may lead to resource limit crashes</li>
+					<li>the 'max pages' value that triggers a full yes/no dialog on page open is now set as the maximum value of 500 and 2 x the 'warn at this many pages' value</li>
+					<li>the 'max pages' dialog trigger now only fires if there are no dialogs currently open (this should fix a nested dialog crash when page-publishing subscriptions goes bananas)</li>
+					<li>improved error reporting for unsolveable cloudflare captcha errors</li>
+					<li>added clarification text to the edit subscription query dialog regarding the tag import options there</li>
+					<li>added/updated a bunch of file import options tooltips</li>
+					<li>.</li>
+					<li>new presentation import options:</li>
+					<li>the 'presentation' section of 'file import options' has been completely overhauled. it can do more, and is more human-friendly</li>
+					<li>rather than the old three checkboxes of new/already-in-inbox/already-in-archive, you now choose from three dropdowns--do you want all/new/none, do you want all/only-inbox/inbox-too, and do you want to my-files/and-trash-too. it is now possible to show 'in inbox' exclusively, at the time of publish (e.g. when you highlight)</li>
+					<li>added a little help UI text around the places presentation is used</li>
+					<li>the downloader and watcher page's list right-click menu entries for 'show xxx files' is now a submenu, uses the new presentation import options, shows 'show inbox files', and if you click on one row it says what the default is and excludes other entries if they are duplicates</li>
+					<li>.</li>
+					<li>boring presentation import options stuff:</li>
+					<li>presentation options are now in their own object and will be easier to update in future</li>
+					<li>the 'should I present' code is radically cleaned up and refactored to a single central object</li>
+					<li>presentation filtering in general has more sophisticated logic and is faster when used on a list (e.g. when you highlight a decent sized downloader and it has to figure out which thumbs to show). it is now careful about only checking for inbox status on outstanding files</li>
+					<li>presentation now always checks file domain, whereas before this was ad-hoc and scattered around (and in some buggy cases lead to long-deleted files appearing in import views)</li>
+					<li>added a full suite of unit tests to ensure the presentation import options object is making the right decisions and filtering efficiently at each stage</li>
+					<li>.</li>
+					<li>boring multiple local file services work:</li>
+					<li>I basically moved a bunch of file search code from 1 file services to n file services:</li>
+					<li>the file storage module can now filter file ids to a complex location search context</li>
+					<li>namespace:anything searches of various sorts now use complex location search contexts</li>
+					<li>wildcard tag searches now use complex location search contexts</li>
+					<li>counted tag searches now use complex location search contexts</li>
+					<li>search code that uses complex location search contexts now cross-references its file results in all cases</li>
+					<li>I now have a great plan to add deleted files search and keep it working quick. this will be the next step, and then I can do efficient complex-location regular tag search and hopefully just switch over the autocomplete control to allow deleted files search</li>
+				</ul>
+				<li><h3 id="version_462"><a href="#version_462">version 462</a></h3></li>
+				<ul>
+					<li>misc:</li>
+					<li>fixed a recent serious regression that could cause a crash when playing audio in mpv (issue #1007)</li>
+					<li>the main importer file log now does 'get next/all/count imports with status y' calls significantly faster, particularly on very large lists. these calls happen all the time for different status text changes and general 'which import to try next?' work. all busy downloader situations should see CPU gains to regular and background work</li>
+					<li>fixed a problem where importing with the min/max file resolution options set would give a typo error when the size was violated rather than 'ignored'</li>
+					<li>I think I have fixed an issue with subscriptions not wanting to run a query if by random accident that query has an invalid URL selected as the query's 'example url' for various pre-work login and bandwidth tests</li>
+					<li>hydrus can now capture duration/fps of videos that specify two very close fps, e.g. 60 and 59.99. previously, these would default to the 24 fallback and could cause some weirdness in mpv</li>
+					<li>replaced the default pixiv artist page api parser with one that fetches the newer url format, matching the tag search. existing users will see no automatic change but will receive the new parser, so if you are a big pixiv user, you might like to switch 'pixiv artist gallery page api' to the 'new urls' parser variant under _network->downloader components->manage url class links_. note that if you do this, your pixiv artist subscriptions will do a mini-resync (which involves some wasted time/bandwidth) as their urls change!</li>
+					<li>.</li>
+					<li>network redirect improvements:</li>
+					<li>gallery page jobs now give their child 'next gallery page' jobs themselves as a referrer</li>
+					<li>when the gallery downloader gets a 3XX redirect, the file import objects and next gallery pages it makes now get the redirected URL as referral url (previously, it used the original gallery url)</li>
+					<li>when the post downloader gets a 3XX redirect, the redirected url is now added as a primary source url</li>
+					<li>when the post downloader gets a 3XX redirect, child import objects and direct file downloads now get the redirect URL as referral url (previously, it used the original post url)</li>
+					<li>when the raw file downloader gets a 3XX redirect, the redirected url is now added as a primary source url</li>
+					<li>when the raw file downloader gets a 3XX redirect to a Post URL, it now tries to queue that URL back up in the file log, just like when a gallery fetch comes back with a Post URL. some safety code stops potential loops here as well</li>
+					<li>.</li>
+					<li>new services:</li>
+					<li>a new client now starts with a second local tag service called 'downloader tags'. default tag import options are now initialised in a fresh client to pull all file post tags to this service. this should relieve new users' confusion about setting up default tag import options</li>
+					<li>similarly, a new client now starts with a like/dislike rating service called 'favourites'. existing users who have no rating services will be asked if they want to get it on update. many users are unaware of the rating system, so this is a chance to play with it</li>
+					<li>the 'getting started with downloading' 'and '...with ratings' help has some updated screenshots and talk about the new default services and parsing</li>
+					<li>.</li>
+					<li>database fixes:</li>
+					<li>fixed a very slow database query that was involved with file search using unnamespaced tags when other search predicates had already limited the scope of search</li>
+					<li>fixed a similar slow query when the 'bad' search predicate was 'namespace:anything', particularly when the namespace is a wildcard</li>
+					<li>fixed the 'clear orphan tables' database maintenance routine. it had decayed due to bit rot and was deleting new repository processing tracking tables. the routine is now plugged directly into the new database modules system, and any module now can be upgraded to discover surplus service tables. the system has been updated to permit the detection and removal of duplicate tables in the wrong database file, and it also makes a statement if no orphan tables were found</li>
+					<li>the 'metadata resync' repository maintenance task now removes surplus file rows from the processing tracking tables</li>
+					<li>the 'metadata resync' repository maintenance task now corrects content type rows in the main processing tracking table</li>
+					<li>the process of registering updates to a repository is now a little faster, more reliable, repairs basic damage, and keeps more good work when damage needs to be repaired</li>
+					<li>I _think_ the users who were still getting PTR processing errors related to a database confusion about content/definitions update files should now be fixed after another full metadata resync! please let me know if there are still problems</li>
+				</ul>
+				<li><h3 id="version_461"><a href="#version_461">version 461</a></h3></li>
+				<ul>
+					<li>misc:</li>
+					<li>the text on the animation scanbar is now center-vertically aligned and should look better on taller and thinner scanbars (issue #998)</li>
+					<li>the scanbar now reports better frame number and current time for the mpv player when the current video is very short or has very few frames. screamer gifs should now report 2/2 frames if you scan to the right, not like 97/2</li>
+					<li>fixed using the mpv player with an embed button (it previously was staying hidden even after embed was clicked) (issue #999)</li>
+					<li>the 'search' submenu when you right-click on tags in certain locations now shows add/exclude namespace:anything if all the selected tags share the same namespace</li>
+					<li>as an experiment that I think will be bulked out into proper shortcuts later, and maybe actual +/- buttons like you'll see on a booru, if you activate the 'selection tags' listbox (double-click or enter key) while ctrl is down, it now excludes the selected tags from the current query</li>
+					<li>when you paste query texts into the edit subscription dialog, those queries already in the sub _and_ DEAD will now be revived (it does a 'check now' on them). the dialog reports this</li>
+					<li>when editing subscriptions, the way it waits for the current subs to stop running is improved. it is now separate from the global 'pause subs' variable, so big delays here (e.g. waiting a long time to open the dialog, then hitting 'pause' on the network menu, which was secretly a logically messy unpause) should be less able to run into trouble</li>
+					<li>watchers now sort DEAD and 404 separately when sorting the status column (previously they were sorted by their now-defunct 'next check time')</li>
+					<li>I think I improved the speed of the new subscriptions guaranteed shutdown. I think I also fixed a shutdown hang on some lagging async jobs. there are a couple of reports of hanging shutdown, so let me know if this changes</li>
+					<li>I moved the autocomplete options from 'gui pages' to 'search', and I brushed up the layout and tooltips there generally</li>
+					<li>.</li>
+					<li>file parsing:</li>
+					<li>clip files with canvas size units in mm, cm, inches, or points are now parsed correctly! thanks to the user who helped here! turns out a point is 1/72 (two grossths :^)) of an inch</li>
+					<li>clip animations now get the number of frames and duration of the first timeline!</li>
+					<li>all clip files will reparse for fixed resolution and duration and make new thumbs as needed on update</li>
+					<li>hydrus file parsing should now detect the duration of video and audio with 10 or more hours duration</li>
+					<li>hydrus now gets a more accurate duration estimate for files with bonkers duration/start_offset pairs, for instance "Duration: 127:57:31.25, start: 460633.291000". if you ever saw a 7MB webm with 5 hour duration (and actually 18 seconds), it could have been this. hydrus now counts frames manually when you get this sort of thing</li>
+					<li>any file with resolution > 360p, a duration over an hour, and size less than 64MB will be scheduled for a file metadata reparse on update</li>
+					<li>.</li>
+					<li>client api:</li>
+					<li>/get_files/file_metadata now has an optional boolean parameter, 'hide_service_names_tags', default False, which will hide the old 'service_names_to...' tag Objects</li>
+					<li>a unit test tests hide_service_names_tags</li>
+					<li>client api help documentation now talks about hide_service_names_tags</li>
+					<li>client api version is now 22</li>
+					<li>.</li>
+					<li>boring code refactoring and cleanup:</li>
+					<li>tl;dr: about 60KB total code moved out of client database!</li>
+					<li>moved most combined sibling+parent database code to a new 'tag display' module</li>
+					<li>moved autocomplete counts cache database code to a new 'mappings counts' module, and refactored a whole lot of of misc old a/c table creation and reference code into that module, cleaning things up</li>
+					<li>the 'mappings counts' module is plugged into new repair code and on error repopulates itself as efficiently as regen code currently allows</li>
+					<li>moved tag cache code to a new 'tag search' module, and similar related decoupling refactoring</li>
+					<li>the 'tag search' module is plugged into new repair code and on error repopulates itself very efficiently</li>
+					<li>the 'local tags cache' module can now regenerate itself on boot</li>
+					<li>regenerating the local tags cache now works a little faster and takes less memory</li>
+					<li>I _believe_ client.caches.db can now regenerate all of itself automatically, with no subsequent user actions needed</li>
+					<li>the boot database repair notifications have some quality of life improvements. modules now say whether they think they can recover everything, and there is more guidance on what to do in the different situations </li>
+					<li>during various heavy database work, a common analysis tool now saves a lot of time on regeneration vs generation</li>
+					<li>pubsubs now go through the transaction wrapper, meaning modules can pubsub</li>
+					<li>emergency boot messages (like database trouble) are now printed to the log</li>
+				</ul>
 				<li><h3 id="version_460"><a href="#version_460">version 460</a></h3></li>
 				<ul>
 					<li>client api:</li>
