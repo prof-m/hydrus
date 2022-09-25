@@ -7,13 +7,92 @@ from hydrus.core import HydrusSerialisable
 
 from hydrus.client import ClientConstants as CC
 
+def FilterOutRedundantMetaServices( list_of_service_keys: typing.List[ bytes ] ):
+    
+    services_manager = HG.client_controller.services_manager
+    
+    special_local_file_service_keys = { CC.TRASH_SERVICE_KEY, CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, CC.LOCAL_UPDATE_SERVICE_KEY }
+    
+    if len( special_local_file_service_keys.intersection( list_of_service_keys ) ) <= 1:
+        
+        if CC.COMBINED_LOCAL_FILE_SERVICE_KEY in list_of_service_keys:
+            
+            list_of_service_keys.remove( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
+            
+        
+    
+    local_file_service_keys = set( services_manager.GetServiceKeys( ( HC.LOCAL_FILE_DOMAIN, ) ) )
+    
+    if len( local_file_service_keys.intersection( list_of_service_keys ) ) <= 1:
+        
+        if CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY in list_of_service_keys:
+            
+            list_of_service_keys.remove( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
+            
+        
+    
+    return list_of_service_keys
+    
+
+def GetPossibleFileDomainServicesInOrder( all_known_files_allowed: bool, only_local_file_domains_allowed: bool ):
+    
+    services_manager = HG.client_controller.services_manager
+    
+    service_types_in_order = [ HC.LOCAL_FILE_DOMAIN ]
+    
+    if not only_local_file_domains_allowed:
+        
+        advanced_mode = HG.client_controller.new_options.GetBoolean( 'advanced_mode' )
+        
+        if len( services_manager.GetServices( ( HC.LOCAL_FILE_DOMAIN, ) ) ) > 1 or advanced_mode:
+            
+            service_types_in_order.append( HC.COMBINED_LOCAL_MEDIA )
+            
+        
+        service_types_in_order.append( HC.LOCAL_FILE_TRASH_DOMAIN )
+        
+        if advanced_mode:
+            
+            service_types_in_order.append( HC.LOCAL_FILE_UPDATE_DOMAIN )
+            
+        
+        if advanced_mode:
+            
+            service_types_in_order.append( HC.COMBINED_LOCAL_FILE )
+            
+        
+        service_types_in_order.append( HC.FILE_REPOSITORY )
+        service_types_in_order.append( HC.IPFS )
+        
+        if all_known_files_allowed:
+            
+            service_types_in_order.append( HC.COMBINED_FILE )
+            
+        
+    
+    services = services_manager.GetServices( service_types_in_order )
+    
+    return services
+    
+
+def SortFileServiceKeysNicely( list_of_service_keys ):
+    
+    services_in_nice_order = GetPossibleFileDomainServicesInOrder( False, False )
+    
+    service_keys_in_nice_order = [ service.GetServiceKey() for service in services_in_nice_order ]
+    
+    list_of_service_keys = [ service_key for service_key in service_keys_in_nice_order if service_key in list_of_service_keys ]
+    
+    return list_of_service_keys
+    
+
 def ValidLocalDomainsFilter( service_keys ):
     
     return [ service_key for service_key in service_keys if HG.client_controller.services_manager.ServiceExists( service_key ) and HG.client_controller.services_manager.GetServiceType( service_key ) == HC.LOCAL_FILE_DOMAIN ]
     
 class LocationContext( HydrusSerialisable.SerialisableBase ):
     
-    SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_location_context
+    SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_LOCATION_CONTEXT
     SERIALISABLE_NAME = 'Location Search Context'
     SERIALISABLE_VERSION = 1
     
@@ -80,12 +159,22 @@ class LocationContext( HydrusSerialisable.SerialisableBase ):
         
         if CC.COMBINED_LOCAL_FILE_SERVICE_KEY in self.current_service_keys:
             
-            self.current_service_keys = frozenset( ( service_key for service_key in self.current_service_keys if service_type_func( service_key ) not in ( HC.LOCAL_FILE_DOMAIN, HC.LOCAL_FILE_TRASH_DOMAIN ) ) )
+            self.current_service_keys = frozenset( ( service_key for service_key in self.current_service_keys if service_type_func( service_key ) not in HC.FILE_SERVICES_COVERED_BY_COMBINED_LOCAL_FILE ) )
             
         
         if CC.COMBINED_LOCAL_FILE_SERVICE_KEY in self.deleted_service_keys:
             
-            self.deleted_service_keys = frozenset( ( service_key for service_key in self.deleted_service_keys if service_type_func( service_key ) not in ( HC.LOCAL_FILE_DOMAIN, HC.LOCAL_FILE_TRASH_DOMAIN ) ) )
+            self.deleted_service_keys = frozenset( ( service_key for service_key in self.deleted_service_keys if service_type_func( service_key ) not in HC.FILE_SERVICES_COVERED_BY_COMBINED_LOCAL_FILE ) )
+            
+        
+        if CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY in self.current_service_keys:
+            
+            self.current_service_keys = frozenset( ( service_key for service_key in self.current_service_keys if service_type_func( service_key ) not in HC.FILE_SERVICES_COVERED_BY_COMBINED_LOCAL_MEDIA ) )
+            
+        
+        if CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY in self.deleted_service_keys:
+            
+            self.deleted_service_keys = frozenset( ( service_key for service_key in self.deleted_service_keys if service_type_func( service_key ) not in HC.FILE_SERVICES_COVERED_BY_COMBINED_LOCAL_MEDIA ) )
             
         
     
@@ -135,6 +224,11 @@ class LocationContext( HydrusSerialisable.SerialisableBase ):
     def IsAllLocalFiles( self ):
         
         return self.IsOneDomain() and CC.COMBINED_LOCAL_FILE_SERVICE_KEY in self.current_service_keys
+        
+    
+    def IsAllMediaFiles( self ):
+        
+        return self.IsOneDomain() and CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY in self.current_service_keys
         
     
     def IsEmpty( self ):
@@ -218,12 +312,5 @@ class LocationContext( HydrusSerialisable.SerialisableBase ):
         return LocationContext( [ file_service_key ], [] )
         
     
-HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_location_context ] = LocationContext
+HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_LOCATION_CONTEXT ] = LocationContext
 
-def GetLocationContextForAllLocalMedia() -> LocationContext:
-    
-    local_file_domain_service_keys = set( HG.client_controller.services_manager.GetServiceKeys( [ HC.LOCAL_FILE_DOMAIN ] ) )
-    local_file_domain_service_keys.discard( CC.LOCAL_UPDATE_SERVICE_KEY )
-    
-    return LocationContext.STATICCreateAllCurrent( local_file_domain_service_keys )
-    

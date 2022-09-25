@@ -521,7 +521,9 @@ class DialogInputTags( Dialog ):
         
         default_location_context = HG.client_controller.new_options.GetDefaultLocalLocationContext()
         
-        self._tag_autocomplete = ClientGUIACDropdown.AutoCompleteDropdownTagsWrite( self, self.EnterTags, default_location_context, service_key, null_entry_callable = self.OK, show_paste_button = True )
+        self._tag_autocomplete = ClientGUIACDropdown.AutoCompleteDropdownTagsWrite( self, self.EnterTags, default_location_context, service_key, show_paste_button = True )
+        
+        self._tag_autocomplete.nullEntered.connect( self.OK )
         
         self._ok = ClientGUICommon.BetterButton( self, 'OK', self.done, QW.QDialog.Accepted )
         self._ok.setObjectName( 'HydrusAccept' )
@@ -919,70 +921,3 @@ class DialogTextEntry( Dialog ):
             
         
     
-class DialogYesYesNo( Dialog ):
-    
-    def __init__( self, parent, message, title = 'Are you sure?', yes_tuples = None, no_label = 'no' ):
-        
-        if yes_tuples is None:
-            
-            yes_tuples = [ ( 'yes', 'yes' ) ]
-            
-        
-        Dialog.__init__( self, parent, title, position = 'center' )
-        
-        self._value = None
-        
-        yes_buttons = []
-        
-        for ( label, data ) in yes_tuples:
-            
-            yes_button = ClientGUICommon.BetterButton( self, label, self._DoYes, data )
-            yes_button.setObjectName( 'HydrusAccept' )
-            
-            yes_buttons.append( yes_button )
-            
-        
-        self._no = ClientGUICommon.BetterButton( self, no_label, self.done, QW.QDialog.Rejected )
-        self._no.setObjectName( 'HydrusCancel' )
-        
-        #
-        
-        hbox = QP.HBoxLayout()
-        
-        for yes_button in yes_buttons:
-            
-            QP.AddToLayout( hbox, yes_button, CC.FLAGS_CENTER_PERPENDICULAR )
-            
-        
-        QP.AddToLayout( hbox, self._no, CC.FLAGS_CENTER_PERPENDICULAR )
-        
-        vbox = QP.VBoxLayout()
-        
-        text = ClientGUICommon.BetterStaticText( self, message )
-        text.setWordWrap( True )
-        
-        QP.AddToLayout( vbox, text, CC.FLAGS_EXPAND_BOTH_WAYS )
-        QP.AddToLayout( vbox, hbox, CC.FLAGS_ON_RIGHT )
-        
-        self.setLayout( vbox )
-        
-        size_hint = self.sizeHint()
-        
-        size_hint.setWidth( max( size_hint.width(), 250 ) )
-        
-        QP.SetInitialSize( self, size_hint )
-        
-        ClientGUIFunctions.SetFocusLater( yes_buttons[0] )
-        
-    
-    def _DoYes( self, value ):
-        
-        self._value = value
-        
-        self.done( QW.QDialog.Accepted )
-        
-    
-    def GetValue( self ):
-        
-        return self._value
-        

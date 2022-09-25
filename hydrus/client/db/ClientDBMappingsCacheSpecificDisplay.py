@@ -5,6 +5,7 @@ import typing
 
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
+from hydrus.core import HydrusDBBase
 
 from hydrus.client.db import ClientDBMappingsCounts
 from hydrus.client.db import ClientDBMappingsCountsUpdate
@@ -14,16 +15,6 @@ from hydrus.client.db import ClientDBServices
 from hydrus.client.db import ClientDBTagDisplay
 from hydrus.client.metadata import ClientTags
 
-def GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id ):
-    
-    suffix = '{}_{}'.format( file_service_id, tag_service_id )
-    
-    cache_display_current_mappings_table_name = 'external_caches.specific_display_current_mappings_cache_{}'.format( suffix )
-    
-    cache_display_pending_mappings_table_name = 'external_caches.specific_display_pending_mappings_cache_{}'.format( suffix )
-    
-    return ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name )
-    
 class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     CAN_REPOPULATE_ALL_MISSING_DATA = True
@@ -36,21 +27,25 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         self.modules_mappings_storage = modules_mappings_storage
         self.modules_tag_display = modules_tag_display
         
+        self._missing_tag_service_pairs = set()
+        
         ClientDBModule.ClientDBModule.__init__( self, 'client specific display mappings cache', cursor )
         
     
     def _GetServiceIndexGenerationDictSingle( self, file_service_id, tag_service_id ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        
+        version = 486 if file_service_id == self.modules_services.combined_local_media_service_id else 400
         
         index_generation_dict = {}
         
         index_generation_dict[ cache_display_current_mappings_table_name ] = [
-            ( [ 'tag_id', 'hash_id' ], True, 400 )
+            ( [ 'tag_id', 'hash_id' ], True, version )
         ]
         
         index_generation_dict[ cache_display_pending_mappings_table_name ] = [
-            ( [ 'tag_id', 'hash_id' ], True, 400 )
+            ( [ 'tag_id', 'hash_id' ], True, version )
         ]
         
         return index_generation_dict
@@ -78,9 +73,9 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         
         table_dict = {}
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
-        version = 400
+        version = 486 if file_service_id == self.modules_services.combined_local_media_service_id else 400
         
         table_dict[ cache_display_current_mappings_table_name ] = ( 'CREATE TABLE IF NOT EXISTS {} ( hash_id INTEGER, tag_id INTEGER, PRIMARY KEY ( hash_id, tag_id ) ) WITHOUT ROWID;', version )
         table_dict[ cache_display_pending_mappings_table_name ] = ( 'CREATE TABLE IF NOT EXISTS {} ( hash_id INTEGER, tag_id INTEGER, PRIMARY KEY ( hash_id, tag_id ) ) WITHOUT ROWID;', version )
@@ -111,9 +106,30 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         return self.modules_services.GetServiceIds( HC.REAL_TAG_SERVICES )
         
     
+    def _RepairRepopulateTables( self, table_names, cursor_transaction_wrapper: HydrusDBBase.DBCursorTransactionWrapper ):
+        
+        file_service_ids = list( self.modules_services.GetServiceIds( HC.FILE_SERVICES_WITH_SPECIFIC_MAPPING_CACHES ) )
+        tag_service_ids = list( self.modules_services.GetServiceIds( HC.REAL_TAG_SERVICES ) )
+        
+        for tag_service_id in tag_service_ids:
+            
+            for file_service_id in file_service_ids:
+                
+                table_dict_for_this = self._GetServiceTableGenerationDictSingle( file_service_id, tag_service_id )
+                
+                table_names_for_this = set( table_dict_for_this.keys() )
+                
+                if not table_names_for_this.isdisjoint( table_names ):
+                    
+                    self._missing_tag_service_pairs.add( ( file_service_id, tag_service_id ) )
+                    
+                
+            
+        
+    
     def AddFiles( self, file_service_id, tag_service_id, hash_ids, hash_ids_table_name ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         ( cache_current_mappings_table_name, cache_deleted_mappings_table_name, cache_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificMappingsCacheTableNames( file_service_id, tag_service_id )
         
@@ -191,7 +207,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
             
         
         ( cache_current_mappings_table_name, cache_deleted_mappings_table_name, cache_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificMappingsCacheTableNames( file_service_id, tag_service_id )
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         statuses_to_count_delta = collections.Counter()
         
@@ -247,7 +263,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         
         # this guy doesn't do rescind pend because of storage calculation issues that need that to occur before deletes to storage tables
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         display_tag_ids = self.modules_tag_display.GetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, tag_id )
         
@@ -275,7 +291,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def Clear( self, file_service_id, tag_service_id, keep_pending = False ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         self._Execute( 'DELETE FROM {};'.format( cache_display_current_mappings_table_name ) )
         
@@ -289,7 +305,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def Drop( self, file_service_id, tag_service_id ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         self._Execute( 'DROP TABLE IF EXISTS {};'.format( cache_display_current_mappings_table_name ) )
         self._Execute( 'DROP TABLE IF EXISTS {};'.format( cache_display_pending_mappings_table_name ) )
@@ -299,7 +315,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def DeleteFiles( self, file_service_id, tag_service_id, hash_ids, hash_id_table_name ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         # temp hashes to mappings
         current_mapping_ids_raw = self._Execute( 'SELECT tag_id, hash_id FROM {} CROSS JOIN {} USING ( hash_id );'.format( hash_id_table_name, cache_display_current_mappings_table_name ) ).fetchall()
@@ -350,7 +366,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         statuses_to_count_delta = collections.Counter()
         
         ( cache_current_mappings_table_name, cache_deleted_mappings_table_name, cache_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificMappingsCacheTableNames( file_service_id, tag_service_id )
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         remaining_implication_tag_ids = set( self.modules_tag_display.GetImpliedBy( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, tag_id ) ).difference( implication_tag_ids )
         
@@ -456,7 +472,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def DeleteMappings( self, file_service_id, tag_service_id, storage_tag_id, hash_ids ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         implies_tag_ids = self.modules_tag_display.GetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, storage_tag_id )
         
@@ -516,7 +532,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
         
         for ( table_name, ( create_query_without_name, version_added ) ) in table_generation_dict.items():
             
-            self._Execute( create_query_without_name.format( table_name ) )
+            self._CreateTable( create_query_without_name, table_name )
             
         
         if populate_from_storage:
@@ -527,7 +543,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
                 
             
             ( cache_current_mappings_table_name, cache_deleted_mappings_table_name, cache_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificMappingsCacheTableNames( file_service_id, tag_service_id )
-            ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+            ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
             
             self._Execute( 'INSERT OR IGNORE INTO {} ( hash_id, tag_id ) SELECT hash_id, tag_id FROM {};'.format( cache_display_current_mappings_table_name, cache_current_mappings_table_name ) )
             self._Execute( 'INSERT OR IGNORE INTO {} ( hash_id, tag_id ) SELECT hash_id, tag_id FROM {};'.format( cache_display_pending_mappings_table_name, cache_pending_mappings_table_name ) )
@@ -546,6 +562,11 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
             
             self._CreateIndex( table_name, columns, unique = unique )
             
+        
+    
+    def GetMissingServicePairs( self ):
+        
+        return self._missing_tag_service_pairs
         
     
     def GetTablesAndColumnsThatUseDefinitions( self, content_type: int ) -> typing.List[ typing.Tuple[ str, str ] ]:
@@ -576,7 +597,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def PendMappings( self, file_service_id, tag_service_id, tag_id, hash_ids ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         ac_counts = collections.Counter()
         
@@ -605,7 +626,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     def RegeneratePending( self, file_service_id, tag_service_id, status_hook = None ):
         
         ( cache_current_mappings_table_name, cache_deleted_mappings_table_name, cache_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificMappingsCacheTableNames( file_service_id, tag_service_id )
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         if status_hook is not None:
             
@@ -669,7 +690,7 @@ class ClientDBMappingsCacheSpecificDisplay( ClientDBModule.ClientDBModule ):
     
     def RescindPendingMappings( self, file_service_id, tag_service_id, storage_tag_id, hash_ids ):
         
-        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
+        ( cache_display_current_mappings_table_name, cache_display_pending_mappings_table_name ) = ClientDBMappingsStorage.GenerateSpecificDisplayMappingsCacheTableNames( file_service_id, tag_service_id )
         
         implies_tag_ids = self.modules_tag_display.GetImplies( ClientTags.TAG_DISPLAY_ACTUAL, tag_service_id, storage_tag_id )
         

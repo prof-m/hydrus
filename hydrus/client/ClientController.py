@@ -42,6 +42,7 @@ from hydrus.client.gui import ClientGUIScrolledPanelsManagement
 from hydrus.client.gui import ClientGUISplash
 from hydrus.client.gui import ClientGUIStyle
 from hydrus.client.gui import ClientGUITopLevelWindowsPanels
+from hydrus.client.gui import QtInit
 from hydrus.client.gui import QtPorting as QP
 from hydrus.client.gui.lists import ClientGUIListManager
 from hydrus.client.importing import ClientImportSubscriptions
@@ -56,7 +57,7 @@ if not HG.twisted_is_broke:
     
     from twisted.internet import threads, reactor, defer
     
-PubSubEventType = QC.QEvent.Type( QC.QEvent.registerEventType() )
+PubSubEventType = QP.registerEventType()
 
 class PubSubEvent( QC.QEvent ):
     
@@ -95,7 +96,7 @@ class PubSubEventCatcher( QC.QObject ):
     
 def MessageHandler( msg_type, context, text ):
     
-    if msg_type not in ( QC.QtDebugMsg, QC.QtInfoMsg ):
+    if msg_type not in ( QC.QtMsgType.QtDebugMsg, QC.QtMsgType.QtInfoMsg ):
         
         # Set a breakpoint here to be able to see where the warnings originate from.
         HydrusData.Print( text )
@@ -542,12 +543,12 @@ class Controller( HydrusController.HydrusController ):
                 
             else:
                 
-                QP.CallAfter( QW.QApplication.instance().quit )
+                QP.CallAfter( QW.QApplication.instance().exit )
                 
             
         elif sig == signal.SIGTERM:
             
-            QP.CallAfter( QW.QApplication.instance().quit )
+            self.Exit()
             
         
     
@@ -1004,12 +1005,6 @@ class Controller( HydrusController.HydrusController ):
         
         HydrusController.HydrusController.InitModel( self )
         
-        self.frame_splash_status.SetText( 'initialising managers' )
-        
-        self.frame_splash_status.SetSubtext( 'services' )
-        
-        self.services_manager = ClientServices.ServicesManager( self )
-        
         self.frame_splash_status.SetSubtext( 'options' )
         
         self.options = self.Read( 'options' )
@@ -1024,6 +1019,22 @@ class Controller( HydrusController.HydrusController ):
                 HydrusVideoHandling.FFMPEG_PATH = os.path.basename( HydrusVideoHandling.FFMPEG_PATH )
                 
             
+        
+        self.frame_splash_status.SetSubtext( 'image caches' )
+        
+        self._caches[ 'images' ] = ClientCaches.ImageRendererCache( self )
+        self._caches[ 'image_tiles' ] = ClientCaches.ImageTileCache( self )
+        self._caches[ 'thumbnail' ] = ClientCaches.ThumbnailCache( self )
+        
+        self.frame_splash_status.SetText( 'initialising managers' )
+        
+        # careful: outside of qt since they don't need qt for init, seems ok _for now_
+        
+        self.bitmap_manager = ClientManagers.BitmapManager( self )
+        
+        self.frame_splash_status.SetSubtext( 'services' )
+        
+        self.services_manager = ClientServices.ServicesManager( self )
         
         # important this happens before repair, as repair dialog has a column list lmao
         
@@ -1191,14 +1202,6 @@ class Controller( HydrusController.HydrusController ):
         #
         
         self._managers[ 'undo' ] = ClientManagers.UndoManager( self )
-        
-        self.frame_splash_status.SetSubtext( 'image caches' )
-        
-        # careful: outside of qt since they don't need qt for init, seems ok _for now_
-        self._caches[ 'images' ] = ClientCaches.ImageRendererCache( self )
-        self._caches[ 'image_tiles' ] = ClientCaches.ImageTileCache( self )
-        self._caches[ 'thumbnail' ] = ClientCaches.ThumbnailCache( self )
-        self.bitmap_manager = ClientManagers.BitmapManager( self )
         
         self.sub( self, 'ToClipboard', 'clipboard' )
         
@@ -1586,7 +1589,7 @@ class Controller( HydrusController.HydrusController ):
     
     def Run( self ):
         
-        QP.MonkeyPatchMissingMethods()
+        QtInit.MonkeyPatchMissingMethods()
         
         from hydrus.client.gui import ClientGUICore
         
@@ -1960,7 +1963,7 @@ class Controller( HydrusController.HydrusController ):
             
             self._ShutdownManagers()
             
-            self.frame_splash_status.SetText( 'waiting for daemons to exit' )
+            self.frame_splash_status.SetText( 'waiting for workers to exit' )
             
             self._ShutdownDaemons()
             
@@ -1986,7 +1989,7 @@ class Controller( HydrusController.HydrusController ):
             
             try:
                 
-                self.frame_splash_status.SetText( 'waiting for twisted to exit' )
+                self.frame_splash_status.SetText( 'waiting for services to exit' )
                 
                 self.SetRunningTwistedServices( [] )
                 
@@ -2102,7 +2105,7 @@ class Controller( HydrusController.HydrusController ):
             
             self._DestroySplash()
             
-            QP.CallAfter( QW.QApplication.quit )
+            QP.CallAfter( QW.QApplication.exit )
             
             return
             
@@ -2123,7 +2126,7 @@ class Controller( HydrusController.HydrusController ):
             
             self.CleanRunningFile()
             
-            QP.CallAfter( QW.QApplication.quit )
+            QP.CallAfter( QW.QApplication.exit )
             
         except Exception as e:
             
@@ -2132,11 +2135,22 @@ class Controller( HydrusController.HydrusController ):
             HydrusData.DebugPrint( 'If the db crashed, another error may be written just above ^.' )
             HydrusData.DebugPrint( text )
             
-            HydrusData.DebugPrint( traceback.format_exc() )
+            trace = traceback.format_exc()
+            
+            HydrusData.DebugPrint( trace )
             
             self.SafeShowCriticalMessage( 'boot error', text )
             
-            self.SafeShowCriticalMessage( 'boot error', traceback.format_exc() )
+            if 'malformed' in trace:
+                
+                hell_message = 'Looking at it, it looks like your database may be malformed! This is a serious error. Please check "/install_dir/db/help my db is broke.txt" as soon as you can for the next steps. The specific error will now follow.'
+                
+                HydrusData.DebugPrint( hell_message )
+                
+                self.SafeShowCriticalMessage( 'boot error', hell_message )
+                
+            
+            self.SafeShowCriticalMessage( 'boot error', trace )
             
             QP.CallAfter( QW.QApplication.exit, 1 )
             
@@ -2187,7 +2201,7 @@ class Controller( HydrusController.HydrusController ):
             
             self._program_is_shut_down = True
             
-            QP.CallAfter( QW.QApplication.quit )
+            QP.CallAfter( QW.QApplication.exit )
             
         
     
@@ -2270,14 +2284,20 @@ class Controller( HydrusController.HydrusController ):
     
     def WaitUntilThumbnailsFree( self ):
         
-        self._caches[ 'thumbnail' ].WaitUntilFree()
+        if 'thumbnail' in self._caches:
+            
+            self._caches[ 'thumbnail' ].WaitUntilFree()
+            
         
     
     def Write( self, action, *args, **kwargs ):
         
         if action == 'content_updates':
             
-            self._managers[ 'undo' ].AddCommand( 'content_updates', *args, **kwargs )
+            if 'undo' in self._managers:
+                
+                self._managers[ 'undo' ].AddCommand( 'content_updates', *args, **kwargs )
+                
             
         
         return HydrusController.HydrusController.Write( self, action, *args, **kwargs )

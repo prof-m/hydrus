@@ -75,6 +75,7 @@ class ClientDBMasterServices( ClientDBModule.ClientDBModule ):
         self.local_update_service_id = None
         self.trash_service_id = None
         self.combined_local_file_service_id = None
+        self.combined_local_media_service_id = None
         self.combined_file_service_id = None
         self.combined_deleted_file_service_id = None
         self.combined_tag_service_id = None
@@ -121,10 +122,11 @@ class ClientDBMasterServices( ClientDBModule.ClientDBModule ):
             try:
                 
                 self.combined_deleted_file_service_id = self.GetServiceId( CC.COMBINED_DELETED_FILE_SERVICE_KEY )
+                self.combined_local_media_service_id = self.GetServiceId( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
                 
             except HydrusExceptions.DataMissing:
                 
-                # version 465 it might not be in yet
+                # version 465/486 it might not be in yet
                 
                 pass
                 
@@ -157,6 +159,10 @@ class ClientDBMasterServices( ClientDBModule.ClientDBModule ):
         elif service_key == CC.COMBINED_LOCAL_FILE_SERVICE_KEY:
             
             self.combined_local_file_service_id = service_id
+            
+        elif service_key == CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY:
+            
+            self.combined_local_media_service_id = service_id
             
         elif service_key == CC.COMBINED_FILE_SERVICE_KEY:
             
@@ -196,6 +202,52 @@ class ClientDBMasterServices( ClientDBModule.ClientDBModule ):
         service_type = self.GetService( service_id ).GetServiceType()
         
         return service_type in HC.FILE_SERVICES_COVERED_BY_COMBINED_LOCAL_FILE
+        
+    
+    def GetFileSearchContextBranch( self, file_search_context: ClientSearch.FileSearchContext ) -> FileSearchContextBranch:
+        
+        location_context = file_search_context.GetLocationContext()
+        tag_context = file_search_context.GetTagContext()
+        
+        ( file_service_keys, file_location_is_cross_referenced ) = location_context.GetCoveringCurrentFileServiceKeys()
+        
+        search_file_service_ids = []
+        
+        for file_service_key in file_service_keys:
+            
+            try:
+                
+                search_file_service_id = self.GetServiceId( file_service_key )
+                
+            except HydrusExceptions.DataMissing:
+                
+                HydrusData.ShowText( 'A query was run for a file service that does not exist! If you just removed a service, you might want to try checking the search and/or restarting the client.' )
+                
+                continue
+                
+            
+            search_file_service_ids.append( search_file_service_id )
+            
+        
+        if tag_context.IsAllKnownTags():
+            
+            search_tag_service_ids = self.GetServiceIds( HC.REAL_TAG_SERVICES )
+            
+        else:
+            
+            try:
+                
+                search_tag_service_ids = ( self.GetServiceId( tag_context.service_key ), )
+                
+            except HydrusExceptions.DataMissing:
+                
+                HydrusData.ShowText( 'A query was run for a tag service that does not exist! If you just removed a service, you might want to try checking the search and/or restarting the client.' )
+                
+                search_tag_service_ids = []
+                
+            
+        
+        return FileSearchContextBranch( file_search_context, search_file_service_ids, search_tag_service_ids, file_location_is_cross_referenced )
         
     
     def GetNonDupeName( self, name ) -> str:
@@ -238,6 +290,11 @@ class ClientDBMasterServices( ClientDBModule.ClientDBModule ):
     def GetServiceIdsToServiceKeys( self ) -> typing.Dict[ int, bytes ]:
         
         return { service_id : service_key for ( service_key, service_id ) in self._service_keys_to_service_ids.items() }
+        
+    
+    def GetServiceKey( self, service_id: int ) -> bytes:
+        
+        return self.GetService( service_id ).GetServiceKey()
         
     
     def GetServiceKeys( self ) -> typing.Set[ bytes ]:

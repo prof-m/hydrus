@@ -142,6 +142,9 @@ SIMPLE_MEDIA_SEEK_DELTA = 134
 SIMPLE_GLOBAL_PROFILE_MODE_FLIP = 135
 SIMPLE_GLOBAL_FORCE_ANIMATION_SCANBAR_SHOW = 136
 SIMPLE_OPEN_COMMAND_PALETTE = 137
+SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_MAX_ZOOM = 138
+SIMPLE_SWITCH_BETWEEN_CANVAS_AND_MAX_ZOOM = 139
+SIMPLE_ZOOM_MAX = 140
 
 simple_enum_to_str_lookup = {
     SIMPLE_ARCHIVE_DELETE_FILTER_BACK : 'archive/delete filter: back',
@@ -242,6 +245,9 @@ simple_enum_to_str_lookup = {
     SIMPLE_SHOW_HIDE_SPLITTERS : 'show/hide the left page panel and preview canvas',
     SIMPLE_SHOW_MENU : 'show menu',
     SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_CANVAS_ZOOM : 'zoom: switch between 100% and canvas fit',
+    SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_MAX_ZOOM : 'zoom: switch between 100% and max zoom',
+    SIMPLE_SWITCH_BETWEEN_CANVAS_AND_MAX_ZOOM : 'zoom: switch between canvas fit and max zoom',
+    SIMPLE_ZOOM_MAX : 'zoom: max',
     SIMPLE_SWITCH_BETWEEN_FULLSCREEN_BORDERLESS_AND_REGULAR_FRAMED_WINDOW : 'switch between fullscreen borderless and regular framed window',
     SIMPLE_SYNCHRONISED_WAIT_SWITCH : 'switch between searching a page immediately on new tags and waiting',
     SIMPLE_UNCLOSE_PAGE : 'restore the most recently closed page',
@@ -266,7 +272,7 @@ simple_enum_to_str_lookup = {
     SIMPLE_DUPLICATE_MEDIA_RESET_FOCUSED_POTENTIAL_SEARCH : 'file relationships: reset focused file potential search',
     SIMPLE_DUPLICATE_MEDIA_RESET_POTENTIAL_SEARCH : 'file relationships: reset potential searches',
     SIMPLE_DUPLICATE_MEDIA_REMOVE_FOCUSED_POTENTIALS : 'file relationships: remove focused file from potential duplicate pairs',
-    SIMPLE_DUPLICATE_MEDIA_REMOVE_POTENTIALS : 'file relationships: remote files from potential duplicate pairs',
+    SIMPLE_DUPLICATE_MEDIA_REMOVE_POTENTIALS : 'file relationships: remove files from potential duplicate pairs',
     SIMPLE_DUPLICATE_MEDIA_SET_POTENTIAL : 'file relationships: set files as potential duplicates',
     SIMPLE_DUPLICATE_MEDIA_CLEAR_FALSE_POSITIVES : 'file relationships: clear false positives',
     SIMPLE_DUPLICATE_MEDIA_CLEAR_FOCUSED_FALSE_POSITIVES : 'file relationships: clear focused file false positives',
@@ -445,6 +451,11 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
             
             ( service_key, content_type, action, value ) = self._data
             
+            if content_type == HC.CONTENT_TYPE_FILES and action == HC.CONTENT_UPDATE_MOVE and value is not None and isinstance( value, bytes ):
+                
+                value = value.hex()
+                
+            
             serialisable_data = ( service_key.hex(), content_type, action, value )
             
         
@@ -469,6 +480,18 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
         elif self._command_type == APPLICATION_COMMAND_TYPE_CONTENT:
             
             ( serialisable_service_key, content_type, action, value ) = serialisable_data
+            
+            if content_type == HC.CONTENT_TYPE_FILES and action == HC.CONTENT_UPDATE_MOVE and value is not None and isinstance( value, str ):
+                
+                try:
+                    
+                    value = bytes.fromhex( value )
+                    
+                except:
+                    
+                    value = None
+                    
+                
             
             self._data = ( bytes.fromhex( serialisable_service_key ), content_type, action, value )
             
@@ -638,6 +661,8 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
             components.append( HC.content_update_string_lookup[ action ] )
             components.append( HC.content_type_string_lookup[ content_type ] )
             
+            value_string = ''
+            
             if content_type == HC.CONTENT_TYPE_RATINGS:
                 
                 if action in ( HC.CONTENT_UPDATE_SET, HC.CONTENT_UPDATE_FLIP ):
@@ -650,7 +675,7 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
                             
                             service = HG.client_controller.services_manager.GetService( service_key )
                             
-                            value_string = service.ConvertRatingToString( value )
+                            value_string = service.ConvertNoneableRatingToString( value )
                             
                         except HydrusExceptions.DataMissing:
                             
@@ -663,7 +688,20 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
                     value_string = '' # only 1 up/down allowed atm
                     
                 
-            else:
+            elif content_type == HC.CONTENT_TYPE_FILES and action == HC.CONTENT_UPDATE_MOVE and value is not None:
+                
+                try:
+                    
+                    from_name = HG.client_controller.services_manager.GetName( value )
+                    
+                    value_string = '(from {})'.format( from_name )
+                    
+                except:
+                    
+                    value_string = ''
+                    
+                
+            elif value is not None:
                 
                 value_string = '"{}"'.format( value )
                 
@@ -673,7 +711,14 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
                 components.append( value_string )
                 
             
-            components.append( 'for' )
+            if content_type == HC.CONTENT_TYPE_FILES:
+                
+                components.append( 'to' )
+                
+            else:
+                
+                components.append( 'for' )
+                
             
             services_manager = HG.client_controller.services_manager
             
@@ -700,3 +745,14 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
     
 HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_APPLICATION_COMMAND ] = ApplicationCommand
 
+class ApplicationCommandProcessorMixin( object ):
+    
+    def ProcessApplicationCommand( self, command: ApplicationCommand ):
+        
+        # TODO: eventually expand this guy to do the main if and have separate methods for 'do simple command( action )' and 'do complex command( command )', then objects just implement that
+        # only thing they need to do is return False if they don't eat the command, or we move to Qt style event processing and set command.ignore() or similar
+        # then we can hang debug stuff off this shared code and so on
+        
+        raise NotImplementedError()
+        
+    

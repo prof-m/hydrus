@@ -108,6 +108,32 @@ SYSTEM_PREDICATE_TYPES = {
 IGNORED_TAG_SEARCH_CHARACTERS = '[](){}/\\"\'-_'
 IGNORED_TAG_SEARCH_CHARACTERS_UNICODE_TRANSLATE = { ord( char ) : ' ' for char in IGNORED_TAG_SEARCH_CHARACTERS }
 
+def ConvertSpecificFiletypesToSummary( specific_mimes: typing.Collection[ int ], only_searchable = True ) -> typing.Collection[ int ]:
+    
+    specific_mimes_to_process = set( specific_mimes )
+    
+    summary_mimes = set()
+    
+    for ( general_mime, mime_group ) in HC.general_mimetypes_to_mime_groups.items():
+        
+        if only_searchable:
+            
+            mime_group = set( mime_group )
+            mime_group.intersection_update( HC.SEARCHABLE_MIMES )
+            
+        
+        if specific_mimes_to_process.issuperset( mime_group ):
+            
+            summary_mimes.add( general_mime )
+            specific_mimes_to_process.difference_update( mime_group )
+            
+        
+    
+    summary_mimes.update( specific_mimes_to_process )
+    
+    return summary_mimes
+    
+
 def ConvertSubtagToSearchable( subtag ):
     
     if subtag == '':
@@ -125,6 +151,47 @@ def ConvertSubtagToSearchable( subtag ):
     
     return subtag
     
+
+def ConvertSummaryFiletypesToSpecific( summary_mimes: typing.Collection[ int ], only_searchable = True ) -> typing.Collection[ int ]:
+    
+    specific_mimes = set()
+    
+    for mime in summary_mimes:
+        
+        if mime in HC.GENERAL_FILETYPES:
+            
+            specific_mimes.update( HC.general_mimetypes_to_mime_groups[ mime ] )
+            
+        else:
+            
+            specific_mimes.add( mime )
+            
+        
+    
+    if only_searchable:
+        
+        specific_mimes.intersection_update( HC.SEARCHABLE_MIMES )
+        
+    
+    return specific_mimes
+    
+
+def ConvertSummaryFiletypesToString( summary_mimes: typing.Collection[ int ] ) -> str:
+    
+    if set( summary_mimes ) == HC.GENERAL_FILETYPES:
+        
+        mime_text = 'anything'
+        
+    else:
+        
+        summary_mimes = sorted( summary_mimes, key = lambda m: HC.mime_mimetype_string_lookup[ m ] )
+        
+        mime_text = ', '.join( [ HC.mime_string_lookup[ mime ] for mime in summary_mimes ] )
+        
+    
+    return mime_text
+    
+
 def ConvertTagToSearchable( tag ):
     
     ( namespace, subtag ) = HydrusTags.SplitTag( tag )
@@ -409,8 +476,15 @@ class FileSystemPredicates( object ):
                     
                     # convert this dt, which is in local time, to a gmt timestamp
                     
-                    day_dt = datetime.datetime( year, month, day )
-                    timestamp = int( time.mktime( day_dt.timetuple() ) )
+                    try:
+                        
+                        day_dt = datetime.datetime( year, month, day )
+                        timestamp = int( time.mktime( day_dt.timetuple() ) )
+                        
+                    except:
+                        
+                        timestamp = HydrusData.GetNow()
+                        
                     
                     if operator == '<':
                         
@@ -435,11 +509,14 @@ class FileSystemPredicates( object ):
             
             if predicate_type == PREDICATE_TYPE_SYSTEM_MIME:
                 
-                mimes = value
+                summary_mimes = value
                 
-                if isinstance( mimes, int ): mimes = ( mimes, )
+                if isinstance( summary_mimes, int ):
+                    
+                    summary_mimes = ( summary_mimes, )
+                    
                 
-                self._common_info[ 'mimes' ] = mimes
+                self._common_info[ 'mimes' ] = ConvertSummaryFiletypesToSpecific( summary_mimes )
                 
             
             if predicate_type == PREDICATE_TYPE_SYSTEM_DURATION:
@@ -822,16 +899,16 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
     SERIALISABLE_NAME = 'File Search Context'
     SERIALISABLE_VERSION = 5
     
-    def __init__( self, location_context = None, tag_search_context = None, search_type = SEARCH_TYPE_AND, predicates = None ):
+    def __init__( self, location_context = None, tag_context = None, search_type = SEARCH_TYPE_AND, predicates = None ):
         
         if location_context is None:
             
-            location_context = ClientLocation.GetLocationContextForAllLocalMedia()
+            location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
             
         
-        if tag_search_context is None:
+        if tag_context is None:
             
-            tag_search_context = TagSearchContext()
+            tag_context = TagContext()
             
         
         if predicates is None:
@@ -840,7 +917,7 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
             
         
         self._location_context = location_context
-        self._tag_search_context = tag_search_context
+        self._tag_context = tag_context
         
         self._search_type = search_type
         
@@ -856,15 +933,15 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
         serialisable_predicates = [ predicate.GetSerialisableTuple() for predicate in self._predicates ]
         serialisable_location_context = self._location_context.GetSerialisableTuple()
         
-        return ( serialisable_location_context, self._tag_search_context.GetSerialisableTuple(), self._search_type, serialisable_predicates, self._search_complete )
+        return ( serialisable_location_context, self._tag_context.GetSerialisableTuple(), self._search_type, serialisable_predicates, self._search_complete )
         
     
     def _InitialiseFromSerialisableInfo( self, serialisable_info ):
         
-        ( serialisable_location_context, serialisable_tag_search_context, self._search_type, serialisable_predicates, self._search_complete ) = serialisable_info
+        ( serialisable_location_context, serialisable_tag_context, self._search_type, serialisable_predicates, self._search_complete ) = serialisable_info
         
         self._location_context = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_location_context )
-        self._tag_search_context = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_tag_search_context )
+        self._tag_context = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_tag_context )
         
         self._predicates = [ HydrusSerialisable.CreateFromSerialisableTuple( pred_tuple ) for pred_tuple in serialisable_predicates ]
         
@@ -953,18 +1030,18 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
             
             tag_service_key = bytes.fromhex( tag_service_key_hex )
             
-            tag_search_context = TagSearchContext( service_key = tag_service_key, include_current_tags = include_current_tags, include_pending_tags = include_pending_tags )
+            tag_context = TagContext( service_key = tag_service_key, include_current_tags = include_current_tags, include_pending_tags = include_pending_tags )
             
-            serialisable_tag_search_context = tag_search_context.GetSerialisableTuple()
+            serialisable_tag_context = tag_context.GetSerialisableTuple()
             
-            new_serialisable_info = ( file_service_key_hex, serialisable_tag_search_context, search_type, serialisable_predicates, search_complete )
+            new_serialisable_info = ( file_service_key_hex, serialisable_tag_context, search_type, serialisable_predicates, search_complete )
             
             return ( 4, new_serialisable_info )
             
         
         if version == 4:
             
-            ( file_service_key_hex, serialisable_tag_search_context, search_type, serialisable_predicates, search_complete ) = old_serialisable_info
+            ( file_service_key_hex, serialisable_tag_context, search_type, serialisable_predicates, search_complete ) = old_serialisable_info
             
             file_service_key = bytes.fromhex( file_service_key_hex )
             
@@ -972,7 +1049,7 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
             
             serialisable_location_context = location_context.GetSerialisableTuple()
             
-            new_serialisable_info = ( serialisable_location_context, serialisable_tag_search_context, search_type, serialisable_predicates, search_complete )
+            new_serialisable_info = ( serialisable_location_context, serialisable_tag_context, search_type, serialisable_predicates, search_complete )
             
             return ( 5, new_serialisable_info )
             
@@ -981,7 +1058,7 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
     def FixMissingServices( self, filter_method ):
         
         self._location_context.FixMissingServices( filter_method )
-        self._tag_search_context.FixMissingServices( filter_method )
+        self._tag_context.FixMissingServices( filter_method )
         
     
     def GetLocationContext( self ) -> ClientLocation.LocationContext:
@@ -999,9 +1076,9 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
         return self._system_predicates
         
     
-    def GetTagSearchContext( self ) -> "TagSearchContext":
+    def GetTagContext( self ) -> "TagContext":
         
-        return self._tag_search_context
+        return self._tag_context
         
     
     def GetTagsToExclude( self ): return self._tags_to_exclude
@@ -1036,12 +1113,12 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
     
     def SetIncludeCurrentTags( self, value ):
         
-        self._tag_search_context.include_current_tags = value
+        self._tag_context.include_current_tags = value
         
     
     def SetIncludePendingTags( self, value ):
         
-        self._tag_search_context.include_pending_tags = value
+        self._tag_context.include_pending_tags = value
         
     
     def SetPredicates( self, predicates ):
@@ -1053,15 +1130,15 @@ class FileSearchContext( HydrusSerialisable.SerialisableBase ):
     
     def SetTagServiceKey( self, tag_service_key ):
         
-        self._tag_search_context.service_key = tag_service_key
-        self._tag_search_context.display_service_key = tag_service_key
+        self._tag_context.service_key = tag_service_key
+        self._tag_context.display_service_key = tag_service_key
         
     
 HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_FILE_SEARCH_CONTEXT ] = FileSearchContext
 
-class TagSearchContext( HydrusSerialisable.SerialisableBase ):
+class TagContext( HydrusSerialisable.SerialisableBase ):
     
-    SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_TAG_SEARCH_CONTEXT
+    SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_tag_context
     SERIALISABLE_NAME = 'Tag Search Context'
     SERIALISABLE_VERSION = 2
     
@@ -1080,6 +1157,21 @@ class TagSearchContext( HydrusSerialisable.SerialisableBase ):
             
             self.display_service_key = display_service_key
             
+        
+    
+    def __eq__( self, other ):
+        
+        if isinstance( other, TagContext ):
+            
+            return self.__hash__() == other.__hash__()
+            
+        
+        return NotImplemented
+        
+    
+    def __hash__( self ):
+        
+        return ( self.service_key, self.include_current_tags, self.include_pending_tags, self.display_service_key ).__hash__()
         
     
     def _GetSerialisableInfo( self ):
@@ -1122,7 +1214,13 @@ class TagSearchContext( HydrusSerialisable.SerialisableBase ):
         return self.service_key == CC.COMBINED_TAG_SERVICE_KEY
         
     
-HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_TAG_SEARCH_CONTEXT ] = TagSearchContext
+    def ToString( self, name_method ):
+        
+        return name_method( self.service_key )
+        
+    
+
+HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_tag_context ] = TagContext
 
 class FavouriteSearchManager( HydrusSerialisable.SerialisableBase ):
     
@@ -1418,7 +1516,7 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_PREDICATE
     SERIALISABLE_NAME = 'File Search Predicate'
-    SERIALISABLE_VERSION = 4
+    SERIALISABLE_VERSION = 5
     
     def __init__(
         self,
@@ -1427,6 +1525,11 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
         inclusive: bool = True,
         count = None
         ):
+        
+        if predicate_type == PREDICATE_TYPE_SYSTEM_MIME and value is not None:
+            
+            value = tuple( ConvertSpecificFiletypesToSummary( value ) )
+            
         
         if isinstance( value, ( list, set ) ):
             
@@ -1683,6 +1786,24 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
             new_serialisable_info = ( predicate_type, serialisable_value, inclusive )
             
             return ( 4, new_serialisable_info )
+            
+        
+        if version == 4:
+            
+            ( predicate_type, serialisable_value, inclusive ) = old_serialisable_info
+            
+            if predicate_type == PREDICATE_TYPE_SYSTEM_MIME:
+                
+                specific_mimes = serialisable_value
+                
+                summary_mimes = ConvertSpecificFiletypesToSummary( specific_mimes )
+                
+                serialisable_value = tuple( summary_mimes )
+                
+            
+            new_serialisable_info = ( predicate_type, serialisable_value, inclusive )
+            
+            return ( 5, new_serialisable_info )
             
         
     
@@ -2263,8 +2384,15 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
                         
                         dt = datetime.datetime( year, month, day )
                         
-                        # make a timestamp (IN GMT SECS SINCE 1970) from the local meaning of 2018/02/01
-                        timestamp = int( time.mktime( dt.timetuple() ) )
+                        try:
+                            
+                            # make a timestamp (IN GMT SECS SINCE 1970) from the local meaning of 2018/02/01
+                            timestamp = int( time.mktime( dt.timetuple() ) )
+                            
+                        except:
+                            
+                            timestamp = HydrusData.GetNow()
+                            
                         
                         if operator == '<':
                             
@@ -2371,36 +2499,9 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
                 
                 if self._value is not None:
                     
-                    mimes = self._value
+                    summary_mimes = self._value
                     
-                    if set( mimes ) == set( HC.SEARCHABLE_MIMES ):
-                        
-                        mime_text = 'anything'
-                        
-                    elif set( mimes ) == set( HC.SEARCHABLE_MIMES ).intersection( set( HC.APPLICATIONS ) ):
-                        
-                        mime_text = 'application'
-                        
-                    elif set( mimes ) == set( HC.SEARCHABLE_MIMES ).intersection( set( HC.AUDIO ) ):
-                        
-                        mime_text = 'audio'
-                        
-                    elif set( mimes ) == set( HC.SEARCHABLE_MIMES ).intersection( set( HC.IMAGES ) ):
-                        
-                        mime_text = 'image'
-                        
-                    elif set( mimes ) == set( HC.SEARCHABLE_MIMES ).intersection( set( HC.ANIMATIONS ) ):
-                        
-                        mime_text = 'animation'
-                        
-                    elif set( mimes ) == set( HC.SEARCHABLE_MIMES ).intersection( set( HC.VIDEO ) ):
-                        
-                        mime_text = 'video'
-                        
-                    else:
-                        
-                        mime_text = ', '.join( [ HC.mime_string_lookup[ mime ] for mime in mimes ] )
-                        
+                    mime_text = ConvertSummaryFiletypesToString( summary_mimes )
                     
                     base += ' is ' + mime_text
                     
@@ -2429,7 +2530,7 @@ class Predicate( HydrusSerialisable.SerialisableBase ):
                             
                         else:
                             
-                            pretty_value = service.ConvertRatingToString( value )
+                            pretty_value = service.ConvertNoneableRatingToString( value )
                             
                             base += ' for {} {} {}'.format( service.GetName(), operator, pretty_value )
                             

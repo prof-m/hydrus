@@ -12,6 +12,7 @@ from hydrus.core import HydrusTags
 from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientDefaults
 from hydrus.client import ClientDuplicates
+from hydrus.client.importing.options import FileImportOptions
 
 class ClientOptions( HydrusSerialisable.SerialisableBase ):
     
@@ -36,7 +37,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         # media_show_action, media_start_paused, media_start_with_embed, preview_show_action, preview_start_paused, preview_start_with_embed, ( media_scale_up, media_scale_down, preview_scale_up, preview_scale_down, exact_zooms_only, scale_up_quality, scale_down_quality ) )
         
-        from hydrus.client.gui import ClientGUIMPV
+        from hydrus.client.gui.canvas import ClientGUIMPV
         
         if ClientGUIMPV.MPV_IS_AVAILABLE:
             
@@ -191,6 +192,9 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'always_show_iso_time' ] = False
         
+        self._dictionary[ 'booleans' ][ 'confirm_multiple_local_file_services_move' ] = True
+        self._dictionary[ 'booleans' ][ 'confirm_multiple_local_file_services_copy' ] = True
+        
         self._dictionary[ 'booleans' ][ 'use_advanced_file_deletion_dialog' ] = False
         
         self._dictionary[ 'booleans' ][ 'show_new_on_file_seed_short_summary' ] = False
@@ -239,6 +243,12 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'expand_parents_on_storage_taglists' ] = True
         self._dictionary[ 'booleans' ][ 'expand_parents_on_storage_autocomplete_taglists' ] = True
+        
+        self._dictionary[ 'booleans' ][ 'show_parent_decorators_on_storage_taglists' ] = True
+        self._dictionary[ 'booleans' ][ 'show_parent_decorators_on_storage_autocomplete_taglists' ] = True
+        
+        self._dictionary[ 'booleans' ][ 'show_sibling_decorators_on_storage_taglists' ] = True
+        self._dictionary[ 'booleans' ][ 'show_sibling_decorators_on_storage_autocomplete_taglists' ] = True
         
         self._dictionary[ 'booleans' ][ 'show_session_size_warnings' ] = True
         
@@ -324,7 +334,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'integers' ][ 'notebook_tab_alignment' ] = CC.DIRECTION_UP
         
-        self._dictionary[ 'integers' ][ 'video_buffer_size_mb' ] = 96
+        self._dictionary[ 'integers' ][ 'video_buffer_size' ] = 96 * 1024 * 1024
         
         self._dictionary[ 'integers' ][ 'related_tags_search_1_duration_ms' ] = 250
         self._dictionary[ 'integers' ][ 'related_tags_search_2_duration_ms' ] = 2000
@@ -350,9 +360,9 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'integers' ][ 'wake_delay_period' ] = 15
         
-        from hydrus.client.gui.canvas import ClientGUICanvas
+        from hydrus.client.gui.canvas import ClientGUICanvasMedia
         
-        self._dictionary[ 'integers' ][ 'media_viewer_zoom_center' ] = ClientGUICanvas.ZOOM_CENTERPOINT_MOUSE
+        self._dictionary[ 'integers' ][ 'media_viewer_zoom_center' ] = ClientGUICanvasMedia.ZOOM_CENTERPOINT_MOUSE
         
         self._dictionary[ 'integers' ][ 'last_session_save_period_minutes' ] = 5
         
@@ -360,6 +370,9 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'integers' ][ 'max_network_jobs' ] = 15
         self._dictionary[ 'integers' ][ 'max_network_jobs_per_domain' ] = 3
+        
+        self._dictionary[ 'integers' ][ 'max_connection_attempts_allowed' ] = 5
+        self._dictionary[ 'integers' ][ 'max_request_attempts_allowed_get' ] = 5
         
         from hydrus.core import HydrusImageHandling
         
@@ -473,6 +486,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'noneable_integers' ][ 'system_busy_cpu_count' ] = 1
         
+        self._dictionary[ 'noneable_integers' ][ 'animated_scanbar_hide_height' ] = 5
+        
         #
         
         self._dictionary[ 'simple_downloader_formulae' ] = HydrusSerialisable.SerialisableList()
@@ -517,6 +532,10 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'string_list' ][ 'advanced_file_deletion_reasons' ] = [ 'I do not like it.', 'It is bad quality.', 'It is not appropriate for this client.', 'Temporary delete--I want to bring it back later.' ]
         
         #
+        
+        from hydrus.client import ClientStrings
+        
+        self._dictionary[ 'last_used_string_conversion_step' ] = ClientStrings.StringConverter( [ ( ClientStrings.STRING_CONVERSION_APPEND_TEXT, 'extra text' ) ] )
         
         self._dictionary[ 'custom_default_predicates' ] = HydrusSerialisable.SerialisableList()
         
@@ -957,7 +976,17 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         with self._lock:
             
-            return self._dictionary[ 'default_file_import_options' ][ options_type ]
+            if options_type == FileImportOptions.IMPORT_TYPE_LOUD:
+                
+                key = 'loud'
+                
+            else:
+                
+                key = 'quiet'
+                
+                
+            
+            return self._dictionary[ 'default_file_import_options' ][ key ]
             
         
     
@@ -965,7 +994,25 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         with self._lock:
             
-            return self._dictionary[ 'default_local_location_context' ]
+            location_context = self._dictionary[ 'default_local_location_context' ]
+            
+            try:
+                
+                location_context.FixMissingServices( HG.client_controller.services_manager.FilterValidServiceKeys )
+                
+                if location_context.IsEmpty():
+                    
+                    from hydrus.client import ClientLocation
+                    
+                    location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
+                    
+                
+            except:
+                
+                pass
+                
+            
+            return location_context
             
         
     
@@ -1189,6 +1236,13 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
+    def GetRawSerialisable( self, name ):
+        
+        with self._lock:
+            
+            return self._dictionary[ name ]
+        
+    
     def GetRecentPredicates( self, predicate_types ):
         
         with self._lock:
@@ -1377,7 +1431,16 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         with self._lock:
             
-            self._dictionary[ 'default_file_import_options' ][ options_type ] = file_import_options
+            if options_type == FileImportOptions.IMPORT_TYPE_LOUD:
+                
+                key = 'loud'
+                
+            else:
+                
+                key = 'quiet'
+                
+            
+            self._dictionary[ 'default_file_import_options' ][ key ] = file_import_options
             
         
     
@@ -1529,6 +1592,14 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         with self._lock:
             
             self._dictionary[ 'noneable_strings' ][ name ] = value
+            
+        
+    
+    def SetRawSerialisable( self, name, value ):
+        
+        with self._lock:
+            
+            self._dictionary[ name ] = value
             
         
     

@@ -471,6 +471,7 @@ class RasterContainerVideo( RasterContainer ):
         self._renderer = None
         
         self._frames = {}
+        self._durations = []
         
         self._buffer_start_index = -1
         self._buffer_end_index = -1
@@ -485,7 +486,7 @@ class RasterContainerVideo( RasterContainer ):
         
         new_options = HG.client_controller.new_options
         
-        video_buffer_size_mb = new_options.GetInteger( 'video_buffer_size_mb' )
+        video_buffer_size = new_options.GetInteger( 'video_buffer_size' )
         
         duration = self._media.GetDuration()
         num_frames_in_video = self._media.GetNumFrames()
@@ -514,7 +515,7 @@ class RasterContainerVideo( RasterContainer ):
         
         self._average_frame_duration = duration / num_frames_in_video
         
-        frame_buffer_length = ( video_buffer_size_mb * 1024 * 1024 ) // ( x * y * 3 )
+        frame_buffer_length = video_buffer_size // ( x * y * 3 )
         
         # if we can't buffer the whole vid, then don't have a clunky massive buffer
         
@@ -739,12 +740,13 @@ class RasterContainerVideo( RasterContainer ):
         
         if self._media.GetMime() == HC.IMAGE_GIF:
             
-            return self._durations[ index ]
+            if index in self._durations:
+                
+                return self._durations[ index ]
+                
             
-        else:
-            
-            return self._average_frame_duration
-            
+        
+        return self._average_frame_duration
         
     
     def GetFrame( self, index ):

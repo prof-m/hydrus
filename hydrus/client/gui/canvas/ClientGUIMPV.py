@@ -73,12 +73,13 @@ def log_handler( loglevel, component, message ):
     
 #Not sure how well this works with hardware acceleration. This just renders to a QWidget. In my tests it seems fine, even with vdpau video out, but I'm not 100% sure it actually uses hardware acceleration.
 #Here is an example on how to render into a QOpenGLWidget instead: https://gist.github.com/cosven/b313de2acce1b7e15afda263779c0afc
-class mpvWidget( QW.QWidget ):
+class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
     
     launchMediaViewer = QC.Signal()
     
     def __init__( self, parent ):
         
+        CAC.ApplicationCommandProcessorMixin.__init__( self )
         QW.QWidget.__init__( self, parent )
         
         self._canvas_type = CC.CANVAS_PREVIEW
@@ -139,6 +140,15 @@ class mpvWidget( QW.QWidget ):
         HG.client_controller.sub( self, 'SetLogLevel', 'set_mpv_log_level' )
         
         self._my_shortcut_handler = ClientGUIShortcuts.ShortcutsHandler( self, [], catch_mouse = True )
+        
+        try:
+            
+            self.we_are_newer_api = float( GetClientAPIVersionString() ) >= 2.0
+            
+        except:
+            
+            self.we_are_newer_api = False
+            
         
     
     def _GetAudioOptionNames( self ):
@@ -421,7 +431,7 @@ class mpvWidget( QW.QWidget ):
         
         try:
             
-            self._player.seek( time_index_s, reference = 'absolute' )
+            self._player.seek( time_index_s, reference = 'absolute', precision = 'exact' )
             
         except:
             

@@ -165,9 +165,9 @@ IMPORT_FOLDER_IGNORE = 1
 IMPORT_FOLDER_MOVE = 2
 
 import_folder_string_lookup = {
-    IMPORT_FOLDER_DELETE : 'delete the file',
-    IMPORT_FOLDER_IGNORE : 'leave the file alone, do not reattempt it',
-    IMPORT_FOLDER_MOVE : 'move the file'
+    IMPORT_FOLDER_DELETE : 'delete the source file',
+    IMPORT_FOLDER_IGNORE : 'leave the source file alone, do not reattempt it',
+    IMPORT_FOLDER_MOVE : 'move the source file'
 }
 
 EXIT_SESSION_SESSION_NAME = 'exit session'
@@ -599,6 +599,7 @@ CLIENT_API_SERVICE_KEY = b'client api'
 
 TRASH_SERVICE_KEY = b'trash'
 
+COMBINED_LOCAL_MEDIA_SERVICE_KEY = b'all local media'
 COMBINED_LOCAL_FILE_SERVICE_KEY = b'all local files'
 
 COMBINED_FILE_SERVICE_KEY = b'all known files'

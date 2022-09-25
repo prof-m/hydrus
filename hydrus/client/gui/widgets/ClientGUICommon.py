@@ -56,18 +56,32 @@ def WrapInGrid( parent, rows, expand_text = False, add_stretch_at_end = True ):
             st = BetterStaticText( parent, text )
             
         
+        possible_tooltip_widget = None
+        
         if isinstance( control, QW.QLayout ):
             
             cflags = sizer_flags
+            
+            if control.count() > 0:
+                
+                possible_widget_item = control.itemAt( 0 )
+                
+                if isinstance( possible_widget_item, QW.QWidgetItem ):
+                    
+                    possible_tooltip_widget = possible_widget_item.widget()
+                    
+                
             
         else:
             
             cflags = control_flags
             
-            if control.toolTip() != '':
-                
-                st.setToolTip( control.toolTip() )
-                
+            possible_tooltip_widget = control
+            
+        
+        if possible_tooltip_widget is not None and isinstance( possible_tooltip_widget, QW.QWidget ) and possible_tooltip_widget.toolTip() != '':
+            
+            st.setToolTip( possible_tooltip_widget.toolTip() )
             
         
         QP.AddToLayout( gridbox, st, text_flags )
@@ -600,6 +614,8 @@ class ButtonWithMenuArrow( QW.QToolButton ):
         
         self._menu = QW.QMenu( self )
         
+        self._menu.installEventFilter( self )
+        
         self.setMenu( self._menu )
         
         self._menu.aboutToShow.connect( self._ClearAndPopulateMenu )
@@ -615,6 +631,20 @@ class ButtonWithMenuArrow( QW.QToolButton ):
     def _PopulateMenu( self, menu ):
         
         raise NotImplementedError()
+        
+    
+    def eventFilter( self, watched, event ):
+        
+        if event.type() == QC.QEvent.Show and watched == self._menu:
+            
+            pos = QG.QCursor.pos()
+            
+            self._menu.move( pos )
+            
+            return True
+            
+        
+        return False
         
     
 class BetterRadioBox( QP.RadioBox ):
@@ -1857,7 +1887,7 @@ class StaticBox( QW.QFrame ):
         
         self._sizer = QP.VBoxLayout()
         
-        normal_font = QW.QApplication.font()
+        normal_font = self.font()
         
         normal_font_size = normal_font.pointSize()
         normal_font_family = normal_font.family()

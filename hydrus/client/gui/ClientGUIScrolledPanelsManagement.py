@@ -21,10 +21,10 @@ from hydrus.core import HydrusText
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientLocation
+from hydrus.client.importing.options import FileImportOptions
 from hydrus.client.gui import ClientGUIDialogs
 from hydrus.client.gui import ClientGUIDialogsQuick
 from hydrus.client.gui import ClientGUIFunctions
-from hydrus.client.gui import ClientGUIImport
 from hydrus.client.gui import ClientGUIScrolledPanels
 from hydrus.client.gui import ClientGUIScrolledPanelsEdit
 from hydrus.client.gui import ClientGUIShortcuts
@@ -34,6 +34,8 @@ from hydrus.client.gui import ClientGUITagSorting
 from hydrus.client.gui import ClientGUITime
 from hydrus.client.gui import ClientGUITopLevelWindowsPanels
 from hydrus.client.gui import QtPorting as QP
+from hydrus.client.gui.importing import ClientGUIImport
+from hydrus.client.gui.importing import ClientGUIImportOptions
 from hydrus.client.gui.lists import ClientGUIListBoxes
 from hydrus.client.gui.lists import ClientGUIListConstants as CGLC
 from hydrus.client.gui.lists import ClientGUIListCtrl
@@ -211,7 +213,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 QP.AddToLayout( hbox, self._gui_colours[colourset][CC.COLOUR_THUMB_BACKGROUND_REMOTE], CC.FLAGS_CENTER_PERPENDICULAR )
                 QP.AddToLayout( hbox, self._gui_colours[colourset][CC.COLOUR_THUMB_BACKGROUND_REMOTE_SELECTED], CC.FLAGS_CENTER_PERPENDICULAR )
                 
-                rows.append( ( 'thumbnail background (local: normal/selected, remote: normal/selected): ', hbox ) )
+                rows.append( ( 'thumbnail background (local: normal/selected, not local: normal/selected): ', hbox ) )
                 
                 hbox = QP.HBoxLayout()
                 
@@ -220,7 +222,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 QP.AddToLayout( hbox, self._gui_colours[colourset][CC.COLOUR_THUMB_BORDER_REMOTE], CC.FLAGS_CENTER_PERPENDICULAR )
                 QP.AddToLayout( hbox, self._gui_colours[colourset][CC.COLOUR_THUMB_BORDER_REMOTE_SELECTED], CC.FLAGS_CENTER_PERPENDICULAR )
                 
-                rows.append( ( 'thumbnail border (local: normal/selected, remote: normal/selected): ', hbox ) )
+                rows.append( ( 'thumbnail border (local: normal/selected, not local: normal/selected): ', hbox ) )
                 
                 rows.append( ( 'thumbnail grid background: ', self._gui_colours[ colourset ][ CC.COLOUR_THUMBGRID_BACKGROUND ] ) )
                 rows.append( ( 'autocomplete background: ', self._gui_colours[ colourset ][ CC.COLOUR_AUTOCOMPLETE_BACKGROUND ] ) )
@@ -304,8 +306,14 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 max_network_jobs_per_domain_max = 5
                 
             
+            self._max_connection_attempts_allowed = ClientGUICommon.BetterSpinBox( general, min = 1, max = 10 )
+            self._max_connection_attempts_allowed.setToolTip( 'This refers to timeouts when actually making the initial connection.' )
+            
+            self._max_request_attempts_allowed_get = ClientGUICommon.BetterSpinBox( general, min = 1, max = 10 )
+            self._max_request_attempts_allowed_get.setToolTip( 'This refers to timeouts when waiting for a response to our GET requests, whether that is the start or an interruption part way through.' )
+            
             self._network_timeout = ClientGUICommon.BetterSpinBox( general, min = network_timeout_min, max = network_timeout_max )
-            self._network_timeout.setToolTip( 'If a network connection cannot be made in this duration or, if once started, it experiences uninterrupted inactivity for six times this duration, it will be abandoned.' )
+            self._network_timeout.setToolTip( 'If a network connection cannot be made in this duration or, once started, it experiences inactivity for six times this duration, it will be considered dead and retried or abandoned.' )
             
             self._connection_error_wait_time = ClientGUICommon.BetterSpinBox( general, min = error_wait_time_min, max = error_wait_time_max )
             self._connection_error_wait_time.setToolTip( 'If a network connection times out as above, it will wait increasing multiples of this base time before retrying.' )
@@ -334,6 +342,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._https_proxy.SetValue( self._new_options.GetNoneableString( 'https_proxy' ) )
             self._no_proxy.SetValue( self._new_options.GetNoneableString( 'no_proxy' ) )
             
+            self._max_connection_attempts_allowed.setValue( self._new_options.GetInteger( 'max_connection_attempts_allowed' ) )
+            self._max_request_attempts_allowed_get.setValue( self._new_options.GetInteger( 'max_request_attempts_allowed_get' ) )
             self._network_timeout.setValue( self._new_options.GetInteger( 'network_timeout' ) )
             self._connection_error_wait_time.setValue( self._new_options.GetInteger( 'connection_error_wait_time' ) )
             self._serverside_bandwidth_wait_time.setValue( self._new_options.GetInteger( 'serverside_bandwidth_wait_time' ) )
@@ -362,6 +372,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
+            rows.append( ( 'max connection attempts allowed per request: ', self._max_connection_attempts_allowed ) )
+            rows.append( ( 'max retries allowed per request: ', self._max_request_attempts_allowed_get ) )
             rows.append( ( 'network timeout (seconds): ', self._network_timeout ) )
             rows.append( ( 'connection error retry wait (seconds): ', self._connection_error_wait_time ) )
             rows.append( ( 'serverside bandwidth retry wait (seconds): ', self._serverside_bandwidth_wait_time ) )
@@ -425,7 +437,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetNoneableString( 'https_proxy', self._https_proxy.GetValue() )
             self._new_options.SetNoneableString( 'no_proxy', self._no_proxy.GetValue() )
             
-            self._new_options.SetInteger( 'network_timeout', self._network_timeout.value() )
+            self._new_options.SetInteger( 'max_connection_attempts_allowed', self._max_connection_attempts_allowed.value() )
+            self._new_options.SetInteger( 'max_request_attempts_allowed_get', self._max_request_attempts_allowed_get.value() )
             self._new_options.SetInteger( 'connection_error_wait_time', self._connection_error_wait_time.value() )
             self._new_options.SetInteger( 'serverside_bandwidth_wait_time', self._serverside_bandwidth_wait_time.value() )
             self._new_options.SetInteger( 'max_network_jobs', self._max_network_jobs.value() )
@@ -672,7 +685,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._duplicate_comparison_score_nicer_ratio.setToolTip( 'For instance, 16:9 vs 640:357.')
             
-            self._duplicate_filter_max_batch_size = ClientGUICommon.BetterSpinBox( self, min = 10, max = 1024 )
+            self._duplicate_filter_max_batch_size = ClientGUICommon.BetterSpinBox( self, min = 5, max = 1024 )
             
             #
             
@@ -864,9 +877,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                             
                             self._mime_launch_listctrl.DeleteDatas( [ ( mime, launch_path ) ] )
                             
-                            edited_data = [ ( mime, new_launch_path ) ]
+                            edited_data = ( mime, new_launch_path )
                             
-                            self._mime_launch_listctrl.AddDatas( edited_data )
+                            self._mime_launch_listctrl.AddDatas( [ edited_data ] )
                             
                             edited_datas.append( edited_data )
                             
@@ -914,7 +927,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             location_context = self._new_options.GetDefaultLocalLocationContext()
             
             self._default_local_location_context = ClientGUILocation.LocationSearchContextButton( self, location_context )
-            self._default_local_location_context.setToolTip( 'This initialised into a bunch of dialogs across the program. You can probably leave it alone forever, but if you delete or move away from \'my files\' as your main place to do work, please update it here.' )
+            self._default_local_location_context.setToolTip( 'This initialised into a bunch of dialogs across the program as a fallback. You can probably leave it alone forever, but if you delete or move away from \'my files\' as your main place to do work, please update it here.' )
             
             self._default_local_location_context.SetOnlyImportableDomainsAllowed( True )
             
@@ -925,6 +938,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._confirm_trash = QW.QCheckBox( self )
             self._confirm_archive = QW.QCheckBox( self )
+            
+            self._confirm_multiple_local_file_services_copy = QW.QCheckBox( self )
+            self._confirm_multiple_local_file_services_move = QW.QCheckBox( self )
             
             self._remove_filtered_files = QW.QCheckBox( self )
             self._remove_trashed_files = QW.QCheckBox( self )
@@ -969,6 +985,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._confirm_archive.setChecked( HC.options[ 'confirm_archive' ] )
             
+            self._confirm_multiple_local_file_services_copy.setChecked( self._new_options.GetBoolean( 'confirm_multiple_local_file_services_copy' ) )
+            self._confirm_multiple_local_file_services_move.setChecked( self._new_options.GetBoolean( 'confirm_multiple_local_file_services_move' ) )
+            
             self._remove_filtered_files.setChecked( HC.options[ 'remove_filtered_files' ] )
             self._remove_trashed_files.setChecked( HC.options[ 'remove_trashed_files' ] )
             self._trash_max_age.SetValue( HC.options[ 'trash_max_age' ] )
@@ -997,10 +1016,12 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'Default local file search location: ', self._default_local_location_context ) )
-            rows.append( ( 'When copying a file hashes, prefix with booru-friendly hash type: ', self._prefix_hash_when_copying ) )
+            rows.append( ( 'Fallback local file search location: ', self._default_local_location_context ) )
+            rows.append( ( 'When copying file hashes, prefix with booru-friendly hash type: ', self._prefix_hash_when_copying ) )
             rows.append( ( 'Confirm sending files to trash: ', self._confirm_trash ) )
             rows.append( ( 'Confirm sending more than one file to archive or inbox: ', self._confirm_archive ) )
+            rows.append( ( 'Confirm when copying files across local file services: ', self._confirm_multiple_local_file_services_copy ) )
+            rows.append( ( 'Confirm when moving files across local file services: ', self._confirm_multiple_local_file_services_move ) )
             rows.append( ( 'When deleting files or folders, send them to the OS\'s recycle bin: ', self._delete_to_recycle_bin ) )
             rows.append( ( 'Remove files from view when they are filtered: ', self._remove_filtered_files ) )
             rows.append( ( 'Remove files from view when they are sent to the trash: ', self._remove_trashed_files ) )
@@ -1092,6 +1113,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             HC.options[ 'remove_trashed_files' ] = self._remove_trashed_files.isChecked()
             HC.options[ 'trash_max_age' ] = self._trash_max_age.GetValue()
             HC.options[ 'trash_max_size' ] = self._trash_max_size.GetValue()
+            
+            self._new_options.SetBoolean( 'confirm_multiple_local_file_services_copy', self._confirm_multiple_local_file_services_copy.isChecked() )
+            self._new_options.SetBoolean( 'confirm_multiple_local_file_services_move', self._confirm_multiple_local_file_services_move.isChecked() )
             
             self._new_options.SetBoolean( 'delete_lock_for_archived_files', self._delete_lock_for_archived_files.isChecked() )
             
@@ -1205,10 +1229,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._human_bytes_sig_figs.setToolTip( 'When the program presents a bytes size above 1KB, like 21.3KB or 4.11GB, how many total digits do we want in the number? 2 or 3 is best.')
             
             self._discord_dnd_fix = QW.QCheckBox( self._misc_panel )
-            self._discord_dnd_fix.setToolTip( 'This makes small file drag-and-drops a little laggier in exchange for discord support.' )
+            self._discord_dnd_fix.setToolTip( 'This makes small file drag-and-drops a little laggier in exchange for Discord support. It also lets you set custom filenames for drag and drop exports.' )
             
             self._discord_dnd_filename_pattern = QW.QLineEdit( self._misc_panel )
-            self._discord_dnd_filename_pattern.setToolTip( 'When discord DnD is enabled, this will use this export phrase to rename your files. If no filename can be generated, hash will be used instead.' )
+            self._discord_dnd_filename_pattern.setToolTip( 'When the above is enabled, this export phrase will rename your files. If no filename can be generated, hash will be used instead.' )
             
             self._secret_discord_dnd_fix = QW.QCheckBox( self._misc_panel )
             self._secret_discord_dnd_fix.setToolTip( 'This saves the lag but is potentially dangerous, as it (may) treat the from-db-files-drag as a move rather than a copy and hence only works when the drop destination will not consume the files. It requires an additional secret Alternate key to unlock.' )
@@ -1246,6 +1270,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._discord_dnd_filename_pattern.setText( self._new_options.GetString( 'discord_dnd_filename_pattern' ) )
             
+            self._export_pattern_button = ClientGUICommon.ExportPatternButton( self )
+            
             self._secret_discord_dnd_fix.setChecked( self._new_options.GetBoolean( 'secret_discord_dnd_fix' ) )
             
             self._do_macos_debug_dialog_menus.setChecked( self._new_options.GetBoolean( 'do_macos_debug_dialog_menus' ) )
@@ -1276,9 +1302,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows = []
             
             rows.append( ( 'Prefer ISO time ("2018-03-01 12:40:23") to "5 days ago": ', self._always_show_iso_time ) )
-            rows.append( ( 'BUGFIX: Discord file drag-and-drop fix (works for <=25, <200MB file DnDs): ', self._discord_dnd_fix ) )
-            rows.append( ( 'Discord drag-and-drop filename pattern: ', self._discord_dnd_filename_pattern ) )
-            rows.append( ( 'Export pattern shortcuts: ', ClientGUICommon.ExportPatternButton( self ) ) )
+            rows.append( ( 'Copy temp files for drag-and-drop (works for <=25, <200MB file DnDs--fixes Discord!): ', self._discord_dnd_fix ) )
+            rows.append( ( 'Drag-and-drop export filename pattern: ', self._discord_dnd_filename_pattern ) )
+            rows.append( ( '', self._export_pattern_button ) )
             rows.append( ( 'EXPERIMENTAL: Bytes strings >1KB pseudo significant figures: ', self._human_bytes_sig_figs ) )
             rows.append( ( 'EXPERIMENTAL BUGFIX: Secret discord file drag-and-drop fix: ', self._secret_discord_dnd_fix ) )
             rows.append( ( 'BUGFIX: If on macOS, show dialog menus in a debug menu: ', self._do_macos_debug_dialog_menus ) )
@@ -1304,6 +1330,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self.setLayout( vbox )
             
+            self._discord_dnd_fix.clicked.connect( self._UpdateDnDFilenameEnabled )
+            
+            self._UpdateDnDFilenameEnabled()
+            
         
         def _GetPrettyFrameLocationInfo( self, listctrl_list ):
             
@@ -1315,6 +1345,14 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 
             
             return pretty_listctrl_list
+            
+        
+        def _UpdateDnDFilenameEnabled( self ):
+            
+            enabled = self._discord_dnd_fix.isChecked()
+            
+            self._discord_dnd_filename_pattern.setEnabled( enabled )
+            self._export_pattern_button.setEnabled( enabled )
             
         
         def EditFrameLocations( self ):
@@ -1454,11 +1492,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._hide_preview = QW.QCheckBox( self._controls_panel )
             
-            self._focus_preview_on_ctrl_click = QW.QCheckBox( self._controls_panel )
-            self._focus_preview_on_ctrl_click_only_static = QW.QCheckBox( self._controls_panel )
-            self._focus_preview_on_shift_click = QW.QCheckBox( self._controls_panel )
-            self._focus_preview_on_shift_click_only_static = QW.QCheckBox( self._controls_panel )
-            
             #
             
             gui_session_names = HG.client_controller.Read( 'serialisable_names', HydrusSerialisable.SERIALISABLE_TYPE_GUI_SESSION_CONTAINER )
@@ -1513,11 +1546,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._set_search_focus_on_page_change.setChecked( self._new_options.GetBoolean( 'set_search_focus_on_page_change' ) )
             
             self._hide_preview.setChecked( HC.options[ 'hide_preview' ] )
-            
-            self._focus_preview_on_ctrl_click.setChecked( self._new_options.GetBoolean( 'focus_preview_on_ctrl_click' ) )
-            self._focus_preview_on_ctrl_click_only_static.setChecked( self._new_options.GetBoolean( 'focus_preview_on_ctrl_click_only_static' ) )
-            self._focus_preview_on_shift_click.setChecked( self._new_options.GetBoolean( 'focus_preview_on_shift_click' ) )
-            self._focus_preview_on_shift_click_only_static.setChecked( self._new_options.GetBoolean( 'focus_preview_on_shift_click_only_static' ) )
             
             #
             
@@ -1575,11 +1603,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows.append( ( 'When switching to a page, focus its text input field (if any): ', self._set_search_focus_on_page_change ) )
             rows.append( ( 'Hide the bottom-left preview window: ', self._hide_preview ) )
-            rows.append( ( 'Focus thumbnails in the preview window on ctrl-click: ', self._focus_preview_on_ctrl_click ) )
-            rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_ctrl_click_only_static ) )
-            rows.append( ( 'Focus thumbnails in the preview window on shift-click: ', self._focus_preview_on_shift_click ) )
-            rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_shift_click_only_static ) )
-            
             gridbox = ClientGUICommon.WrapInGrid( self._controls_panel, rows )
             
             self._controls_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
@@ -1592,28 +1615,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             vbox.addStretch( 1 )
             
             self.setLayout( vbox )
-            
-            self._UpdatePreviewCheckboxes()
-            
-            self._hide_preview.clicked.connect( self._UpdatePreviewCheckboxes )
-            self._focus_preview_on_ctrl_click.clicked.connect( self._UpdatePreviewCheckboxes )
-            self._focus_preview_on_shift_click.clicked.connect( self._UpdatePreviewCheckboxes )
-            
-        
-        def _UpdatePreviewCheckboxes( self ):
-            
-            preview_ok = not self._hide_preview.isChecked()
-            
-            self._focus_preview_on_ctrl_click.setEnabled( preview_ok )
-            self._focus_preview_on_ctrl_click_only_static.setEnabled( preview_ok )
-            self._focus_preview_on_shift_click.setEnabled( preview_ok )
-            self._focus_preview_on_shift_click_only_static.setEnabled( preview_ok )
-            
-            if preview_ok:
-                
-                self._focus_preview_on_ctrl_click_only_static.setEnabled( self._focus_preview_on_ctrl_click.isChecked() )
-                self._focus_preview_on_shift_click_only_static.setEnabled( self._focus_preview_on_shift_click.isChecked() )
-                
             
         
         def UpdateOptions( self ):
@@ -1649,11 +1650,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             HC.options[ 'hide_preview' ] = self._hide_preview.isChecked()
             
-            self._new_options.SetBoolean( 'focus_preview_on_ctrl_click', self._focus_preview_on_ctrl_click.isChecked() )
-            self._new_options.SetBoolean( 'focus_preview_on_ctrl_click_only_static', self._focus_preview_on_ctrl_click_only_static.isChecked() )
-            self._new_options.SetBoolean( 'focus_preview_on_shift_click', self._focus_preview_on_shift_click.isChecked() )
-            self._new_options.SetBoolean( 'focus_preview_on_shift_click_only_static', self._focus_preview_on_shift_click_only_static.isChecked() )
-            
         
     
     class _ImportingPanel( QW.QWidget ):
@@ -1670,20 +1666,27 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             show_downloader_options = True
             
-            quiet_file_import_options = self._new_options.GetDefaultFileImportOptions( 'quiet' )
+            quiet_file_import_options = self._new_options.GetDefaultFileImportOptions( FileImportOptions.IMPORT_TYPE_QUIET )
             
-            self._quiet_fios = ClientGUIImport.FileImportOptionsButton( default_fios, quiet_file_import_options, show_downloader_options )
+            show_downloader_options = True
+            allow_default_selection = False
             
-            loud_file_import_options = self._new_options.GetDefaultFileImportOptions( 'loud' )
+            self._quiet_fios = ClientGUIImportOptions.ImportOptionsButton( self, show_downloader_options, allow_default_selection )
             
-            self._loud_fios = ClientGUIImport.FileImportOptionsButton( default_fios, loud_file_import_options, show_downloader_options )
+            self._quiet_fios.SetFileImportOptions( quiet_file_import_options )
+            
+            loud_file_import_options = self._new_options.GetDefaultFileImportOptions( FileImportOptions.IMPORT_TYPE_LOUD )
+            
+            self._loud_fios = ClientGUIImportOptions.ImportOptionsButton( self, show_downloader_options, allow_default_selection )
+            
+            self._loud_fios.SetFileImportOptions( loud_file_import_options )
             
             #
             
             rows = []
             
-            rows.append( ( 'For \'quiet\' import contexts like import folders and subscriptions:', self._quiet_fios ) )
-            rows.append( ( 'For import contexts that work on pages:', self._loud_fios ) )
+            rows.append( ( 'For \'quiet\' import contexts: import folders, subscriptions, Client API:', self._quiet_fios ) )
+            rows.append( ( 'For \'loud\' import contexts: downloader pages:', self._loud_fios ) )
             
             gridbox = ClientGUICommon.WrapInGrid( default_fios, rows )
             
@@ -1701,8 +1704,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
         
         def UpdateOptions( self ):
             
-            self._new_options.SetDefaultFileImportOptions( 'quiet', self._quiet_fios.GetValue() )
-            self._new_options.SetDefaultFileImportOptions( 'loud', self._loud_fios.GetValue() )
+            self._new_options.SetDefaultFileImportOptions( FileImportOptions.IMPORT_TYPE_QUIET, self._quiet_fios.GetFileImportOptions() )
+            self._new_options.SetDefaultFileImportOptions( FileImportOptions.IMPORT_TYPE_LOUD, self._loud_fios.GetFileImportOptions() )
             
         
     
@@ -1982,13 +1985,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._anchor_and_hide_canvas_drags = QW.QCheckBox( self )
             self._touchscreen_canvas_drags_unanchor = QW.QCheckBox( self )
             
-            from hydrus.client.gui.canvas import ClientGUICanvas
+            from hydrus.client.gui.canvas import ClientGUICanvasMedia
             
             self._media_viewer_zoom_center = ClientGUICommon.BetterChoice()
             
-            for zoom_centerpoint_type in ClientGUICanvas.ZOOM_CENTERPOINT_TYPES:
+            for zoom_centerpoint_type in ClientGUICanvasMedia.ZOOM_CENTERPOINT_TYPES:
                 
-                self._media_viewer_zoom_center.addItem( ClientGUICanvas.zoom_centerpoints_str_lookup[ zoom_centerpoint_type ], zoom_centerpoint_type )
+                self._media_viewer_zoom_center.addItem( ClientGUICanvasMedia.zoom_centerpoints_str_lookup[ zoom_centerpoint_type ], zoom_centerpoint_type )
                 
             
             tt = 'When you zoom in or out, there is a centerpoint about which the image zooms. This point \'stays still\' while the image expands or shrinks around it. Different centerpoints give different feels, especially if you drag images around a bit.'
@@ -2001,6 +2004,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._mpv_conf_path = QP.FilePickerCtrl( self, starting_directory = os.path.join( HC.STATIC_DIR, 'mpv-conf' ) )
             
             self._animated_scanbar_height = ClientGUICommon.BetterSpinBox( self, min=1, max=255 )
+            self._animated_scanbar_hide_height = ClientGUICommon.NoneableSpinCtrl( self, none_phrase = 'no, hide it', min = 1, max = 255, unit = 'px' )
             self._animated_scanbar_nub_width = ClientGUICommon.BetterSpinBox( self, min=1, max=63 )
             
             self._media_viewer_panel = ClientGUICommon.StaticBox( self, 'media viewer filetype handling' )
@@ -2028,6 +2032,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._animated_scanbar_height.setValue( self._new_options.GetInteger( 'animated_scanbar_height' ) )
             self._animated_scanbar_nub_width.setValue( self._new_options.GetInteger( 'animated_scanbar_nub_width' ) )
             
+            self._animated_scanbar_hide_height.SetValue( 5 )
+            self._animated_scanbar_hide_height.SetValue( self._new_options.GetNoneableInteger( 'animated_scanbar_hide_height' ) )
+            
             self._media_viewer_zoom_center.SetValue( self._new_options.GetInteger( 'media_viewer_zoom_center' ) )
             
             media_zooms = self._new_options.GetMediaZooms()
@@ -2049,15 +2056,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             vbox = QP.VBoxLayout()
             
-            text = 'Please be warned that hydrus does not currently zoom in very efficiently at high zooms!'
-            text += os.linesep
-            text += 'Just be careful at >400%, particularly for already large files--it can lag out and eat a chunk of memory.'
-            
-            st = ClientGUICommon.BetterStaticText( self, text )
-            st.setObjectName( 'HydrusWarning' )
-            
-            QP.AddToLayout( vbox, st )
-            
             rows = []
             
             rows.append( ( 'Start animations this % in:', self._animation_start_position ) )
@@ -2067,6 +2065,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Media zooms:', self._media_zooms ) )
             rows.append( ( 'Set a new mpv.conf on dialog ok?:', self._mpv_conf_path ) )
             rows.append( ( 'Animation scanbar height:', self._animated_scanbar_height ) )
+            rows.append( ( 'Animation scanbar height when mouse away:', self._animated_scanbar_hide_height ) )
             rows.append( ( 'Animation scanbar nub width:', self._animated_scanbar_nub_width ) )
             rows.append( ( 'Time until mouse cursor autohides on media viewer:', self._media_viewer_cursor_autohide_time_ms ) )
             rows.append( ( 'RECOMMEND WINDOWS ONLY: Hide and anchor mouse cursor on media viewer drags:', self._anchor_and_hide_canvas_drags ) )
@@ -2315,6 +2314,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'animated_scanbar_height', self._animated_scanbar_height.value() )
             self._new_options.SetInteger( 'animated_scanbar_nub_width', self._animated_scanbar_nub_width.value() )
             
+            self._new_options.SetNoneableInteger( 'animated_scanbar_hide_height', self._animated_scanbar_hide_height.GetValue() )
+            
             self._new_options.SetInteger( 'media_viewer_zoom_center', self._media_viewer_zoom_center.GetValue() )
             
             try:
@@ -2534,6 +2535,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
+            misc_panel = ClientGUICommon.StaticBox( self, 'misc' )
+            
+            self._forced_search_limit = ClientGUICommon.NoneableSpinCtrl( misc_panel, '', min = 1, max = 100000 )
+            self._forced_search_limit.setToolTip( 'This is overruled if you set an explicit system:limit larger than it.' )
+            
+            #
+            
             self._default_search_synchronised.setChecked( self._new_options.GetBoolean( 'default_search_synchronised' ) )
             
             self._autocomplete_float_main_gui.setChecked( self._new_options.GetBoolean( 'autocomplete_float_main_gui' ) )
@@ -2545,6 +2553,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._always_show_system_everything.setChecked( self._new_options.GetBoolean( 'always_show_system_everything' ) )
             
             self._filter_inbox_and_archive_predicates.setChecked( self._new_options.GetBoolean( 'filter_inbox_and_archive_predicates' ) )
+            
+            self._forced_search_limit.SetValue( self._new_options.GetNoneableInteger( 'forced_search_limit' ) )
             
             #
             
@@ -2574,7 +2584,21 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
+            rows = []
+            
+            rows.append( ( 'Forced system:limit for all searches: ', self._forced_search_limit ) )
+            
+            gridbox = ClientGUICommon.WrapInGrid( misc_panel, rows )
+            
+            misc_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            
+            #
+            
+            #
+            
             QP.AddToLayout( vbox, self._autocomplete_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, misc_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            
             vbox.addStretch( 1 )
             
             self.setLayout( vbox )
@@ -2592,6 +2616,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._new_options.SetBoolean( 'always_show_system_everything', self._always_show_system_everything.isChecked() )
             self._new_options.SetBoolean( 'filter_inbox_and_archive_predicates', self._filter_inbox_and_archive_predicates.isChecked() )
+            
+            self._new_options.SetNoneableInteger( 'forced_search_limit', self._forced_search_limit.GetValue() )
             
         
     
@@ -2741,63 +2767,107 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._thumbnail_cache_size = ClientGUIControls.BytesControl( thumbnail_cache_panel )
             self._thumbnail_cache_size.valueChanged.connect( self.EventThumbnailsUpdate )
             
+            tt = 'When thumbnails are loaded from disk, their bitmaps are saved for a while in memory so near-future access is super fast. If the total store of thumbnails exceeds this size setting, the least-recent-to-be-accessed will be discarded until the total size is less than it again.'
+            tt += os.linesep * 2
+            tt += 'Most thumbnails are RGB, which means their size here is roughly [width x height x 3].'
+            
+            self._thumbnail_cache_size.setToolTip( tt )
+            
             self._estimated_number_thumbnails = QW.QLabel( '', thumbnail_cache_panel )
             
             self._thumbnail_cache_timeout = ClientGUITime.TimeDeltaButton( thumbnail_cache_panel, min = 300, days = True, hours = True, minutes = True )
-            self._thumbnail_cache_timeout.setToolTip( 'The amount of time after which a thumbnail in the cache will naturally be removed, if it is not shunted out due to a new member exceeding the size limit.' )
+            
+            tt = 'The amount of not-accessed time after which a thumbnail will naturally be removed from the cache.'
+            
+            self._thumbnail_cache_timeout.setToolTip( tt )
             
             image_cache_panel = ClientGUICommon.StaticBox( self, 'image cache' )
             
             self._image_cache_size = ClientGUIControls.BytesControl( image_cache_panel )
             self._image_cache_size.valueChanged.connect( self.EventImageCacheUpdate )
             
+            tt = 'When images are loaded from disk, their 100% zoom renders are saved for a while in memory so near-future access is super fast. If the total store of images exceeds this size setting, the least-recent-to-be-accessed will be discarded until the total size is less than it again.'
+            tt += os.linesep * 2
+            tt += 'Most images are RGB, which means their size here is roughly [width x height x 3], with those dimensions being at 100% zoom.'
+            
+            self._image_cache_size.setToolTip( tt )
+            
             self._estimated_number_fullscreens = QW.QLabel( '', image_cache_panel )
             
             self._image_cache_timeout = ClientGUITime.TimeDeltaButton( image_cache_panel, min = 300, days = True, hours = True, minutes = True )
-            self._image_cache_timeout.setToolTip( 'The amount of time after which a rendered image in the cache will naturally be removed, if it is not shunted out due to a new member exceeding the size limit.' )
+            
+            tt = 'The amount of not-accessed time after which a rendered image will naturally be removed from the cache.'
+            
+            self._image_cache_timeout.setToolTip( tt )
+            
+            self._image_cache_storage_limit_percentage = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 20, max = 50 )
+            
+            tt = 'This option sets how much of the cache can go towards one image. If an image\'s total size (usually width x height x 3) is too large compared to the cache, it should not be cached or it will just flush everything else out in one stroke.'
+            
+            self._image_cache_storage_limit_percentage.setToolTip( tt )
+            
+            self._image_cache_storage_limit_percentage_st = ClientGUICommon.BetterStaticText( image_cache_panel, label = '' )
+            
+            tt = 'This represents the typical size we are talking about at this percentage level. Could be wider or taller, but overall should have the same number of pixels. Anything smaller will be saved in the cache after load, anything larger will be loaded on demand and forgotten as soon as you navigate away. If you want to have persistent fast access to images bigger than this, increase the total image cache size and/or the max % value permitted.'
+            
+            self._image_cache_storage_limit_percentage_st.setToolTip( tt )
+            
+            self._image_cache_prefetch_limit_percentage = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 5, max = 20 )
+            
+            tt = 'If you are browsing many big files, this option stops the prefetcher from overloading your cache by loading up seven or more gigantic images that each competitively flush each other out and need to be re-rendered over and over.'
+            
+            self._image_cache_prefetch_limit_percentage.setToolTip( tt )
+            
+            self._image_cache_prefetch_limit_percentage_st = ClientGUICommon.BetterStaticText( image_cache_panel, label = '' )
+            
+            tt = 'This represents the typical size we are talking about at this percentage level. Could be wider or taller, but overall should have the same number of pixels. Anything smaller will be pre-fetched, anything larger will be loaded on demand. If you want images bigger than this to load fast as you browse, increase the total image cache size and/or the max % value permitted.'
+            
+            self._image_cache_prefetch_limit_percentage_st.setToolTip( tt )
             
             self._media_viewer_prefetch_delay_base_ms = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 2000 )
+            
             tt = 'How long to wait, after the current image is rendered, to start rendering neighbours. Does not matter so much any more, but if you have CPU lag, you can try boosting it a bit.'
+            
             self._media_viewer_prefetch_delay_base_ms.setToolTip( tt )
             
             self._media_viewer_prefetch_num_previous = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 5 )
             self._media_viewer_prefetch_num_next = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 5 )
-            
-            self._image_cache_storage_limit_percentage = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 20, max = 50 )
-            
-            self._image_cache_storage_limit_percentage_st = ClientGUICommon.BetterStaticText( image_cache_panel, label = '' )
-            
-            self._image_cache_prefetch_limit_percentage = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 5, max = 20 )
-            
-            self._image_cache_prefetch_limit_percentage_st = ClientGUICommon.BetterStaticText( image_cache_panel, label = '' )
             
             image_tile_cache_panel = ClientGUICommon.StaticBox( self, 'image tile cache' )
             
             self._image_tile_cache_size = ClientGUIControls.BytesControl( image_tile_cache_panel )
             self._image_tile_cache_size.valueChanged.connect( self.EventImageTilesUpdate )
             
+            tt = 'Zooming and displaying an image is expensive. When an image is rendered to screen at a particular zoom, the client breaks the virtual canvas into tiles and only scales and draws the image onto the viewable ones. As you pan around, new tiles may be needed and old ones discarded. It is all cached so you can pan and zoom over the same areas quickly.'
+            
+            self._image_tile_cache_size.setToolTip( tt )
+            
             self._estimated_number_image_tiles = QW.QLabel( '', image_tile_cache_panel )
             
+            tt = 'You do not need to go crazy here unless you do a huge amount of zooming and really need multiple zoom levels cached for 10+ files you are comparing with each other.'
+            
+            self._estimated_number_image_tiles.setToolTip( tt )
+            
             self._image_tile_cache_timeout = ClientGUITime.TimeDeltaButton( image_tile_cache_panel, min = 300, hours = True, minutes = True )
-            self._image_tile_cache_timeout.setToolTip( 'The amount of time after which a rendered image tile in the cache will naturally be removed, if it is not shunted out due to a new member exceeding the size limit.' )
+            
+            tt = 'The amount of not-accessed time after which a rendered tile will naturally be removed from the cache.'
+            
+            self._image_tile_cache_timeout.setToolTip( tt )
             
             self._ideal_tile_dimension = ClientGUICommon.BetterSpinBox( image_tile_cache_panel, min = 256, max = 4096 )
-            self._ideal_tile_dimension.setToolTip( 'This is the square size the system will aim for. Smaller tiles are more memory efficient but prone to warping and other artifacts. Extreme values may waste CPU.' )
+            
+            tt = 'This is the screen-visible square size the system will aim for. Smaller tiles are more memory efficient but prone to warping and other artifacts. Extreme values may waste CPU.'
+            
+            self._ideal_tile_dimension.setToolTip( tt )
             
             #
             
             buffer_panel = ClientGUICommon.StaticBox( self, 'video buffer' )
             
-            self._video_buffer_size_mb = ClientGUICommon.BetterSpinBox( buffer_panel, min=48, max= 16 * 1024 )
-            self._video_buffer_size_mb.valueChanged.connect( self.EventVideoBufferUpdate )
+            self._video_buffer_size = ClientGUIControls.BytesControl( buffer_panel )
+            self._video_buffer_size.valueChanged.connect( self.EventVideoBufferUpdate )
             
             self._estimated_number_video_frames = QW.QLabel( '', buffer_panel )
-            
-            #
-            
-            misc_panel = ClientGUICommon.StaticBox( self, 'misc' )
-            
-            self._forced_search_limit = ClientGUICommon.NoneableSpinCtrl( misc_panel, '', min = 1, max = 100000 )
             
             #
             
@@ -2811,9 +2881,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._ideal_tile_dimension.setValue( self._new_options.GetInteger( 'ideal_tile_dimension' ) )
             
-            self._video_buffer_size_mb.setValue( self._new_options.GetInteger( 'video_buffer_size_mb' ) )
-            
-            self._forced_search_limit.SetValue( self._new_options.GetNoneableInteger( 'forced_search_limit' ) )
+            self._video_buffer_size.SetValue( self._new_options.GetInteger( 'video_buffer_size' ) )
             
             self._media_viewer_prefetch_delay_base_ms.setValue( self._new_options.GetInteger( 'media_viewer_prefetch_delay_base_ms' ) )
             self._media_viewer_prefetch_num_previous.setValue( self._new_options.GetInteger( 'media_viewer_prefetch_num_previous' ) )
@@ -2836,8 +2904,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             thumbnails_sizer = QP.HBoxLayout()
             
-            QP.AddToLayout( thumbnails_sizer, self._thumbnail_cache_size, CC.FLAGS_CENTER_PERPENDICULAR )
-            QP.AddToLayout( thumbnails_sizer, self._estimated_number_thumbnails, CC.FLAGS_CENTER_PERPENDICULAR )
+            QP.AddToLayout( thumbnails_sizer, self._thumbnail_cache_size, CC.FLAGS_CENTER )
+            QP.AddToLayout( thumbnails_sizer, self._estimated_number_thumbnails, CC.FLAGS_EXPAND_BOTH_WAYS )
             
             fullscreens_sizer = QP.HBoxLayout()
             
@@ -2851,17 +2919,17 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             image_cache_storage_sizer = QP.HBoxLayout()
             
-            QP.AddToLayout( image_cache_storage_sizer, self._image_cache_storage_limit_percentage, CC.FLAGS_CENTER_PERPENDICULAR )
-            QP.AddToLayout( image_cache_storage_sizer, self._image_cache_storage_limit_percentage_st, CC.FLAGS_CENTER_PERPENDICULAR )
+            QP.AddToLayout( image_cache_storage_sizer, self._image_cache_storage_limit_percentage, CC.FLAGS_CENTER )
+            QP.AddToLayout( image_cache_storage_sizer, self._image_cache_storage_limit_percentage_st, CC.FLAGS_EXPAND_BOTH_WAYS )
             
             image_cache_prefetch_sizer = QP.HBoxLayout()
             
-            QP.AddToLayout( image_cache_prefetch_sizer, self._image_cache_prefetch_limit_percentage, CC.FLAGS_CENTER_PERPENDICULAR )
-            QP.AddToLayout( image_cache_prefetch_sizer, self._image_cache_prefetch_limit_percentage_st, CC.FLAGS_CENTER_PERPENDICULAR )
+            QP.AddToLayout( image_cache_prefetch_sizer, self._image_cache_prefetch_limit_percentage, CC.FLAGS_CENTER )
+            QP.AddToLayout( image_cache_prefetch_sizer, self._image_cache_prefetch_limit_percentage_st, CC.FLAGS_EXPAND_BOTH_WAYS )
             
             video_buffer_sizer = QP.HBoxLayout()
             
-            QP.AddToLayout( video_buffer_sizer, self._video_buffer_size_mb, CC.FLAGS_CENTER_PERPENDICULAR )
+            QP.AddToLayout( video_buffer_sizer, self._video_buffer_size, CC.FLAGS_CENTER_PERPENDICULAR )
             QP.AddToLayout( video_buffer_sizer, self._estimated_number_video_frames, CC.FLAGS_CENTER_PERPENDICULAR )
             
             #
@@ -2874,7 +2942,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'MB memory reserved for thumbnail cache:', thumbnails_sizer ) )
+            rows.append( ( 'Memory reserved for thumbnail cache:', thumbnails_sizer ) )
             rows.append( ( 'Thumbnail cache timeout:', self._thumbnail_cache_timeout ) )
             
             gridbox = ClientGUICommon.WrapInGrid( thumbnail_cache_panel, rows )
@@ -2897,7 +2965,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'MB memory reserved for image cache:', fullscreens_sizer ) )
+            rows.append( ( 'Memory reserved for image cache:', fullscreens_sizer ) )
             rows.append( ( 'Image cache timeout:', self._image_cache_timeout ) )
             rows.append( ( 'Maximum image size (in % of cache) that can be cached:', image_cache_storage_sizer ) )
             rows.append( ( 'Maximum image size (in % of cache) that will be prefetched:', image_cache_prefetch_sizer ) )
@@ -2921,7 +2989,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'MB memory reserved for image tile cache:', image_tiles_sizer ) )
+            rows.append( ( 'Memory reserved for image tile cache:', image_tiles_sizer ) )
             rows.append( ( 'Image tile cache timeout:', self._image_tile_cache_timeout ) )
             rows.append( ( 'Ideal tile width/height px:', self._ideal_tile_dimension ) )
             
@@ -2951,25 +3019,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'MB memory for video buffer: ', video_buffer_sizer ) )
+            rows.append( ( 'Memory for video buffer: ', video_buffer_sizer ) )
             
             gridbox = ClientGUICommon.WrapInGrid( buffer_panel, rows )
             
             buffer_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
             
             QP.AddToLayout( vbox, buffer_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
-            
-            #
-            
-            rows = []
-            
-            rows.append( ( 'Forced system:limit for all searches: ', self._forced_search_limit ) )
-            
-            gridbox = ClientGUICommon.WrapInGrid( misc_panel, rows )
-            
-            misc_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
-            
-            QP.AddToLayout( vbox, misc_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
             
             #
             
@@ -2985,7 +3041,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self.EventImageCacheUpdate()
             self.EventThumbnailsUpdate()
             self.EventImageTilesUpdate()
-            self.EventVideoBufferUpdate( self._video_buffer_size_mb.value() )
+            self.EventVideoBufferUpdate()
             
         
         def EventImageCacheUpdate( self ):
@@ -3008,7 +3064,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             resolution = ( int( 16 * unit_length ), int( 9 * unit_length ) )
             
-            self._image_cache_storage_limit_percentage_st.setText( 'about a {} image'.format( HydrusData.ConvertResolutionToPrettyString( resolution ) ) )
+            self._image_cache_storage_limit_percentage_st.setText( '% - {} pixels, or about a {} image'.format( HydrusData.ToHumanInt( num_pixels ), HydrusData.ConvertResolutionToPrettyString( resolution ) ) )
             
             num_pixels = cache_size * ( self._image_cache_prefetch_limit_percentage.value() / 100 ) / 3
             
@@ -3018,7 +3074,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             resolution = ( int( 16 * unit_length ), int( 9 * unit_length ) )
             
-            self._image_cache_prefetch_limit_percentage_st.setText( 'about a {} image'.format( HydrusData.ConvertResolutionToPrettyString( resolution ) ) )
+            self._image_cache_prefetch_limit_percentage_st.setText( '% - {} pixels, or about a {} image'.format( HydrusData.ToHumanInt( num_pixels ), HydrusData.ConvertResolutionToPrettyString( resolution ) ) )
             
         
         def EventImageTilesUpdate( self ):
@@ -3049,9 +3105,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._estimated_number_thumbnails.setText( '(at '+res_string+', about '+HydrusData.ToHumanInt(estimated_thumbs)+' thumbnails)' )
             
         
-        def EventVideoBufferUpdate( self, value ):
+        def EventVideoBufferUpdate( self ):
             
-            estimated_720p_frames = int( ( value * 1024 * 1024 ) // ( 1280 * 720 * 3 ) )
+            value = self._video_buffer_size.GetValue()
+            
+            estimated_720p_frames = int( value // ( 1280 * 720 * 3 ) )
             
             self._estimated_number_video_frames.setText( '(about '+HydrusData.ToHumanInt(estimated_720p_frames)+' frames of 720p video)' )
             
@@ -3075,9 +3133,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'image_cache_storage_limit_percentage', self._image_cache_storage_limit_percentage.value() )
             self._new_options.SetInteger( 'image_cache_prefetch_limit_percentage', self._image_cache_prefetch_limit_percentage.value() )
             
-            self._new_options.SetInteger( 'video_buffer_size_mb', self._video_buffer_size_mb.value() )
-            
-            self._new_options.SetNoneableInteger( 'forced_search_limit', self._forced_search_limit.GetValue() )
+            self._new_options.SetInteger( 'video_buffer_size', self._video_buffer_size.GetValue() )
             
         
     
@@ -3352,6 +3408,12 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._expand_parents_on_storage_taglists = QW.QCheckBox( general_panel )
             self._expand_parents_on_storage_autocomplete_taglists = QW.QCheckBox( general_panel )
+            
+            self._show_parent_decorators_on_storage_taglists = QW.QCheckBox( general_panel )
+            self._show_parent_decorators_on_storage_autocomplete_taglists = QW.QCheckBox( general_panel )
+            self._show_sibling_decorators_on_storage_taglists = QW.QCheckBox( general_panel )
+            self._show_sibling_decorators_on_storage_autocomplete_taglists = QW.QCheckBox( general_panel )
+            
             self._ac_select_first_with_count = QW.QCheckBox( general_panel )
             
             #
@@ -3388,12 +3450,22 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._default_tag_service_search_page.SetValue( self._new_options.GetKey( 'default_tag_service_search_page' ) )
             
             self._expand_parents_on_storage_taglists.setChecked( self._new_options.GetBoolean( 'expand_parents_on_storage_taglists' ) )
-            
             self._expand_parents_on_storage_taglists.setToolTip( 'This affects taglists in places like the manage tags dialog, where you edit tags as they actually are, and implied parents hang below tags.' )
             
             self._expand_parents_on_storage_autocomplete_taglists.setChecked( self._new_options.GetBoolean( 'expand_parents_on_storage_autocomplete_taglists' ) )
-            
             self._expand_parents_on_storage_autocomplete_taglists.setToolTip( 'This affects the autocomplete results taglist.' )
+            
+            self._show_parent_decorators_on_storage_taglists.setChecked( self._new_options.GetBoolean( 'show_parent_decorators_on_storage_taglists' ) )
+            self._show_parent_decorators_on_storage_taglists.setToolTip( 'This affects taglists in places like the manage tags dialog, where you edit tags as they actually are, and implied parents either hang below tags or summarise in a suffix.' )
+            
+            self._show_parent_decorators_on_storage_autocomplete_taglists.setChecked( self._new_options.GetBoolean( 'show_parent_decorators_on_storage_autocomplete_taglists' ) )
+            self._show_parent_decorators_on_storage_autocomplete_taglists.setToolTip( 'This affects the autocomplete results taglist.' )
+            
+            self._show_sibling_decorators_on_storage_taglists.setChecked( self._new_options.GetBoolean( 'show_sibling_decorators_on_storage_taglists' ) )
+            self._show_sibling_decorators_on_storage_taglists.setToolTip( 'This affects taglists in places like the manage tags dialog, where you edit tags as they actually are, and siblings summarise in a suffix.' )
+            
+            self._show_sibling_decorators_on_storage_autocomplete_taglists.setChecked( self._new_options.GetBoolean( 'show_sibling_decorators_on_storage_autocomplete_taglists' ) )
+            self._show_sibling_decorators_on_storage_autocomplete_taglists.setToolTip( 'This affects the autocomplete results taglist.' )
             
             self._ac_select_first_with_count.setChecked( self._new_options.GetBoolean( 'ac_select_first_with_count' ) )
             
@@ -3410,8 +3482,12 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Default tag service in manage tag dialogs: ', self._default_tag_service_tab ) )
             rows.append( ( 'Remember last used default tag service in manage tag dialogs: ', self._save_default_tag_service_tab_on_change ) )
             rows.append( ( 'Default tag service in search pages: ', self._default_tag_service_search_page ) )
+            rows.append( ( 'Show parent info by default on edit/write taglists: ', self._show_parent_decorators_on_storage_taglists ) )
+            rows.append( ( 'Show parent info by default on edit/write autocomplete taglists: ', self._show_parent_decorators_on_storage_autocomplete_taglists ) )
             rows.append( ( 'Show parents expanded by default on edit/write taglists: ', self._expand_parents_on_storage_taglists ) )
             rows.append( ( 'Show parents expanded by default on edit/write autocomplete taglists: ', self._expand_parents_on_storage_autocomplete_taglists ) )
+            rows.append( ( 'Show sibling info by default on edit/write taglists: ', self._show_sibling_decorators_on_storage_taglists ) )
+            rows.append( ( 'Show sibling info by default on edit/write autocomplete taglists: ', self._show_sibling_decorators_on_storage_autocomplete_taglists ) )
             rows.append( ( 'By default, select the first tag result with actual count in write-autocomplete: ', self._ac_select_first_with_count ) )
             
             gridbox = ClientGUICommon.WrapInGrid( general_panel, rows )
@@ -3453,8 +3529,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._new_options.SetKey( 'default_tag_service_search_page', self._default_tag_service_search_page.GetValue() )
             
+            self._new_options.SetBoolean( 'show_parent_decorators_on_storage_taglists', self._show_parent_decorators_on_storage_taglists.isChecked() )
+            self._new_options.SetBoolean( 'show_parent_decorators_on_storage_autocomplete_taglists', self._show_parent_decorators_on_storage_autocomplete_taglists.isChecked() )
             self._new_options.SetBoolean( 'expand_parents_on_storage_taglists', self._expand_parents_on_storage_taglists.isChecked() )
             self._new_options.SetBoolean( 'expand_parents_on_storage_autocomplete_taglists', self._expand_parents_on_storage_autocomplete_taglists.isChecked() )
+            self._new_options.SetBoolean( 'show_sibling_decorators_on_storage_taglists', self._show_sibling_decorators_on_storage_taglists.isChecked() )
+            self._new_options.SetBoolean( 'show_sibling_decorators_on_storage_autocomplete_taglists', self._show_sibling_decorators_on_storage_autocomplete_taglists.isChecked() )
+            
             self._new_options.SetBoolean( 'ac_select_first_with_count', self._ac_select_first_with_count.isChecked() )
             
             #
@@ -3881,10 +3962,15 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 self._thumbnail_scale_type.addItem( HydrusImageHandling.thumbnail_scale_str_lookup[ t ], t )
                 
             
-            self._thumbnail_scroll_rate = QW.QLineEdit( self )
-            
             self._thumbnail_visibility_scroll_percent = ClientGUICommon.BetterSpinBox( self, min=1, max=99 )
             self._thumbnail_visibility_scroll_percent.setToolTip( 'Lower numbers will cause fewer scrolls, higher numbers more.' )
+            
+            self._focus_preview_on_ctrl_click = QW.QCheckBox( self )
+            self._focus_preview_on_ctrl_click_only_static = QW.QCheckBox( self )
+            self._focus_preview_on_shift_click = QW.QCheckBox( self )
+            self._focus_preview_on_shift_click_only_static = QW.QCheckBox( self )
+            
+            self._thumbnail_scroll_rate = QW.QLineEdit( self )
             
             self._media_background_bmp_path = QP.FilePickerCtrl( self )
             
@@ -3902,9 +3988,14 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._video_thumbnail_percentage_in.setValue( self._new_options.GetInteger( 'video_thumbnail_percentage_in' ) )
             
-            self._thumbnail_scroll_rate.setText( self._new_options.GetString( 'thumbnail_scroll_rate' ) )
+            self._focus_preview_on_ctrl_click.setChecked( self._new_options.GetBoolean( 'focus_preview_on_ctrl_click' ) )
+            self._focus_preview_on_ctrl_click_only_static.setChecked( self._new_options.GetBoolean( 'focus_preview_on_ctrl_click_only_static' ) )
+            self._focus_preview_on_shift_click.setChecked( self._new_options.GetBoolean( 'focus_preview_on_shift_click' ) )
+            self._focus_preview_on_shift_click_only_static.setChecked( self._new_options.GetBoolean( 'focus_preview_on_shift_click_only_static' ) )
             
             self._thumbnail_visibility_scroll_percent.setValue( self._new_options.GetInteger( 'thumbnail_visibility_scroll_percent' ) )
+            
+            self._thumbnail_scroll_rate.setText( self._new_options.GetString( 'thumbnail_scroll_rate' ) )
             
             media_background_bmp_path = self._new_options.GetNoneableString( 'media_background_bmp_path' )
             
@@ -3922,6 +4013,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Thumbnail border: ', self._thumbnail_border ) )
             rows.append( ( 'Thumbnail margin: ', self._thumbnail_margin ) )
             rows.append( ( 'Thumbnail scaling: ', self._thumbnail_scale_type ) )
+            rows.append( ( 'Focus thumbnails in the preview window on ctrl-click: ', self._focus_preview_on_ctrl_click ) )
+            rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_ctrl_click_only_static ) )
+            rows.append( ( 'Focus thumbnails in the preview window on shift-click: ', self._focus_preview_on_shift_click ) )
+            rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_shift_click_only_static ) )
             rows.append( ( 'Generate video thumbnails this % in: ', self._video_thumbnail_percentage_in ) )
             rows.append( ( 'Do not scroll down on key navigation if thumbnail at least this % visible: ', self._thumbnail_visibility_scroll_percent ) )
             rows.append( ( 'EXPERIMENTAL: Scroll thumbnails at this rate per scroll tick: ', self._thumbnail_scroll_rate ) )
@@ -3934,6 +4029,14 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
             
             self.setLayout( vbox )
+            
+            self._UpdatePreviewCheckboxes()
+            
+        
+        def _UpdatePreviewCheckboxes( self ):
+            
+            self._focus_preview_on_ctrl_click_only_static.setEnabled( self._focus_preview_on_ctrl_click.isChecked() )
+            self._focus_preview_on_shift_click_only_static.setEnabled( self._focus_preview_on_shift_click.isChecked() )
             
         
         def UpdateOptions( self ):
@@ -3948,6 +4051,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'thumbnail_scale_type', self._thumbnail_scale_type.GetValue() )
             
             self._new_options.SetInteger( 'video_thumbnail_percentage_in', self._video_thumbnail_percentage_in.value() )
+            
+            self._new_options.SetBoolean( 'focus_preview_on_ctrl_click', self._focus_preview_on_ctrl_click.isChecked() )
+            self._new_options.SetBoolean( 'focus_preview_on_ctrl_click_only_static', self._focus_preview_on_ctrl_click_only_static.isChecked() )
+            self._new_options.SetBoolean( 'focus_preview_on_shift_click', self._focus_preview_on_shift_click.isChecked() )
+            self._new_options.SetBoolean( 'focus_preview_on_shift_click_only_static', self._focus_preview_on_shift_click_only_static.isChecked() )
             
             try:
                 
@@ -3994,10 +4102,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
         
     
-class ManageURLsPanel( ClientGUIScrolledPanels.ManagePanel ):
+class ManageURLsPanel( ClientGUIScrolledPanels.ManagePanel, CAC.ApplicationCommandProcessorMixin ):
     
     def __init__( self, parent, media ):
         
+        CAC.ApplicationCommandProcessorMixin.__init__( self )
         ClientGUIScrolledPanels.ManagePanel.__init__( self, parent )
         
         media = ClientMedia.FlattenMedia( media )
@@ -4332,7 +4441,7 @@ class RepairFileSystemPanel( ClientGUIScrolledPanels.ManagePanel ):
         text += os.linesep * 2
         text += 'Then hit \'apply\', and the client will launch. You should double-check all your locations under database->migrate database immediately.'
         text += os.linesep * 2
-        text += '2) If the locations are not available, or you do not know what they should be, or you wish to fix this outside of the program, hit \'cancel\' to gracefully cancel client boot. Feel free to contact hydrus dev for help.'
+        text += '2) If the locations are not available, or you do not know what they should be, or you wish to fix this outside of the program, hit \'cancel\' to gracefully cancel client boot. Feel free to contact hydrus dev for help. Regardless of the situation, the document at "install_dir/db/help my media files are broke.txt" may be useful background reading.'
         
         if self._only_thumbs:
             

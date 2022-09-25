@@ -214,9 +214,9 @@ class DialogPageChooser( ClientGUIDialogs.Dialog ):
                     
                     location_context = ClientLocation.LocationContext.STATICCreateSimple( file_service_key )
                     
-                    tag_search_context = ClientSearch.TagSearchContext( service_key = tag_service_key )
+                    tag_context = ClientSearch.TagContext( service_key = tag_service_key )
                     
-                    file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_search_context = tag_search_context )
+                    file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_context = tag_context )
                     
                     self._result = ( 'page', ClientGUIManagement.CreateManagementControllerQuery( page_name, file_search_context, search_enabled ) )
                     
@@ -266,7 +266,7 @@ class DialogPageChooser( ClientGUIDialogs.Dialog ):
         
         if menu_keyword == 'home':
             
-            entries.append( ( 'menu', 'files' ) )
+            entries.append( ( 'menu', 'file search' ) )
             entries.append( ( 'menu', 'download' ) )
             
             if len( self._petition_service_keys ) > 0:
@@ -276,16 +276,16 @@ class DialogPageChooser( ClientGUIDialogs.Dialog ):
             
             entries.append( ( 'menu', 'special' ) )
             
-        elif menu_keyword == 'files':
+        elif menu_keyword == 'file search':
             
             for service_key in self._controller.services_manager.GetServiceKeys( ( HC.LOCAL_FILE_DOMAIN, ) ):
                 
-                if service_key == CC.LOCAL_UPDATE_SERVICE_KEY:
-                    
-                    continue
-                    
-                
                 entries.append( ( 'page_query', service_key ) )
+                
+            
+            if len( entries ) > 1:
+                
+                entries.append( ( 'page_query', CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY ) )
                 
             
             entries.append( ( 'page_query', CC.TRASH_SERVICE_KEY ) )
@@ -574,6 +574,8 @@ class Page( QW.QSplitter ):
                 return
                 
             
+            old_panel.CleanBeforeDestroy()
+            
             old_panel.deleteLater()
             
         
@@ -609,6 +611,8 @@ class Page( QW.QSplitter ):
         self._management_panel.CleanBeforeDestroy()
         
         self._preview_canvas.CleanBeforeDestroy()
+        
+        self._media_panel.CleanBeforeDestroy()
         
         self._controller.ReleasePageKey( self._page_key )
         
@@ -821,6 +825,18 @@ class Page( QW.QSplitter ):
             
         
         return ( hpos, vpos )
+        
+    
+    def GetTotalFileSize( self ):
+        
+        if self._initialised:
+            
+            return self._media_panel.GetTotalFileSize()
+            
+        else:
+            
+            return 0
+            
         
     
     def GetTotalNumHashesAndSeeds( self ):
@@ -1135,6 +1151,8 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         self.tabBar().tabSpaceDoubleMiddleClicked.connect( self.ChooseNewPage )
         
         self._previous_page_index = -1
+        
+        self._time_of_last_move_selection_event = 0
         
         self._UpdateOptions()
         
@@ -1530,16 +1548,18 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         
         if isinstance( page, Page ) and not page.IsInitialised():
             
-            page_name = 'initialising'
+            full_page_name = 'initialising'
             
         else:
             
-            page_name = page.GetName()
+            full_page_name = page.GetName()
             
-            page_name = page_name.replace( os.linesep, '' )
+            full_page_name = full_page_name.replace( os.linesep, '' )
             
         
-        page_name = HydrusText.ElideText( page_name, max_page_name_chars )
+        page_name = HydrusText.ElideText( full_page_name, max_page_name_chars )
+        
+        do_tooltip = len( page_name ) != len( full_page_name ) or HG.client_controller.new_options.GetBoolean( 'elide_page_tab_names' )
         
         num_string = ''
         
@@ -1577,6 +1597,11 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         if existing_page_name not in ( safe_page_name, page_name ):
             
             tab_bar.setTabText( index, safe_page_name )
+            
+            if do_tooltip:
+                
+                self.setTabToolTip( index, full_page_name )
+                
             
         
     
@@ -1864,8 +1889,10 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
                 
                 submenu = QW.QMenu( menu )
                 
-                ClientGUIMenus.AppendMenuItem( submenu, 'by most files first', 'Sort these pages according to how many files they appear to have.', self._SortPagesByFileCount, 'desc' )
-                ClientGUIMenus.AppendMenuItem( submenu, 'by fewest files first', 'Sort these pages according to how few files they appear to have.', self._SortPagesByFileCount, 'asc' )
+                ClientGUIMenus.AppendMenuItem( submenu, 'by most files first', 'Sort these pages according to how many files they have.', self._SortPagesByFileCount, 'desc' )
+                ClientGUIMenus.AppendMenuItem( submenu, 'by fewest files first', 'Sort these pages according to how few files they have.', self._SortPagesByFileCount, 'asc' )
+                ClientGUIMenus.AppendMenuItem( submenu, 'by largest total file size first', 'Sort these pages according to how large their files are.', self._SortPagesByFileSize, 'desc' )
+                ClientGUIMenus.AppendMenuItem( submenu, 'by smallest total file size first', 'Sort these pages according to how small their files are.', self._SortPagesByFileSize, 'asc' )
                 ClientGUIMenus.AppendMenuItem( submenu, 'by name a-z', 'Sort these pages according to their names.', self._SortPagesByName, 'asc' )
                 ClientGUIMenus.AppendMenuItem( submenu, 'by name z-a', 'Sort these pages according to their names.', self._SortPagesByName, 'desc' )
                 
@@ -1937,6 +1964,20 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
             ( total_num_files, ( total_num_value, total_num_range ) ) = page.GetNumFileSummary()
             
             return ( total_num_files, total_num_range, total_num_value )
+            
+        
+        ordered_pages = sorted( self.GetPages(), key = key, reverse = order == 'desc' )
+        
+        self._SortPagesSetPages( ordered_pages )
+        
+    
+    def _SortPagesByFileSize( self, order ):
+        
+        def key( page ):
+            
+            total_file_size = page.GetTotalFileSize()
+            
+            return total_file_size
             
         
         ordered_pages = sorted( self.GetPages(), key = key, reverse = order == 'desc' )
@@ -2575,6 +2616,18 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
             
         
     
+    def GetTotalFileSize( self ):
+        
+        total_file_size = 0
+        
+        for page in self._GetPages():
+            
+            total_file_size += page.GetTotalFileSize()
+            
+        
+        return total_file_size
+        
+    
     def GetTotalNumHashesAndSeeds( self ) -> int:
         
         total_num_hashes = 0
@@ -2907,14 +2960,16 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
     
     def MoveSelection( self, delta, just_do_test = False ):
         
-        current_index = self.currentIndex()
-        current_page = self.currentWidget()
-        
-        if current_page is None or current_index is None:
+        if self.count() <= 1: # 1 is a no-op
             
             return False
             
-        elif isinstance( current_page, PagesNotebook ):
+        
+        current_page = self.currentWidget()
+        
+        i_have_done_a_recent_move = not HydrusData.TimeHasPassed( self._time_of_last_move_selection_event + 3 )
+        
+        if isinstance( current_page, PagesNotebook ) and not i_have_done_a_recent_move:
             
             if current_page.MoveSelection( delta, just_do_test = True ):
                 
@@ -2929,6 +2984,8 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
             if not just_do_test:
                 
                 self.setCurrentIndex( new_index )
+                
+                self._time_of_last_move_selection_event = HydrusData.GetNow()
                 
             
             return True
@@ -2946,7 +3003,9 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         
         current_page = self.currentWidget()
         
-        if isinstance( current_page, PagesNotebook ):
+        i_have_done_a_recent_move = not HydrusData.TimeHasPassed( self._time_of_last_move_selection_event + 3 )
+        
+        if isinstance( current_page, PagesNotebook ) and not i_have_done_a_recent_move:
             
             if current_page.MoveSelectionEnd( delta, just_do_test = True ):
                 
@@ -2966,6 +3025,8 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         if not just_do_test:
             
             self.setCurrentIndex( new_index )
+            
+            self._time_of_last_move_selection_event = HydrusData.GetNow()
             
         
         return True
@@ -3165,9 +3226,9 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
             location_context = location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
             
         
-        tag_search_context = ClientSearch.TagSearchContext( service_key = tag_service_key )
+        tag_context = ClientSearch.TagContext( service_key = tag_service_key )
         
-        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_search_context = tag_search_context, predicates = initial_predicates )
+        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_context = tag_context, predicates = initial_predicates )
         
         management_controller = ClientGUIManagement.CreateManagementControllerQuery( page_name, file_search_context, search_enabled )
         
@@ -3312,7 +3373,7 @@ class PagesNotebook( QP.TabWidgetWithDnD ):
         
         if page is None:
             
-            location_context = ClientLocation.GetLocationContextForAllLocalMedia()
+            location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
             
             page = self.NewPageQuery( location_context, initial_hashes = hashes, page_name = page_name, on_deepest_notebook = True, select_page = False )
             

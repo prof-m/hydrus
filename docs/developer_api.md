@@ -120,7 +120,8 @@ Required Headers: n/a
 Arguments: n/a
     
 Response:
-:   Some simple JSON describing the current api version (and hydrus client version, if you are interested).
+: Some simple JSON describing the current api version (and hydrus client version, if you are interested).
+: Note that this is mostly obselete now, since the 'Server' header of every response (and a duplicated 'Hydrus-Server' one, if you have a complicated proxy situation that overwrites 'Server') are now in the form "client api/{client_api_version} ({software_version})", e.g. "client api/32 (497)". 
 
 ```json title="Example response"
 {
@@ -243,11 +244,23 @@ Response:
       "service_key": "6c6f63616c2066696c6573"
     }
   ],
+  "local_updates": [
+    {
+      "name": "repository updates",
+      "service_key": "7265706f7369746f72792075706461746573"
+    }
+  ],
   "file_repositories": [],
   "all_local_files": [
     {
       "name": "all local files",
       "service_key": "616c6c206c6f63616c2066696c6573"
+    }
+  ],
+  "all_local_media": [
+    {
+      "name": "all my files",
+      "service_key": "616c6c206c6f63616c206d65646961"
     }
   ],
   "all_known_files": [
@@ -289,7 +302,7 @@ Arguments (in JSON):
 :   - `path`: (the path you want to import)
 
 ```json title="Example request body"
-{"path": "E:\\to_import\\ayanami.jpg"}
+{"path": "E:\to_import\ayanami.jpg"}
 ```
 
 Arguments (as bytes): 
@@ -635,7 +648,14 @@ Response description:
 :  200 and no content.
 
 !!! note
-    Note also that hydrus tag actions are safely idempotent. You can pend a tag that is already pended and not worry about an error--it will be discarded. The same for other reasonable logical scenarios: deleting a tag that does not exist will silently make no change, pending a tag that is already 'current' will again be passed over. It is fine to just throw 'process this' tags at every file import you add and not have to worry about checking which files you already added it to.
+    Note also that hydrus tag actions are safely idempotent. You can pend a tag that is already pended, or add a tag that already exists, and not worry about an error--the surplus add action will be discarded. The same is true if you try to pend a tag that actually already exists, or rescinding a petition that doesn't. Any invalid actions will fail silently.
+    
+    It is fine to just throw your 'process this' tags at every file import and not have to worry about checking which files you already added them to.
+
+!!! danger "HOWEVER"
+    When you delete a tag, a deletion record is made _even if the tag does not exist on the file_. This is important if you expect to add the tags again via parsing, because, in general, when hydrus adds tags through a downloader, it will not overwrite a previously 'deleted' tag record (this is to stop re-downloads overwriting the tags you hand-removed previously). Undeletes usually have to be done manually by a human.  
+    
+    So, _do_ be careful about how you spam delete unless it is something that doesn't matter or it is something you'll only be touching again via the API anyway.
 
 ## Adding URLs
 
@@ -651,6 +671,7 @@ Required Headers: n/a
 Arguments:
 :       
     *   `url`: (the url you want to ask about)
+    *   `doublecheck_file_system`: true or false (optional, defaults False)
 
 Example request:
 :   for URL `http://safebooru.org/index.php?page=post&s=view&id=2753608`:
@@ -672,17 +693,18 @@ Response:
   ]
 }
 ```
-    
-    The `url_file_statuses` is a list of zero-to-n JSON Objects, each representing a file match the client found in its database for the URL. Typically, it will be of length 0 (for as-yet-unvisited URLs or Gallery/Watchable URLs that are not attached to files) or 1, but sometimes multiple files are given the same URL (sometimes by mistaken misattribution, sometimes by design, such as pixiv manga pages). Handling n files per URL is a pain but an unavoidable issue you should account for.
-    
-    `status` is the same as for `/add_files/add_file`:
-    
-    *   0 - File not in database, ready for import (you will only see this very rarely--usually in this case you will just get no matches)
-    *   2 - File already in database
-    *   3 - File previously deleted
-    
-    `hash` is the file's SHA256 hash in hexadecimal, and 'note' is some occasional additional human-readable text you may recognise from hydrus's normal import workflow.
-    
+
+The `url_file_statuses` is a list of zero-to-n JSON Objects, each representing a file match the client found in its database for the URL. Typically, it will be of length 0 (for as-yet-unvisited URLs or Gallery/Watchable URLs that are not attached to files) or 1, but sometimes multiple files are given the same URL (sometimes by mistaken misattribution, sometimes by design, such as pixiv manga pages). Handling n files per URL is a pain but an unavoidable issue you should account for.
+
+`status` is the same as for `/add_files/add_file`:
+
+  *   0 - File not in database, ready for import (you will only see this very rarely--usually in this case you will just get no matches)
+  *   2 - File already in database
+  *   3 - File previously deleted
+
+`hash` is the file's SHA256 hash in hexadecimal, and 'note' is some occasional additional human-readable text you may recognise from hydrus's normal import workflow.
+
+If you set `doublecheck_file_system` to `true`, then any result that is 'already in db' (2) will be double-checked against the actual file system. This check happens on any normal file import process, just to check for and fix missing files (if the file is missing, the status becomes 0--new), but the check can take more than a few milliseconds on an HDD or a network drive, so the default behaviour, assuming you mostly just want to spam for 'seen this before' file statuses, is to not do it. 
 
 ### **GET `/add_urls/get_url_info`** { id="add_urls_get_url_info" }
 
@@ -1267,7 +1289,7 @@ If the access key's permissions only permit search for certain tags, at least on
 
 Wildcards and namespace searches are supported, so if you search for 'character:sam*' or 'series:*', this will be handled correctly clientside.
 
-Many system predicates are also supported using a text parser! The parser was designed by a clever user for human input and allows for a certain amount of error (e.g. ~= instead of ≈, or "isn't" instead of "is not") or requires more information (e.g. the specific hashes for a hash lookup). Here's a big list of current formats supported:
+**Many system predicates are also supported using a text parser!** The parser was designed by a clever user for human input and allows for a certain amount of error (e.g. ~= instead of ≈, or "isn't" instead of "is not") or requires more information (e.g. the specific hashes for a hash lookup). **Here's a big list of examples that are supported:**
 
 ??? example "System Predicates" 
     *   system:everything
@@ -1304,8 +1326,11 @@ Many system predicates are also supported using a text parser! The parser was de
     *   system:hash = abcdef01 abcdef02 md5
     *   system:modified date < 7 years 45 days 7h
     *   system:modified date > 2011-06-04
+    *   system:last viewed time < 7 years 45 days 7h
+    *   system:last view time < 7 years 45 days 7h
     *   system:date modified > 7 years 2 months
     *   system:date modified < 0 years 1 month 1 day 1 hour
+    *   system:import time < 7 years 45 days 7h
     *   system:time imported < 7 years 45 days 7h
     *   system:time imported > 2011-06-04
     *   system:time imported > 7 years 2 months
@@ -1351,7 +1376,7 @@ Many system predicates are also supported using a text parser! The parser was de
     *   system:no note with name note name
     *   system:does not have note with name note name
 
-More system predicate types and input formats will be available in future. Please test out the system predicates you want to send. Reverse engineering system predicate data from text is obviously tricky. If a system predicate does not parse, you'll get 400.
+Please test out the system predicates you want to send. If you are in _help-&gt;advanced mode_, you can test this parser in the advanced text input dialog when you click the OR\* button on a tag autocomplete dropdown. More system predicate types and input formats will be available in future. Reverse engineering system predicate data from text is obviously tricky. If a system predicate does not parse, you'll get 400.
 
 Also, OR predicates are now supported! Just nest within the tag list, and it'll be treated like an OR. For instance:
 

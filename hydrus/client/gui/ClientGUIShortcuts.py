@@ -6,6 +6,7 @@ from qtpy import QtGui as QG
 
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
+from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusSerialisable
 
@@ -13,6 +14,7 @@ from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientData
 from hydrus.client.gui import ClientGUICore as CGC
 from hydrus.client.gui import ClientGUIFunctions
+from hydrus.client.gui import QtPorting as QP
 
 SHORTCUT_TYPE_KEYBOARD_CHARACTER = 0
 SHORTCUT_TYPE_MOUSE = 1
@@ -233,7 +235,7 @@ SHORTCUTS_RESERVED_NAMES = [ 'global', 'archive_delete_filter', 'duplicate_filte
 
 SHORTCUTS_GLOBAL_ACTIONS = [ CAC.SIMPLE_GLOBAL_AUDIO_MUTE, CAC.SIMPLE_GLOBAL_AUDIO_UNMUTE, CAC.SIMPLE_GLOBAL_AUDIO_MUTE_FLIP, CAC.SIMPLE_EXIT_APPLICATION, CAC.SIMPLE_EXIT_APPLICATION_FORCE_MAINTENANCE, CAC.SIMPLE_RESTART_APPLICATION, CAC.SIMPLE_HIDE_TO_SYSTEM_TRAY, CAC.SIMPLE_GLOBAL_PROFILE_MODE_FLIP, CAC.SIMPLE_GLOBAL_FORCE_ANIMATION_SCANBAR_SHOW ]
 SHORTCUTS_MEDIA_ACTIONS = [ CAC.SIMPLE_MANAGE_FILE_TAGS, CAC.SIMPLE_MANAGE_FILE_RATINGS, CAC.SIMPLE_MANAGE_FILE_URLS, CAC.SIMPLE_MANAGE_FILE_NOTES, CAC.SIMPLE_ARCHIVE_FILE, CAC.SIMPLE_INBOX_FILE, CAC.SIMPLE_DELETE_FILE, CAC.SIMPLE_UNDELETE_FILE, CAC.SIMPLE_EXPORT_FILES, CAC.SIMPLE_EXPORT_FILES_QUICK_AUTO_EXPORT, CAC.SIMPLE_REMOVE_FILE_FROM_VIEW, CAC.SIMPLE_OPEN_FILE_IN_EXTERNAL_PROGRAM, CAC.SIMPLE_OPEN_SELECTION_IN_NEW_PAGE, CAC.SIMPLE_LAUNCH_THE_ARCHIVE_DELETE_FILTER, CAC.SIMPLE_COPY_BMP, CAC.SIMPLE_COPY_BMP_OR_FILE_IF_NOT_BMPABLE, CAC.SIMPLE_COPY_FILE, CAC.SIMPLE_COPY_PATH, CAC.SIMPLE_COPY_SHA256_HASH, CAC.SIMPLE_COPY_MD5_HASH, CAC.SIMPLE_COPY_SHA1_HASH, CAC.SIMPLE_COPY_SHA512_HASH, CAC.SIMPLE_GET_SIMILAR_TO_EXACT, CAC.SIMPLE_GET_SIMILAR_TO_VERY_SIMILAR, CAC.SIMPLE_GET_SIMILAR_TO_SIMILAR, CAC.SIMPLE_GET_SIMILAR_TO_SPECULATIVE, CAC.SIMPLE_DUPLICATE_MEDIA_SET_ALTERNATE, CAC.SIMPLE_DUPLICATE_MEDIA_SET_ALTERNATE_COLLECTIONS, CAC.SIMPLE_DUPLICATE_MEDIA_SET_CUSTOM, CAC.SIMPLE_DUPLICATE_MEDIA_SET_FOCUSED_BETTER, CAC.SIMPLE_DUPLICATE_MEDIA_SET_FOCUSED_KING, CAC.SIMPLE_DUPLICATE_MEDIA_SET_SAME_QUALITY, CAC.SIMPLE_DUPLICATE_MEDIA_SET_POTENTIAL, CAC.SIMPLE_OPEN_KNOWN_URL ]
-SHORTCUTS_MEDIA_VIEWER_ACTIONS = [ CAC.SIMPLE_PAUSE_MEDIA, CAC.SIMPLE_PAUSE_PLAY_MEDIA, CAC.SIMPLE_MEDIA_SEEK_DELTA, CAC.SIMPLE_MOVE_ANIMATION_TO_PREVIOUS_FRAME, CAC.SIMPLE_MOVE_ANIMATION_TO_NEXT_FRAME, CAC.SIMPLE_SWITCH_BETWEEN_FULLSCREEN_BORDERLESS_AND_REGULAR_FRAMED_WINDOW, CAC.SIMPLE_PAN_UP, CAC.SIMPLE_PAN_DOWN, CAC.SIMPLE_PAN_LEFT, CAC.SIMPLE_PAN_RIGHT, CAC.SIMPLE_PAN_TOP_EDGE, CAC.SIMPLE_PAN_BOTTOM_EDGE, CAC.SIMPLE_PAN_LEFT_EDGE, CAC.SIMPLE_PAN_RIGHT_EDGE, CAC.SIMPLE_PAN_VERTICAL_CENTER, CAC.SIMPLE_PAN_HORIZONTAL_CENTER, CAC.SIMPLE_ZOOM_IN, CAC.SIMPLE_ZOOM_OUT, CAC.SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_CANVAS_ZOOM, CAC.SIMPLE_FLIP_DARKMODE, CAC.SIMPLE_CLOSE_MEDIA_VIEWER ]
+SHORTCUTS_MEDIA_VIEWER_ACTIONS = [ CAC.SIMPLE_PAUSE_MEDIA, CAC.SIMPLE_PAUSE_PLAY_MEDIA, CAC.SIMPLE_MEDIA_SEEK_DELTA, CAC.SIMPLE_MOVE_ANIMATION_TO_PREVIOUS_FRAME, CAC.SIMPLE_MOVE_ANIMATION_TO_NEXT_FRAME, CAC.SIMPLE_SWITCH_BETWEEN_FULLSCREEN_BORDERLESS_AND_REGULAR_FRAMED_WINDOW, CAC.SIMPLE_PAN_UP, CAC.SIMPLE_PAN_DOWN, CAC.SIMPLE_PAN_LEFT, CAC.SIMPLE_PAN_RIGHT, CAC.SIMPLE_PAN_TOP_EDGE, CAC.SIMPLE_PAN_BOTTOM_EDGE, CAC.SIMPLE_PAN_LEFT_EDGE, CAC.SIMPLE_PAN_RIGHT_EDGE, CAC.SIMPLE_PAN_VERTICAL_CENTER, CAC.SIMPLE_PAN_HORIZONTAL_CENTER, CAC.SIMPLE_ZOOM_IN, CAC.SIMPLE_ZOOM_OUT, CAC.SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_CANVAS_ZOOM, CAC.SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_MAX_ZOOM, CAC.SIMPLE_SWITCH_BETWEEN_CANVAS_AND_MAX_ZOOM, CAC.SIMPLE_ZOOM_MAX, CAC.SIMPLE_FLIP_DARKMODE, CAC.SIMPLE_CLOSE_MEDIA_VIEWER ]
 SHORTCUTS_MEDIA_VIEWER_BROWSER_ACTIONS = [ CAC.SIMPLE_VIEW_NEXT, CAC.SIMPLE_VIEW_FIRST, CAC.SIMPLE_VIEW_LAST, CAC.SIMPLE_VIEW_PREVIOUS, CAC.SIMPLE_PAUSE_PLAY_SLIDESHOW, CAC.SIMPLE_SHOW_MENU, CAC.SIMPLE_CLOSE_MEDIA_VIEWER ]
 SHORTCUTS_MAIN_GUI_ACTIONS = [ CAC.SIMPLE_REFRESH, CAC.SIMPLE_REFRESH_ALL_PAGES, CAC.SIMPLE_REFRESH_PAGE_OF_PAGES_PAGES, CAC.SIMPLE_NEW_PAGE, CAC.SIMPLE_NEW_PAGE_OF_PAGES, CAC.SIMPLE_NEW_DUPLICATE_FILTER_PAGE, CAC.SIMPLE_NEW_GALLERY_DOWNLOADER_PAGE, CAC.SIMPLE_NEW_URL_DOWNLOADER_PAGE, CAC.SIMPLE_NEW_SIMPLE_DOWNLOADER_PAGE, CAC.SIMPLE_NEW_WATCHER_DOWNLOADER_PAGE, CAC.SIMPLE_SET_MEDIA_FOCUS, CAC.SIMPLE_SHOW_HIDE_SPLITTERS, CAC.SIMPLE_SET_SEARCH_FOCUS, CAC.SIMPLE_UNCLOSE_PAGE, CAC.SIMPLE_CLOSE_PAGE, CAC.SIMPLE_REDO, CAC.SIMPLE_UNDO, CAC.SIMPLE_FLIP_DARKMODE, CAC.SIMPLE_RUN_ALL_EXPORT_FOLDERS, CAC.SIMPLE_CHECK_ALL_IMPORT_FOLDERS, CAC.SIMPLE_FLIP_DEBUG_FORCE_IDLE_MODE_DO_NOT_SET_THIS, CAC.SIMPLE_SHOW_AND_FOCUS_MANAGE_TAGS_FAVOURITE_TAGS, CAC.SIMPLE_SHOW_AND_FOCUS_MANAGE_TAGS_RELATED_TAGS, CAC.SIMPLE_REFRESH_RELATED_TAGS, CAC.SIMPLE_SHOW_AND_FOCUS_MANAGE_TAGS_FILE_LOOKUP_SCRIPT_TAGS, CAC.SIMPLE_SHOW_AND_FOCUS_MANAGE_TAGS_RECENT_TAGS, CAC.SIMPLE_FOCUS_MEDIA_VIEWER, CAC.SIMPLE_MOVE_PAGES_SELECTION_LEFT, CAC.SIMPLE_MOVE_PAGES_SELECTION_RIGHT, CAC.SIMPLE_MOVE_PAGES_SELECTION_HOME, CAC.SIMPLE_MOVE_PAGES_SELECTION_END, CAC.SIMPLE_OPEN_COMMAND_PALETTE ]
 SHORTCUTS_TAGS_AUTOCOMPLETE_ACTIONS = [ CAC.SIMPLE_SYNCHRONISED_WAIT_SWITCH, CAC.SIMPLE_AUTOCOMPLETE_FORCE_FETCH, CAC.SIMPLE_AUTOCOMPLETE_IME_MODE ]
@@ -255,6 +257,8 @@ simple_shortcut_name_to_action_lookup = {
     'preview_media_window' : SHORTCUTS_PREVIEW_VIDEO_AUDIO_PLAYER_ACTIONS,
     'custom' : SHORTCUTS_MEDIA_ACTIONS + SHORTCUTS_MEDIA_VIEWER_ACTIONS
 }
+
+simple_shortcut_name_to_action_lookup = { key : HydrusData.DedupeList( value ) for ( key, value ) in simple_shortcut_name_to_action_lookup.items() }
 
 CUMULATIVE_MOUSEWARP_MANHATTAN_LENGTH = 0
 
@@ -435,7 +439,7 @@ def ConvertMouseEventToShortcut( event: QG.QMouseEvent ):
         
         angle_delta = angle_delta_point.y()
         
-        if event.source() == QC.Qt.MouseEventSynthesizedBySystem:
+        if QP.WheelEventIsSynthesised( event ):
             
             if abs( angle_delta ) < ONE_TICK_ON_A_NORMAL_MOUSE_IN_DEGREES:
                 
@@ -931,6 +935,34 @@ class Shortcut( HydrusSerialisable.SerialisableBase ):
         return s
         
     
+    def TryToIncrementKey( self ):
+        
+        if self.shortcut_type == SHORTCUT_TYPE_KEYBOARD_CHARACTER:
+            
+            new_shortcut_key = self.shortcut_key + 1
+            
+            if ClientData.OrdIsAlphaLower( new_shortcut_key ) or ClientData.OrdIsNumber( new_shortcut_key ):
+                
+                self.shortcut_key = new_shortcut_key
+                
+                return
+                
+            
+        elif self.shortcut_type == SHORTCUT_TYPE_KEYBOARD_SPECIAL:
+            
+            new_shortcut_key = self.shortcut_key + 1
+            
+            if new_shortcut_key in special_key_shortcut_str_lookup:
+                
+                self.shortcut_key = new_shortcut_key
+                
+                return
+                
+            
+        
+        raise HydrusExceptions.VetoException( 'Sorry, cannot increment that shortcut!' )
+        
+    
 HydrusSerialisable.SERIALISABLE_TYPES_TO_OBJECT_TYPES[ HydrusSerialisable.SERIALISABLE_TYPE_SHORTCUT ] = Shortcut
 
 class ShortcutSet( HydrusSerialisable.SerialisableBaseNamed ):
@@ -1076,6 +1108,11 @@ class ShortcutSet( HydrusSerialisable.SerialisableBaseNamed ):
         return shortcuts
         
     
+    def GetShortcutsAndCommands( self ):
+        
+        return list( self )
+        
+    
     def SetCommand( self, shortcut, command ):
         
         self._shortcuts_to_commands[ shortcut ] = command
@@ -1107,8 +1144,10 @@ class ShortcutsHandler( QC.QObject ):
         self._shortcuts_names = list( initial_shortcuts_names )
         
         self._ignore_activating_mouse_click = ignore_activating_mouse_click
+        self._activating_wait_job = None
         
         self._frame_activated_time = 0.0
+        self._parent_currently_activated = True
         
         if self._catch_mouse and self._ignore_activating_mouse_click:
             
@@ -1239,16 +1278,19 @@ class ShortcutsHandler( QC.QObject ):
                 
                 if event.type() == QC.QEvent.MouseButtonPress:
                     
-                    self._last_click_down_position = event.globalPos()
+                    self._last_click_down_position = event.globalPosition().toPoint()
                     
                     CUMULATIVE_MOUSEWARP_MANHATTAN_LENGTH = 0
-                    
                 
-                if event.type() != QC.QEvent.Wheel and self._ignore_activating_mouse_click and not HydrusData.TimeHasPassedPrecise( self._frame_activated_time + 0.017 ):
+                #if event.type() != QC.QEvent.Wheel and self._ignore_activating_mouse_click and not HydrusData.TimeHasPassedPrecise( self._frame_activated_time + 0.017 ):
+                if event.type() != QC.QEvent.Wheel and self._ignore_activating_mouse_click and not self._parent_currently_activated:
                     
-                    if event.type() == QC.QEvent.MouseButtonRelease:
+                    if event.type() == QC.QEvent.MouseButtonRelease and self._activating_wait_job is not None:
                         
-                        self._frame_activated_time = 0.0
+                        # first completed click in the time window sets us active instantly
+                        self._activating_wait_job.Cancel()
+                        
+                        self._parent_currently_activated = True
                         
                     
                     return False
@@ -1256,7 +1298,7 @@ class ShortcutsHandler( QC.QObject ):
                 
                 if event.type() == QC.QEvent.MouseButtonRelease:
                     
-                    release_press_pos = event.globalPos()
+                    release_press_pos = event.globalPosition().toPoint()
                     
                     delta = release_press_pos - self._last_click_down_position
                     
@@ -1342,6 +1384,26 @@ class ShortcutsHandler( QC.QObject ):
             
         
     
+    def FrameActivated( self ):
+        
+        def do_it():
+            
+            self._parent_currently_activated = True
+            
+        
+        self._activating_wait_job = HG.client_controller.CallLater( 0.2, do_it )
+        
+    
+    def FrameDeactivated( self ):
+        
+        if self._activating_wait_job is not None:
+            
+            self._activating_wait_job.Cancel()
+            
+        
+        self._parent_currently_activated = False
+        
+    
     def GetCustomShortcutNames( self ):
         
         custom_names = sorted( ( name for name in self._shortcuts_names if name not in SHORTCUTS_RESERVED_NAMES ) )
@@ -1377,11 +1439,7 @@ class ShortcutsHandler( QC.QObject ):
         self._shortcuts_names = list( shortcut_set_names )
         
     
-    def FrameActivated( self ):
-        
-        self._frame_activated_time = HydrusData.GetNowPrecise()
-        
-    
+
 class ShortcutsDeactivationCatcher( QC.QObject ):
     
     def __init__( self, shortcuts_handler: ShortcutsHandler, widget: QW.QWidget ):
@@ -1398,6 +1456,10 @@ class ShortcutsDeactivationCatcher( QC.QObject ):
         if event.type() == QC.QEvent.WindowActivate:
             
             self._shortcuts_handler.FrameActivated()
+            
+        elif event.type() == QC.QEvent.WindowDeactivate:
+            
+            self._shortcuts_handler.FrameDeactivated()
             
         
         return False

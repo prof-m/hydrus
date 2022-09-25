@@ -37,12 +37,12 @@ from hydrus.core.networking import HydrusNetworking
 
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
-from hydrus.client import ClientExporting
 from hydrus.client import ClientLocation
 from hydrus.client import ClientParsing
 from hydrus.client import ClientPaths
 from hydrus.client import ClientServices
 from hydrus.client import ClientThreading
+from hydrus.client.exporting import ClientExportingFiles
 from hydrus.client.gui import ClientGUIAsync
 from hydrus.client.gui import ClientGUICharts
 from hydrus.client.gui import ClientGUICore as CGC
@@ -54,12 +54,9 @@ from hydrus.client.gui import ClientGUIDragDrop
 from hydrus.client.gui import ClientGUIExport
 from hydrus.client.gui import ClientGUIFrames
 from hydrus.client.gui import ClientGUIFunctions
-from hydrus.client.gui import ClientGUIImport
 from hydrus.client.gui import ClientGUILogin
 from hydrus.client.gui import ClientGUIMediaControls
 from hydrus.client.gui import ClientGUIMenus
-from hydrus.client.gui import ClientGUIMPV
-from hydrus.client.gui import ClientGUIParsing
 from hydrus.client.gui import ClientGUIPopupMessages
 from hydrus.client.gui import ClientGUIScrolledPanels
 from hydrus.client.gui import ClientGUIScrolledPanelsEdit
@@ -77,12 +74,19 @@ from hydrus.client.gui import ClientGUITopLevelWindows
 from hydrus.client.gui import ClientGUITopLevelWindowsPanels
 from hydrus.client.gui import QLocator
 from hydrus.client.gui import ClientGUILocatorSearchProviders
+from hydrus.client.gui import QtInit
 from hydrus.client.gui import QtPorting as QP
+from hydrus.client.gui.canvas import ClientGUIMPV
+from hydrus.client.gui.importing import ClientGUIImport
+from hydrus.client.gui.importing import ClientGUIImportFolders
+from hydrus.client.gui.importing import ClientGUIImportOptions
 from hydrus.client.gui.networking import ClientGUIHydrusNetwork
 from hydrus.client.gui.networking import ClientGUINetwork
 from hydrus.client.gui.pages import ClientGUIManagement
 from hydrus.client.gui.pages import ClientGUIPages
 from hydrus.client.gui.pages import ClientGUISession
+from hydrus.client.gui.parsing import ClientGUIParsing
+from hydrus.client.gui.parsing import ClientGUIParsingLegacy
 from hydrus.client.gui.services import ClientGUIClientsideServices
 from hydrus.client.gui.services import ClientGUIServersideServices
 from hydrus.client.gui.widgets import ClientGUICommon
@@ -108,6 +112,12 @@ def THREADUploadPending( service_key ):
     
     finished_all_uploads = False
     
+    paused_content_types = set()
+    unauthorised_content_types = set()
+    content_types_to_request = set()
+    
+    job_key = ClientThreading.JobKey( pausable = True, cancellable = True )
+    
     try:
         
         service = HG.client_controller.services_manager.GetService( service_key )
@@ -127,8 +137,6 @@ def THREADUploadPending( service_key ):
                 
             
         
-        job_key = ClientThreading.JobKey( pausable = True, cancellable = True )
-        
         job_key.SetStatusTitle( 'uploading pending to ' + service_name )
         
         nums_pending = HG.client_controller.Read( 'nums_pending' )
@@ -138,10 +146,6 @@ def THREADUploadPending( service_key ):
         content_types_for_this_service = set( HC.SERVICE_TYPES_TO_CONTENT_TYPES[ service_type ] )
         
         if service_type in HC.REPOSITORIES:
-            
-            paused_content_types = set()
-            unauthorised_content_types = set()
-            content_types_to_request = set()
             
             content_types_to_count_types_and_permissions = {
                 HC.CONTENT_TYPE_FILES : ( ( HC.SERVICE_INFO_NUM_PENDING_FILES, HC.PERMISSION_ACTION_CREATE ), ( HC.SERVICE_INFO_NUM_PETITIONED_FILES, HC.PERMISSION_ACTION_PETITION ) ),
@@ -245,7 +249,7 @@ def THREADUploadPending( service_key ):
         HG.client_controller.pub( 'message', job_key )
         
         no_results_found = result is None
-    
+        
         while result is not None:
             
             time_started_this_loop = HydrusData.GetNowPrecise()
@@ -341,6 +345,12 @@ def THREADUploadPending( service_key ):
                             
                             continue
                             
+                        except Exception as e:
+                            
+                            HydrusData.ShowText( 'File could not be pinned: {}'.format( e ) )
+                            
+                            return
+                            
                         
                     else:
                         
@@ -360,8 +370,6 @@ def THREADUploadPending( service_key ):
                 
             
             HG.client_controller.pub( 'notify_new_pending' )
-            
-            time.sleep( 0.1 )
             
             HG.client_controller.WaitUntilViewFree()
             
@@ -389,19 +397,6 @@ def THREADUploadPending( service_key ):
         job_key.DeleteVariable( 'popup_gauge_1' )
         job_key.SetVariable( 'popup_text_1', 'upload done!' )
         
-        HydrusData.Print( job_key.ToString() )
-        
-        job_key.Finish()
-        
-        if len( content_types_to_request ) == 0:
-            
-            job_key.Delete()
-            
-        else:
-            
-            job_key.Delete( 5 )
-            
-        
     except Exception as e:
         
         r = re.search( '[a-fA-F0-9]{64}', str( e ) )
@@ -423,39 +418,54 @@ def THREADUploadPending( service_key ):
         
     finally:
         
-        if finished_all_uploads:
-            
-            if service_type == HC.TAG_REPOSITORY:
-                
-                types_to_delete = (
-                    HC.SERVICE_INFO_NUM_PENDING_MAPPINGS,
-                    HC.SERVICE_INFO_NUM_PENDING_TAG_SIBLINGS,
-                    HC.SERVICE_INFO_NUM_PENDING_TAG_PARENTS,
-                    HC.SERVICE_INFO_NUM_PETITIONED_MAPPINGS,
-                    HC.SERVICE_INFO_NUM_PETITIONED_TAG_SIBLINGS,
-                    HC.SERVICE_INFO_NUM_PETITIONED_TAG_PARENTS
-                )
-                
-            elif service_type in ( HC.FILE_REPOSITORY, HC.IPFS ):
-                
-                types_to_delete = (
-                    HC.SERVICE_INFO_NUM_PENDING_FILES,
-                    HC.SERVICE_INFO_NUM_PETITIONED_FILES
-                )
-                
-            
-            HG.client_controller.Write( 'delete_service_info', service_key, types_to_delete )
-            
-        
         HG.client_controller.pub( 'notify_pending_upload_finished', service_key )
         
+        HydrusData.Print( job_key.ToString() )
+        
+        job_key.Finish()
+        
+        if len( content_types_to_request ) == 0:
+            
+            job_key.Delete()
+            
+        else:
+            
+            job_key.Delete( 5 )
+            
+        
     
-class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
+    if finished_all_uploads:
+        
+        if service_type == HC.TAG_REPOSITORY:
+            
+            types_to_delete = (
+                HC.SERVICE_INFO_NUM_PENDING_MAPPINGS,
+                HC.SERVICE_INFO_NUM_PENDING_TAG_SIBLINGS,
+                HC.SERVICE_INFO_NUM_PENDING_TAG_PARENTS,
+                HC.SERVICE_INFO_NUM_PETITIONED_MAPPINGS,
+                HC.SERVICE_INFO_NUM_PETITIONED_TAG_SIBLINGS,
+                HC.SERVICE_INFO_NUM_PETITIONED_TAG_PARENTS
+            )
+            
+        elif service_type in ( HC.FILE_REPOSITORY, HC.IPFS ):
+            
+            types_to_delete = (
+                HC.SERVICE_INFO_NUM_PENDING_FILES,
+                HC.SERVICE_INFO_NUM_PETITIONED_FILES
+            )
+            
+        
+        HG.client_controller.Write( 'delete_service_info', service_key, types_to_delete )
+        
+    
+
+class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes, CAC.ApplicationCommandProcessorMixin ):
     
     def __init__( self, controller ):
         
         self._controller = controller
         
+        CAC.ApplicationCommandProcessorMixin.__init__( self )
         ClientGUITopLevelWindows.MainFrameThatResizes.__init__( self, None, 'main', 'main_gui' )
         
         self._currently_minimised_to_system_tray = False
@@ -686,24 +696,49 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         library_versions.append( ( 'sqlite', sqlite3.sqlite_version ) )
         
+        library_versions.append( ( 'qtpy', qtpy.__version__ ) )
+        
         library_versions.append( ( 'Qt', QC.__version__ ) )
         
-        if qtpy.PYSIDE2:
+        if QtInit.WE_ARE_QT5:
             
-            import PySide2
-            import shiboken2
+            if QtInit.WE_ARE_PYSIDE:
+                
+                import PySide2
+                import shiboken2
+                
+                library_versions.append( ( 'PySide2', PySide2.__version__ ) )
+                library_versions.append( ( 'shiboken2', shiboken2.__version__ ) )
+                
+            elif QtInit.WE_ARE_PYQT:
+                
+                from PyQt5.Qt import PYQT_VERSION_STR # pylint: disable=E0401,E0611
+                from PyQt5.sip import SIP_VERSION_STR # pylint: disable=E0401,E0611
+                
+                library_versions.append( ( 'PyQt5', PYQT_VERSION_STR ) )
+                library_versions.append( ( 'sip', SIP_VERSION_STR ) )
+                
             
-            library_versions.append( ( 'PySide2', PySide2.__version__ ) )
-            library_versions.append( ( 'shiboken2', shiboken2.__version__ ) )
+        elif QtInit.WE_ARE_QT6:
             
-        elif qtpy.PYQT5:
-
-            from PyQt5.Qt import PYQT_VERSION_STR # pylint: disable=E0401,E0611
-            from sip import SIP_VERSION_STR # pylint: disable=E0401
-
-            library_versions.append( ( 'PyQt5', PYQT_VERSION_STR ) )
-            library_versions.append( ( 'sip', SIP_VERSION_STR ) )
+            if QtInit.WE_ARE_PYSIDE:
+                
+                import PySide6
+                import shiboken6
+                
+                library_versions.append( ( 'PySide6', PySide6.__version__ ) )
+                library_versions.append( ( 'shiboken6', shiboken6.__version__ ) )
+                
+            elif QtInit.WE_ARE_PYQT:
+                
+                from PyQt6.QtCore import PYQT_VERSION_STR # pylint: disable=E0401,E0611
+                from PyQt6.sip import SIP_VERSION_STR # pylint: disable=E0401,E0611
+                
+                library_versions.append( ( 'PyQt6', PYQT_VERSION_STR ) )
+                library_versions.append( ( 'sip', SIP_VERSION_STR ) )
+                
             
+        
         CBOR_AVAILABLE = False
         
         try:
@@ -1096,7 +1131,9 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         text = 'DO NOT RUN THIS UNLESS YOU KNOW YOU NEED TO'
         text += os.linesep * 2
-        text += 'This will instruct the database to review its file records and delete any orphans. You typically do not ever see these files and they are basically harmless, but they can offset some file counts confusingly. You probably only need to run this if you can\'t process the apparent last handful of duplicate filter pairs or hydrus dev otherwise told you to try it.'
+        text += 'This will instruct the database to review its file records\' integrity. If anything appears to be in a specific domain (e.g. my files) but not an umbrella domain (e.g. all my files), or vice versa, it will be removed.'
+        text += os.linesep * 2
+        text += 'You typically do not ever see these files and they are basically harmless, but they can offset some file counts confusingly and may break other maintenance routines. You probably only need to run this if you can\'t process the apparent last handful of duplicate filter pairs or hydrus dev otherwise told you to try it.'
         text += os.linesep * 2
         text += 'It will create a popup message while it works and inform you of the number of orphan records found.'
         
@@ -1199,34 +1236,35 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             yes_tuples.append( ( 'save to file', 'file' ) )
             yes_tuples.append( ( 'copy to clipboard', 'clipboard' ) )
             
-            with ClientGUIDialogs.DialogYesYesNo( self, text, yes_tuples = yes_tuples, no_label = 'forget it' ) as dlg:
+            try:
                 
-                if dlg.exec() == QW.QDialog.Accepted:
+                result = ClientGUIDialogsQuick.GetYesYesNo( self, text, yes_tuples = yes_tuples, no_label = 'forget it' )
+                
+            except HydrusExceptions.CancelledException:
+                
+                return
+                
+            
+            if result == 'file':
+                
+                with QP.FileDialog( self, 'select where to save content', default_filename = 'result.html', acceptMode = QW.QFileDialog.AcceptSave, fileMode = QW.QFileDialog.AnyFile ) as f_dlg:
                     
-                    value = dlg.GetValue()
-                    
-                    if value == 'file':
+                    if f_dlg.exec() == QW.QDialog.Accepted:
                         
-                        with QP.FileDialog( self, 'select where to save content', default_filename = 'result.html', acceptMode = QW.QFileDialog.AcceptSave, fileMode = QW.QFileDialog.AnyFile ) as f_dlg:
+                        path = f_dlg.GetPath()
+                        
+                        with open( path, 'wb' ) as f:
                             
-                            if f_dlg.exec() == QW.QDialog.Accepted:
-                                
-                                path = f_dlg.GetPath()
-                                
-                                with open( path, 'wb' ) as f:
-                                    
-                                    f.write( content )
-                                    
-                                
+                            f.write( content )
                             
                         
-                    elif value == 'clipboard':
-                        
-                        text = network_job.GetContentText()
-                        
-                        self._controller.pub( 'clipboard', 'text', text )
-                        
                     
+                
+            elif result == 'clipboard':
+                
+                text = network_job.GetContentText()
+                
+                self._controller.pub( 'clipboard', 'text', text )
                 
             
         
@@ -1426,13 +1464,21 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         job_key.SetStatusTitle( 'sub gap downloader test' )
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'quiet' )
+        from hydrus.client.importing.options import FileImportOptions
+        
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         from hydrus.client.importing.options import TagImportOptions
         
         tag_import_options = TagImportOptions.TagImportOptions( is_default = True )
         
-        call = HydrusData.Call( HG.client_controller.pub, 'make_new_subscription_gap_downloader', ( b'', 'safebooru tag search' ), 'skirt', file_import_options, tag_import_options, 2 )
+        from hydrus.client.importing.options import NoteImportOptions
+        
+        note_import_options = NoteImportOptions.NoteImportOptions()
+        note_import_options.SetIsDefault( True )
+        
+        call = HydrusData.Call( HG.client_controller.pub, 'make_new_subscription_gap_downloader', ( b'', 'safebooru tag search' ), 'skirt', file_import_options, tag_import_options, note_import_options, 2 )
         
         call.SetLabel( 'start a new downloader for this to fill in the gap!' )
         
@@ -1690,14 +1736,31 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
             message = 'This clears the cached counts for things like the number of files or tags on a service. Due to unusual situations and little counting bugs, these numbers can sometimes become unsynced. Clearing them forces an accurate recount from source.'
             message += os.linesep * 2
-            message += 'Some GUI elements (review services, mainly) may be slow the next time they launch.'
+            message += 'Some GUI elements (review services, mainly) may be slow the next time they launch. Especially if you clear for all services.'
             
         
         result = ClientGUIDialogsQuick.GetYesNo( self, message )
         
         if result == QW.QDialog.Accepted:
             
-            self._controller.Write( 'delete_service_info', types_to_delete = types_to_delete )
+            services = HG.client_controller.services_manager.GetServices()
+            
+            choice_tuples = [ ( service.GetName(), service.GetServiceKey(), service.GetName() ) for service in services ]
+            
+            choice_tuples.sort()
+            
+            choice_tuples.insert( 0, ( 'all services', None, 'Do it for everything. Can take a long time!' ) )
+            
+            try:
+                
+                service_key = ClientGUIDialogsQuick.SelectFromListButtons( self, 'Which service?', choice_tuples )
+                
+            except HydrusExceptions.CancelledException:
+                
+                return
+                
+            
+            self._controller.Write( 'delete_service_info', types_to_delete = types_to_delete, service_key = service_key )
             
         
     
@@ -1841,6 +1904,21 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         if self._clipboard_watcher_repeating_job is None:
             
             self._BootOrStopClipboardWatcherIfNeeded()
+            
+        
+    
+    def _FlipMinimiseRestore( self ):
+        
+        if not self._currently_minimised_to_system_tray:
+            
+            if self.isMinimized():
+                
+                self.RestoreOrActivateWindow()
+                
+            else:
+                
+                self.showMinimized()
+                
             
         
     
@@ -2570,7 +2648,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
             services = self._controller.services_manager.GetServices()
             
-            local_file_services = [ service for service in services if service.GetServiceType() == HC.LOCAL_FILE_DOMAIN and service.GetServiceKey() != CC.LOCAL_UPDATE_SERVICE_KEY ]
+            local_file_services = [ service for service in services if service.GetServiceType() == HC.LOCAL_FILE_DOMAIN ]
             
             for service in local_file_services:
                 
@@ -2839,6 +2917,10 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                         
                         ClientGUIMenus.AppendMenuItem( submenu, 'change anonymisation period', 'Change the account history nullification period for this service.', self._ManageServiceOptionsNullificationPeriod, service_key )
                         
+                        ClientGUIMenus.AppendSeparator( submenu )
+                        
+                        ClientGUIMenus.AppendMenuItem( submenu, 'maintenance: regen service info', 'Add, edit, and delete this server\'s services.', self._ServerMaintenanceRegenServiceInfo, service_key )
+                        
                     
                     if can_overrule_services and service_type == HC.SERVER_ADMIN:
                         
@@ -2955,9 +3037,9 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         self._menubar_database_restore_backup = ClientGUIMenus.AppendMenuItem( menu, 'restore from a database backup', 'Restore the database from an external location.', self._controller.RestoreDatabase )
         
-        message = 'Your database is stored across multiple locations, which disables my internal backup routine. To back up, please use a third-party program that will work better than anything I can write.'
+        message = 'Your database is stored across multiple locations. The in-client backup routine can only handle simple databases (in one location), so the menu commands to backup have been hidden. To back up, please use a third-party program that will work better than anything I can write.'
         message += os.linesep * 2
-        message += 'Please check the help for more info on how best to backup manually.'
+        message += 'Check the help for more info on how best to backup manually.'
         
         self._menubar_database_multiple_location_label = ClientGUIMenus.AppendMenuItem( menu, 'database is stored in multiple locations', 'The database is migrated.', HydrusData.ShowText, message )
         
@@ -2986,6 +3068,10 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendMenuCheckItem( file_maintenance_menu, 'work file jobs during normal time', 'Control whether file maintenance can work during normal time.', current_value, func )
         
+        ClientGUIMenus.AppendSeparator( file_maintenance_menu )
+        
+        ClientGUIMenus.AppendMenuItem( file_maintenance_menu, 'clear orphan files', 'Clear out surplus files that have found their way into the file structure.', self._ClearOrphanFiles )
+        
         ClientGUIMenus.AppendMenu( menu, file_maintenance_menu, 'file maintenance' )
         
         maintenance_submenu = QW.QMenu( menu )
@@ -2995,7 +3081,6 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendSeparator( maintenance_submenu )
         
-        ClientGUIMenus.AppendMenuItem( maintenance_submenu, 'clear orphan files', 'Clear out surplus files that have found their way into the file structure.', self._ClearOrphanFiles )
         ClientGUIMenus.AppendMenuItem( maintenance_submenu, 'clear orphan file records', 'Clear out surplus file records that have not been deleted correctly.', self._ClearOrphanFileRecords )
         
         ClientGUIMenus.AppendMenuItem( maintenance_submenu, 'clear orphan tables', 'Clear out surplus db tables that have not been deleted correctly.', self._ClearOrphanTables )
@@ -3008,6 +3093,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendMenuItem( check_submenu, 'database integrity', 'Have the database examine all its records for internal consistency.', self._CheckDBIntegrity )
         ClientGUIMenus.AppendMenuItem( check_submenu, 'repopulate truncated mappings tables', 'Use the mappings cache to try to repair a previously damaged mappings file.', self._RepopulateMappingsTables )
+        ClientGUIMenus.AppendMenuItem( check_submenu, 'resync tag mappings cache files', 'Check the tag mappings cache for surplus or missing files.', self._ResyncTagMappingsCacheFiles )
         ClientGUIMenus.AppendMenuItem( check_submenu, 'fix logically inconsistent mappings', 'Remove tags that are occupying two mutually exclusive states.', self._FixLogicallyInconsistentMappings )
         ClientGUIMenus.AppendMenuItem( check_submenu, 'fix invalid tags', 'Scan the database for invalid tags.', self._RepairInvalidTags )
         
@@ -3034,7 +3120,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendSeparator( regen_submenu )
         
-        ClientGUIMenus.AppendMenuItem( regen_submenu, 'clear service info cache', 'Delete all cached service info like total number of mappings or files, in case it has become desynchronised. Some parts of the gui may be laggy immediately after this as these numbers are recalculated.', self._DeleteServiceInfo )
+        ClientGUIMenus.AppendMenuItem( regen_submenu, 'service info numbers', 'Delete all cached service info like total number of mappings or files, in case it has become desynchronised. Some parts of the gui may be laggy immediately after this as these numbers are recalculated.', self._DeleteServiceInfo )
         ClientGUIMenus.AppendMenuItem( regen_submenu, 'similar files search tree', 'Delete and recreate the similar files search tree.', self._RegenerateSimilarFilesTree )
         
         ClientGUIMenus.AppendMenu( menu, regen_submenu, 'regenerate' )
@@ -3270,7 +3356,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         ClientGUIMenus.AppendMenuItem( data_actions, 'flush log', 'Command the log to write any buffered contents to hard drive.', HydrusData.DebugPrint, 'Flushing log' )
         ClientGUIMenus.AppendMenuItem( data_actions, 'enable truncated image loading', 'Enable the truncated image loading to test out broken jpegs.', self._EnableLoadTruncatedImages )
         ClientGUIMenus.AppendSeparator( data_actions )
-        ClientGUIMenus.AppendMenuItem( data_actions, 'simulate program quit signal', 'Kill the program via a QApplication quit.', QW.QApplication.instance().quit )
+        ClientGUIMenus.AppendMenuItem( data_actions, 'simulate program exit signal', 'Kill the program via a QApplication exit.', QW.QApplication.instance().exit )
         
         ClientGUIMenus.AppendMenu( debug, data_actions, 'data actions' )
         
@@ -3278,7 +3364,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendMenuItem( memory_actions, 'run fast memory maintenance', 'Tell all the fast caches to maintain themselves.', self._controller.MaintainMemoryFast )
         ClientGUIMenus.AppendMenuItem( memory_actions, 'run slow memory maintenance', 'Tell all the slow caches to maintain themselves.', self._controller.MaintainMemorySlow )
-        ClientGUIMenus.AppendMenuItem( memory_actions, 'clear image rendering cache', 'Tell the image rendering system to forget all current images. This will often free up a bunch of memory immediately.', self._controller.ClearCaches )
+        ClientGUIMenus.AppendMenuItem( memory_actions, 'clear all rendering caches', 'Tell the image rendering system to forget all current images, tiles, and thumbs. This will often free up a bunch of memory immediately.', self._controller.ClearCaches )
         ClientGUIMenus.AppendMenuItem( memory_actions, 'clear thumbnail cache', 'Tell the thumbnail cache to forget everything and redraw all current thumbs.', self._controller.pub, 'reset_thumbnail_cache' )
         ClientGUIMenus.AppendMenuItem( memory_actions, 'print garbage', 'Print some information about the python garbage to the log.', self._DebugPrintGarbage )
         ClientGUIMenus.AppendMenuItem( memory_actions, 'take garbage snapshot', 'Capture current garbage object counts.', self._DebugTakeGarbageSnapshot )
@@ -3296,7 +3382,8 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendMenuItem( tests, 'run the ui test', 'Run hydrus_dev\'s weekly UI Test. Guaranteed to work and not mess up your session, ha ha.', self._RunUITest )
         ClientGUIMenus.AppendMenuItem( tests, 'run the client api test', 'Run hydrus_dev\'s weekly Client API Test. Guaranteed to work and not mess up your session, ha ha.', self._RunClientAPITest )
-        ClientGUIMenus.AppendMenuItem( tests, 'run the server test', 'This will try to boot the server in your install folder and initialise it. This is mostly here for testing purposes.', self._RunServerTest )
+        ClientGUIMenus.AppendMenuItem( tests, 'run the server test', 'This will try to boot the server in your install folder and initialise it.', self._RunServerTest )
+        ClientGUIMenus.AppendMenuItem( tests, 'run the server test on fresh server', 'This will try to initialise an already running server.', self._RunServerTest, do_boot = False )
         
         ClientGUIMenus.AppendMenu( debug, tests, 'tests, do not touch' )
         
@@ -3376,7 +3463,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         ClientGUIMenus.AppendSeparator( submenu )
         
-        ClientGUIMenus.AppendMenuItem( submenu, 'manage default tag import options', 'Change the default tag import options for each of your linked url matches.', self._ManageDefaultTagImportOptions )
+        ClientGUIMenus.AppendMenuItem( submenu, 'manage default import options', 'Change the default import options for each of your linked url matches.', self._ManageDefaultImportOptions )
         ClientGUIMenus.AppendMenuItem( submenu, 'manage downloader and url display', 'Configure how downloader objects present across the client.', self._ManageDownloaderDisplay )
         
         ClientGUIMenus.AppendSeparator( submenu )
@@ -3473,7 +3560,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         self._menubar_pages_search_submenu = QW.QMenu( menu )
         
-        ClientGUIMenus.AppendMenu( menu, self._menubar_pages_search_submenu, 'new search page' )
+        ClientGUIMenus.AppendMenu( menu, self._menubar_pages_search_submenu, 'new file search page' )
         
         #
         
@@ -3780,7 +3867,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
         
     
-    def _ManageDefaultTagImportOptions( self ):
+    def _ManageDefaultImportOptions( self ):
         
         title = 'edit default tag import options'
         
@@ -3790,20 +3877,41 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
             ( file_post_default_tag_import_options, watchable_default_tag_import_options, url_class_keys_to_tag_import_options ) = domain_manager.GetDefaultTagImportOptions()
             
+            ( file_post_default_note_import_options, watchable_default_note_import_options, url_class_keys_to_note_import_options ) = domain_manager.GetDefaultNoteImportOptions()
+            
             url_classes = domain_manager.GetURLClasses()
             parsers = domain_manager.GetParsers()
             
             url_class_keys_to_parser_keys = domain_manager.GetURLClassKeysToParserKeys()
             
-            panel = ClientGUIScrolledPanelsEdit.EditDefaultTagImportOptionsPanel( dlg, url_classes, parsers, url_class_keys_to_parser_keys, file_post_default_tag_import_options, watchable_default_tag_import_options, url_class_keys_to_tag_import_options )
+            panel = ClientGUIScrolledPanelsEdit.EditDefaultImportOptionsPanel(
+                dlg,
+                url_classes,
+                parsers,
+                url_class_keys_to_parser_keys,
+                file_post_default_tag_import_options,
+                watchable_default_tag_import_options,
+                url_class_keys_to_tag_import_options,
+                file_post_default_note_import_options,
+                watchable_default_note_import_options,
+                url_class_keys_to_note_import_options
+            )
             
             dlg.SetPanel( panel )
             
             if dlg.exec() == QW.QDialog.Accepted:
                 
-                ( file_post_default_tag_import_options, watchable_default_tag_import_options, url_class_keys_to_tag_import_options ) = panel.GetValue()
+                (
+                    file_post_default_tag_import_options,
+                    watchable_default_tag_import_options,
+                    url_class_keys_to_tag_import_options,
+                    file_post_default_note_import_options,
+                    watchable_default_note_import_options,
+                    url_class_keys_to_note_import_options
+                ) = panel.GetValue()
                 
                 domain_manager.SetDefaultTagImportOptions( file_post_default_tag_import_options, watchable_default_tag_import_options, url_class_keys_to_tag_import_options )
+                domain_manager.SetDefaultNoteImportOptions( file_post_default_note_import_options, watchable_default_note_import_options, url_class_keys_to_note_import_options )
                 
             
         
@@ -3897,7 +4005,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                         
                         try:
                             
-                            job_key.SetVariable( 'popup_text_1', 'Waiting for import folders to finish.' )
+                            job_key.SetVariable( 'popup_text_1', 'Waiting for export folders to finish.' )
                             
                             controller.pub( 'message', job_key )
                             
@@ -3969,7 +4077,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             
             with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit import folders' ) as dlg:
                 
-                panel = ClientGUIImport.EditImportFoldersPanel( dlg, import_folders )
+                panel = ClientGUIImportFolders.EditImportFoldersPanel( dlg, import_folders )
                 
                 dlg.SetPanel( panel )
                 
@@ -4038,7 +4146,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
                     
                     try:
                         
-                        controller.CallBlockingToQt(self, qt_do_it)
+                        controller.CallBlockingToQt( self, qt_do_it )
                         
                     except HydrusExceptions.QtDeadWindowException:
                         
@@ -4225,7 +4333,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         
         with ClientGUITopLevelWindowsPanels.DialogManage( self, title ) as dlg:
             
-            panel = ClientGUIParsing.ManageParsingScriptsPanel( dlg )
+            panel = ClientGUIParsingLegacy.ManageParsingScriptsPanel( dlg )
             
             dlg.SetPanel( panel )
             
@@ -4786,7 +4894,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     
     def _OpenExportFolder( self ):
         
-        export_path = ClientExporting.GetExportPath()
+        export_path = ClientExportingFiles.GetExportPath()
         
         if export_path is None:
             
@@ -4815,27 +4923,25 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             yes_tuples.append( ( 'open online help', 0 ) )
             yes_tuples.append( ( 'open how to build guide', 1 ) )
             
-            with ClientGUIDialogs.DialogYesYesNo( self, message, yes_tuples = yes_tuples, no_label = 'forget it' ) as dlg:
+            try:
                 
-                if dlg.exec() == QW.QDialog.Accepted:
-                    
-                    value = dlg.GetValue()
-                    
-                    if value == 0:
-                        
-                        url = 'https://hydrusnetwork.github.io/hydrus/'
-                        
-                    elif value == 1:
-                        
-                        url = 'https://hydrusnetwork.github.io/hydrus/about_docs.html'
-                        
-                    else:
-                        
-                        return
-                        
-                    ClientPaths.LaunchURLInWebBrowser( url )
-                    
+                result = ClientGUIDialogsQuick.GetYesYesNo( self, message, yes_tuples = yes_tuples, no_label = 'forget it' )
                 
+            except HydrusExceptions.CancelledException:
+                
+                return
+                
+            
+            if result == 0:
+                
+                url = 'https://hydrusnetwork.github.io/hydrus/'
+                
+            elif result == 1:
+                
+                url = 'https://hydrusnetwork.github.io/hydrus/about_docs.html'
+                
+            
+            ClientPaths.LaunchURLInWebBrowser( url )
             
         
     
@@ -5274,6 +5380,31 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
     def _RestoreSplitterPositions( self ):
         
         self._controller.pub( 'set_splitter_positions', HC.options[ 'hpos' ], HC.options[ 'vpos' ] )
+        
+    
+    def _ResyncTagMappingsCacheFiles( self ):
+        
+        message = 'This will scan your mappings cache for surplus or missing files and correct them. This is useful if you see ghost files or if searches miss files that have the tag.'
+        message += os.linesep * 2
+        message += 'If you have a lot of tags and files, it can take a long time, during which the gui may hang. It should be much faster than the full regen options though!'
+        message += os.linesep * 2
+        message += 'If you do not have a specific reason to run this, it is pointless.'
+        
+        result = ClientGUIDialogsQuick.GetYesNo( self, message, yes_label = 'do it--now choose which service', no_label = 'forget it' )
+        
+        if result == QW.QDialog.Accepted:
+            
+            try:
+                
+                tag_service_key = GetTagServiceKeyForMaintenance( self )
+                
+            except HydrusExceptions.CancelledException:
+                
+                return
+                
+            
+            self._controller.Write( 'resync_tag_mappings_cache_files', tag_service_key = tag_service_key )
+            
         
     
     def _STARTReviewAllAccounts( self, service_key ):
@@ -5921,84 +6052,87 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         HG.client_controller.CallToThread( do_it )
         
     
-    def _RunServerTest( self ):
+    def _RunServerTest( self, do_boot = True ):
         
         def do_it():
             
             host = '127.0.0.1'
             port = HC.DEFAULT_SERVER_ADMIN_PORT
             
-            if HydrusNetworking.LocalPortInUse( port ):
+            if do_boot:
                 
-                HydrusData.ShowText( 'The server appears to be already running. Either that, or something else is using port ' + str( HC.DEFAULT_SERVER_ADMIN_PORT ) + '.' )
-                
-                return
-                
-            else:
-                
-                try:
+                if HydrusNetworking.LocalPortInUse( port ):
                     
-                    HydrusData.ShowText( 'Starting server\u2026' )
-                    
-                    db_param = '-d=' + self._controller.GetDBDir()
-                    
-                    if HC.PLATFORM_WINDOWS:
-                        
-                        server_frozen_path = os.path.join( HC.BASE_DIR, 'server.exe' )
-                        
-                    else:
-                        
-                        server_frozen_path = os.path.join( HC.BASE_DIR, 'server' )
-                        
-                    
-                    if os.path.exists( server_frozen_path ):
-                        
-                        cmd = [ server_frozen_path, db_param ]
-                        
-                    else:
-                        
-                        python_executable = sys.executable
-                        
-                        if python_executable.endswith( 'client.exe' ) or python_executable.endswith( 'client' ):
-                            
-                            raise Exception( 'Could not automatically set up the server--could not find server executable or python executable.' )
-                            
-                        
-                        if 'pythonw' in python_executable:
-                            
-                            python_executable = python_executable.replace( 'pythonw', 'python' )
-                            
-                        
-                        server_script_path = os.path.join( HC.BASE_DIR, 'server.py' )
-                        
-                        cmd = [ python_executable, server_script_path, db_param ]
-                        
-                    
-                    sbp_kwargs = HydrusData.GetSubprocessKWArgs( hide_terminal = False )
-                    
-                    HydrusData.CheckProgramIsNotShuttingDown()
-                    
-                    subprocess.Popen( cmd, **sbp_kwargs )
-                    
-                    time_waited = 0
-                    
-                    while not HydrusNetworking.LocalPortInUse( port ):
-                        
-                        time.sleep( 3 )
-                        
-                        time_waited += 3
-                        
-                        if time_waited > 30:
-                            
-                            raise Exception( 'The server\'s port did not appear!' )
-                            
-                        
-                    
-                except:
-                    
-                    HydrusData.ShowText( 'I tried to start the server, but something failed!' + os.linesep + traceback.format_exc() )
+                    HydrusData.ShowText( 'The server appears to be already running. Either that, or something else is using port ' + str( HC.DEFAULT_SERVER_ADMIN_PORT ) + '.' )
                     
                     return
+                    
+                else:
+                    
+                    try:
+                        
+                        HydrusData.ShowText( 'Starting server\u2026' )
+                        
+                        db_param = '-d=' + self._controller.GetDBDir()
+                        
+                        if HC.PLATFORM_WINDOWS:
+                            
+                            server_frozen_path = os.path.join( HC.BASE_DIR, 'server.exe' )
+                            
+                        else:
+                            
+                            server_frozen_path = os.path.join( HC.BASE_DIR, 'server' )
+                            
+                        
+                        if os.path.exists( server_frozen_path ):
+                            
+                            cmd = [ server_frozen_path, db_param ]
+                            
+                        else:
+                            
+                            python_executable = sys.executable
+                            
+                            if python_executable.endswith( 'client.exe' ) or python_executable.endswith( 'client' ):
+                                
+                                raise Exception( 'Could not automatically set up the server--could not find server executable or python executable.' )
+                                
+                            
+                            if 'pythonw' in python_executable:
+                                
+                                python_executable = python_executable.replace( 'pythonw', 'python' )
+                                
+                            
+                            server_script_path = os.path.join( HC.BASE_DIR, 'server.py' )
+                            
+                            cmd = [ python_executable, server_script_path, db_param ]
+                            
+                        
+                        sbp_kwargs = HydrusData.GetSubprocessKWArgs( hide_terminal = False )
+                        
+                        HydrusData.CheckProgramIsNotShuttingDown()
+                        
+                        subprocess.Popen( cmd, **sbp_kwargs )
+                        
+                        time_waited = 0
+                        
+                        while not HydrusNetworking.LocalPortInUse( port ):
+                            
+                            time.sleep( 3 )
+                            
+                            time_waited += 3
+                            
+                            if time_waited > 30:
+                                
+                                raise Exception( 'The server\'s port did not appear!' )
+                                
+                            
+                        
+                    except:
+                        
+                        HydrusData.ShowText( 'I tried to start the server, but something failed!' + os.linesep + traceback.format_exc() )
+                        
+                        return
+                        
                     
                 
             
@@ -6080,7 +6214,7 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
             HydrusData.ShowText( 'Done! Check services->review services to see your new server and its services.' )
             
         
-        text = 'This will attempt to start the server in the same install directory as this client, initialise it, and store the resultant admin accounts in the client.'
+        text = 'Woe unto you unless you click "no" NOW.'
         
         result = ClientGUIDialogsQuick.GetYesNo( self, text )
         
@@ -6097,6 +6231,49 @@ class FrameGUI( ClientGUITopLevelWindows.MainFrameThatResizes ):
         if page is not None:
             
             ( HC.options[ 'hpos' ], HC.options[ 'vpos' ] ) = page.GetSashPositions()
+            
+        
+    
+    def _ServerMaintenanceRegenServiceInfo( self, service_key: bytes ):
+        
+        def do_it( service ):
+            
+            started = HydrusData.GetNow()
+            
+            service.Request( HC.POST, 'maintenance_regen_service_info' )
+            
+            HydrusData.ShowText( 'Maintenance started!' )
+            
+            time.sleep( 10 )
+            
+            result_bytes = service.Request( HC.GET, 'busy' )
+            
+            while result_bytes == b'1':
+                
+                if HG.started_shutdown:
+                    
+                    return
+                    
+                
+                time.sleep( 10 )
+                
+                result_bytes = service.Request( HC.GET, 'busy' )
+                
+            
+            it_took = HydrusData.GetNow() - started
+            
+            HydrusData.ShowText( 'Server maintenance done in ' + HydrusData.TimeDeltaToPrettyTimeDelta( it_took ) + '!' )
+            
+        
+        message = 'This will tell the server to recalculate the cached numbers for number of files, mappings, actionable petitions and so on. It may take a little while to complete, during which time it will not be able to serve any requests.'
+        
+        result = ClientGUIDialogsQuick.GetYesNo( self, message, yes_label = 'do it', no_label = 'forget it' )
+        
+        if result == QW.QDialog.Accepted:
+            
+            service = self._controller.services_manager.GetService( service_key )
+            
+            self._controller.CallToThread( do_it, service )
             
         
     
@@ -6555,6 +6732,7 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
                 
                 self._system_tray_icon.highlight.connect( self.RestoreOrActivateWindow )
                 self._system_tray_icon.flip_show_ui.connect( self._FlipShowHideWholeUI )
+                self._system_tray_icon.flip_minimise_ui.connect( self._FlipMinimiseRestore )
                 self._system_tray_icon.exit_client.connect( self.TryToExit )
                 self._system_tray_icon.flip_pause_network_jobs.connect( self.FlipNetworkTrafficPaused )
                 self._system_tray_icon.flip_pause_subscription_jobs.connect( self.FlipSubscriptionsPaused )
@@ -6566,6 +6744,7 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
             
             self._system_tray_icon.SetShouldAlwaysShow( always_show_system_tray_icon )
             self._system_tray_icon.SetUIIsCurrentlyShown( not self._currently_minimised_to_system_tray )
+            self._system_tray_icon.SetUIIsCurrentlyMinimised( self.isMinimized() )
             self._system_tray_icon.SetNetworkTrafficPaused( new_options.GetBoolean( 'pause_all_new_network_traffic' ) )
             self._system_tray_icon.SetSubscriptionsPaused( new_options.GetBoolean( 'pause_subs_sync' ) )
             
@@ -6759,7 +6938,7 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
         event.ignore() # we always ignore, as we'll close through the window through other means
         
     
-    def CreateNewSubscriptionGapDownloader( self, gug_key_and_name, query_text, file_import_options, tag_import_options, file_limit ):
+    def CreateNewSubscriptionGapDownloader( self, gug_key_and_name, query_text, file_import_options, tag_import_options, note_import_options, file_limit ):
         
         page = self._notebook.GetOrMakeGalleryDownloaderPage( desired_page_name = 'subscription gap downloaders', select_page = True )
         
@@ -6768,11 +6947,9 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
             HydrusData.ShowText( 'Sorry, could not create the downloader page! Is your session super full atm?' )
             
         
-        management_controller = page.GetManagementController()
+        panel = page.GetManagementPanel()
         
-        multiple_gallery_import = management_controller.GetVariable( 'multiple_gallery_import' )
-        
-        multiple_gallery_import.PendSubscriptionGapDownloader( gug_key_and_name, query_text, file_import_options, tag_import_options, file_limit )
+        panel.PendSubscriptionGapDownloader( gug_key_and_name, query_text, file_import_options, tag_import_options, note_import_options, file_limit )
         
         self._notebook.ShowPage( page )
         
@@ -6844,6 +7021,11 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
         
     
     def EventIconize( self, event: QG.QWindowStateChangeEvent ):
+        
+        if self._have_system_tray_icon:
+            
+            self._system_tray_icon.SetUIIsCurrentlyMinimised( self.isMinimized() )
+            
         
         if self.isMinimized():
             
@@ -7524,7 +7706,7 @@ The password is cleartext here but obscured in the entry dialog. Enter a blank p
             
         elif name not in ClientGUISession.RESERVED_SESSION_NAMES: # i.e. a human asked to do this
             
-            message = 'Overwrite this session?'
+            message = 'Overwrite "{}" session?'.format( name )
             
             result = ClientGUIDialogsQuick.GetYesNo( self, message, title = 'Overwrite existing session?', yes_label = 'yes, overwrite', no_label = 'no' )
             

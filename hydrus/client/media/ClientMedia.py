@@ -15,6 +15,7 @@ from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientData
 from hydrus.client import ClientLocation
 from hydrus.client import ClientSearch
+from hydrus.client import ClientThreading
 from hydrus.client.media import ClientMediaManagers
 from hydrus.client.media import ClientMediaResult
 from hydrus.client.metadata import ClientTags
@@ -469,8 +470,82 @@ def GetDuplicateComparisonStatements( shown_media, comparison_media ):
             
         
     
+    def has_exif( m ):
+        
+        try:
+            
+            hash = m.GetHash()
+            mime = m.GetMime()
+            
+            if mime not in ( HC.IMAGE_JPEG, HC.IMAGE_TIFF ):
+                
+                return False
+                
+            
+            path = HG.client_controller.client_files_manager.GetFilePath( hash, mime )
+            
+            pil_image = HydrusImageHandling.RawOpenPILImage( path )
+            
+            exif_dict = HydrusImageHandling.GetEXIFDict( pil_image )
+            
+            if exif_dict is None:
+                
+                return False
+                
+            
+            return len( exif_dict ) > 0
+            
+        except:
+            
+            return False
+            
+        
+    
+    s_has_exif = has_exif( shown_media )
+    c_has_exif = has_exif( comparison_media )
+    
+    if s_has_exif or c_has_exif:
+        
+        if s_has_exif and c_has_exif:
+            
+            exif_statement = 'both have exif data'
+            
+        elif s_has_exif:
+            
+            exif_statement = 'has exif data, the other does not'
+            
+        else:
+            
+            exif_statement = 'the other has exif data, this does not'
+            
+        
+        statements_and_scores[ 'exif_data' ] = ( exif_statement, 0 )
+        
+    
+    s_has_icc = shown_media.GetMediaResult().GetFileInfoManager().has_icc_profile
+    c_has_icc = comparison_media.GetMediaResult().GetFileInfoManager().has_icc_profile
+    
+    if s_has_icc or c_has_icc:
+        
+        if s_has_icc and c_has_icc:
+            
+            icc_statement = 'both have icc profiles'
+            
+        elif s_has_icc:
+            
+            icc_statement = 'has icc profile, the other does not'
+            
+        else:
+            
+            icc_statement = 'the other has icc profile, this does not'
+            
+        
+        statements_and_scores[ 'icc_profile' ] = ( icc_statement, 0 )
+        
+    
     return statements_and_scores
     
+
 def GetMediasTags( pool, tag_service_key, tag_display_type, content_statuses ):
     
     tags_managers = []
@@ -501,12 +576,14 @@ def GetMediasTags( pool, tag_service_key, tag_display_type, content_statuses ):
     
     return tags
     
+
 def GetMediaResultsTagCount( media_results, tag_service_key, tag_display_type ):
     
     tags_managers = [ media_result.GetTagsManager() for media_result in media_results ]
     
     return GetTagsManagersTagCount( tags_managers, tag_service_key, tag_display_type )
     
+
 def GetMediasTagCount( pool, tag_service_key, tag_display_type ):
     
     tags_managers = []
@@ -525,6 +602,7 @@ def GetMediasTagCount( pool, tag_service_key, tag_display_type ):
     
     return GetTagsManagersTagCount( tags_managers, tag_service_key, tag_display_type )
     
+
 def GetTagsManagersTagCount( tags_managers, tag_service_key, tag_display_type ):
     
     current_tags_to_count = collections.Counter()
@@ -544,6 +622,38 @@ def GetTagsManagersTagCount( tags_managers, tag_service_key, tag_display_type ):
     
     return ( current_tags_to_count, deleted_tags_to_count, pending_tags_to_count, petitioned_tags_to_count )
     
+
+def FilterAndReportDeleteLockFailures( medias: typing.Collection[ "Media" ] ):
+    
+    # TODO: update this system with some texts like 'file was archived' so user can know how to fix the situation
+    
+    deletee_medias = [ media for media in medias if not media.HasDeleteLocked() ]
+    
+    if len( deletee_medias ) < len( medias ):
+        
+        locked_medias = [ media for media in medias if media.HasDeleteLocked() ]
+        
+        ReportDeleteLockFailures( locked_medias )
+        
+    
+    return deletee_medias
+    
+
+def ReportDeleteLockFailures( medias: typing.Collection[ "Media" ] ):
+    
+    job_key = ClientThreading.JobKey()
+    
+    message = 'Was unable to delete one or more files because of a delete lock!'
+    
+    job_key.SetVariable( 'popup_text_1', message )
+    
+    hashes = list( itertools.chain.from_iterable( ( media.GetHashes() for media in medias ) ) )
+    
+    job_key.SetVariable( 'popup_files', ( hashes, 'see them' ) )
+    
+    HG.client_controller.pub( 'message', job_key )
+    
+
 class Media( object ):
     
     def __init__( self ):
@@ -592,7 +702,7 @@ class Media( object ):
         raise NotImplementedError()
         
     
-    def GetHashes( self, has_location = None, discriminant = None, not_uploaded_to = None, ordered = False ):
+    def GetHashes( self, is_in_file_service_key = None, discriminant = None, is_not_in_file_service_key = None, ordered = False ):
         
         raise NotImplementedError()
         
@@ -637,7 +747,7 @@ class Media( object ):
         raise NotImplementedError()
         
     
-    def GetPrettyInfoLines( self ) -> typing.List[ str ]:
+    def GetPrettyInfoLines( self, only_interesting_lines = False ) -> typing.List[ str ]:
         
         raise NotImplementedError()
         
@@ -673,6 +783,11 @@ class Media( object ):
         
     
     def HasAudio( self ) -> bool:
+        
+        raise NotImplementedError()
+        
+    
+    def HasDeleteLocked( self ) -> bool:
         
         raise NotImplementedError()
         
@@ -721,9 +836,9 @@ class MediaCollect( HydrusSerialisable.SerialisableBase ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_MEDIA_COLLECT
     SERIALISABLE_NAME = 'Media Collect'
-    SERIALISABLE_VERSION = 1
+    SERIALISABLE_VERSION = 2
     
-    def __init__( self, namespaces = None, rating_service_keys = None, collect_unmatched = None ):
+    def __init__( self, namespaces = None, rating_service_keys = None, collect_unmatched = None, tag_context = None ):
         
         if namespaces is None:
             
@@ -740,23 +855,49 @@ class MediaCollect( HydrusSerialisable.SerialisableBase ):
             collect_unmatched = True
             
         
+        if tag_context is None:
+            
+            tag_context = ClientSearch.TagContext( service_key = CC.COMBINED_TAG_SERVICE_KEY )
+            
+        
         self.namespaces = namespaces
         self.rating_service_keys = rating_service_keys
         self.collect_unmatched = collect_unmatched
+        self.tag_context = tag_context
         
     
     def _GetSerialisableInfo( self ):
         
         serialisable_rating_service_keys = [ key.hex() for key in self.rating_service_keys ]
         
-        return ( self.namespaces, serialisable_rating_service_keys, self.collect_unmatched )
+        serialisable_tag_context = self.tag_context.GetSerialisableTuple()
+        
+        return ( self.namespaces, serialisable_rating_service_keys, self.collect_unmatched, serialisable_tag_context )
         
     
     def _InitialiseFromSerialisableInfo( self, serialisable_info ):
         
-        ( self.namespaces, serialisable_rating_service_keys, self.collect_unmatched ) = serialisable_info
+        ( self.namespaces, serialisable_rating_service_keys, self.collect_unmatched, serialisable_tag_context ) = serialisable_info
         
         self.rating_service_keys = [ bytes.fromhex( serialisable_key ) for serialisable_key in serialisable_rating_service_keys ]
+        
+        self.tag_context = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_tag_context )
+        
+    
+    def _UpdateSerialisableInfo( self, version, old_serialisable_info ):
+        
+        if version == 1:
+            
+            ( namespaces, serialisable_rating_service_keys, collect_unmatched ) = old_serialisable_info
+            
+            tag_context = ClientSearch.TagContext( service_key = CC.COMBINED_TAG_SERVICE_KEY )
+            
+            serialisable_tag_context = tag_context.GetSerialisableTuple()
+            
+            new_serialisable_info = ( namespaces, serialisable_rating_service_keys, collect_unmatched, serialisable_tag_context )
+            
+            return ( 2, new_serialisable_info )
+            
         
     
     def DoesACollect( self ):
@@ -829,18 +970,19 @@ class MediaList( object ):
         return len( self._singleton_media ) + sum( map( len, self._collected_media ) )
         
     
-    def _CalculateCollectionKeysToMedias( self, media_collect, medias ):
+    def _CalculateCollectionKeysToMedias( self, media_collect: MediaCollect, medias ):
         
         keys_to_medias = collections.defaultdict( list )
         
         namespaces_to_collect_by = list( media_collect.namespaces )
         ratings_to_collect_by = list( media_collect.rating_service_keys )
+        tag_context = media_collect.tag_context
         
         for media in medias:
             
             if len( namespaces_to_collect_by ) > 0:
                 
-                namespace_key = media.GetTagsManager().GetNamespaceSlice( namespaces_to_collect_by, ClientTags.TAG_DISPLAY_ACTUAL )
+                namespace_key = media.GetTagsManager().GetNamespaceSlice( tag_context.service_key, namespaces_to_collect_by, ClientTags.TAG_DISPLAY_ACTUAL )
                 
             else:
                 
@@ -1044,6 +1186,9 @@ class MediaList( object ):
         self._singleton_media.difference_update( singleton_media )
         self._collected_media.difference_update( collected_media )
         
+        self._selected_media.difference_update( singleton_media )
+        self._selected_media.difference_update( collected_media )
+        
         self._sorted_media.remove_items( singleton_media.union( collected_media ) )
         
         self._RecalcAfterMediaRemove()
@@ -1076,6 +1221,17 @@ class MediaList( object ):
         self._sorted_media.append_items( addable_media )
         
         return new_media
+        
+    
+    def Clear( self ):
+        
+        self._singleton_media = set()
+        self._collected_media = set()
+        
+        self._selected_media = set()
+        self._sorted_media = SortedList()
+        
+        self._RecalcAfterMediaRemove()
         
     
     def Collect( self, media_collect = None ):
@@ -1351,17 +1507,17 @@ class MediaList( object ):
         return set()
         
     
-    def GenerateMediaResults( self, has_location = None, discriminant = None, selected_media = None, unrated = None, for_media_viewer = False ):
+    def GenerateMediaResults( self, is_in_file_service_key = None, discriminant = None, selected_media = None, unrated = None, for_media_viewer = False ):
         
         media_results = []
         
         for media in self._sorted_media:
             
-            if has_location is not None:
+            if is_in_file_service_key is not None:
                 
                 locations_manager = media.GetLocationsManager()
                 
-                if has_location not in locations_manager.GetCurrent():
+                if is_in_file_service_key not in locations_manager.GetCurrent():
                     
                     continue
                     
@@ -1376,7 +1532,7 @@ class MediaList( object ):
                 
                 # don't include selected_media here as it is not valid at the deeper collection level
                 
-                media_results.extend( media.GenerateMediaResults( has_location = has_location, discriminant = discriminant, unrated = unrated, for_media_viewer = True ) )
+                media_results.extend( media.GenerateMediaResults( is_in_file_service_key = is_in_file_service_key, discriminant = discriminant, unrated = unrated, for_media_viewer = True ) )
                 
             else:
                 
@@ -1488,9 +1644,9 @@ class MediaList( object ):
         return flat_media
         
     
-    def GetHashes( self, has_location = None, discriminant = None, not_uploaded_to = None, ordered = False ):
+    def GetHashes( self, is_in_file_service_key = None, discriminant = None, is_not_in_file_service_key = None, ordered = False ):
         
-        if has_location is None and discriminant is None and not_uploaded_to is None:
+        if is_in_file_service_key is None and discriminant is None and is_not_in_file_service_key is None:
             
             if ordered:
                 
@@ -1509,7 +1665,7 @@ class MediaList( object ):
                 
                 for media in self._sorted_media:
                     
-                    result.extend( media.GetHashes( has_location, discriminant, not_uploaded_to, ordered ) )
+                    result.extend( media.GetHashes( is_in_file_service_key, discriminant, is_not_in_file_service_key, ordered ) )
                     
                 
             else:
@@ -1518,7 +1674,7 @@ class MediaList( object ):
                 
                 for media in self._sorted_media:
                     
-                    result.update( media.GetHashes( has_location, discriminant, not_uploaded_to, ordered ) )
+                    result.update( media.GetHashes( is_in_file_service_key, discriminant, is_not_in_file_service_key, ordered ) )
                     
                 
             
@@ -1636,7 +1792,7 @@ class MediaList( object ):
                     if action == HC.CONTENT_UPDATE_DELETE:
                         
                         local_file_domains = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_FILE_DOMAIN, ) )
-                        all_local_file_services = set( list( local_file_domains ) + [ CC.COMBINED_LOCAL_FILE_SERVICE_KEY, CC.TRASH_SERVICE_KEY ] )
+                        all_local_file_services = set( list( local_file_domains ) + [ CC.COMBINED_LOCAL_FILE_SERVICE_KEY, CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, CC.TRASH_SERVICE_KEY ] )
                         
                         #
                         
@@ -1644,13 +1800,17 @@ class MediaList( object ):
                         trashed = service_key in local_file_domains
                         deleted_from_our_domain = self._location_context.IsOneDomain() and service_key in self._location_context.current_service_keys
                         
+                        we_are_looking_at_trash = self._location_context.IsOneDomain() and CC.TRASH_SERVICE_KEY in self._location_context.current_service_keys
                         our_view_is_all_local = self._location_context.IncludesCurrent() and not self._location_context.IncludesDeleted() and self._location_context.current_service_keys.issubset( all_local_file_services )
                         
+                        # case one, disappeared from hard drive and we are looking at local files
                         physically_deleted_and_local_view = physically_deleted and our_view_is_all_local
                         
-                        user_says_remove_and_trashed_from_non_trash_local_view = HC.options[ 'remove_trashed_files' ] and trashed and our_view_is_all_local and CC.TRASH_SERVICE_KEY not in self._location_context.current_service_keys
-                        
+                        # case two, disappeared from repo hard drive while we are looking at it
                         deleted_from_repo_and_repo_view = service_key not in all_local_file_services and deleted_from_our_domain
+                        
+                        # case three, user asked for this to happen
+                        user_says_remove_and_trashed_from_non_trash_local_view = HC.options[ 'remove_trashed_files' ] and trashed and not we_are_looking_at_trash
                         
                         if physically_deleted_and_local_view or user_says_remove_and_trashed_from_non_trash_local_view or deleted_from_repo_and_repo_view:
                             
@@ -2212,7 +2372,7 @@ class MediaCollection( MediaList, Media ):
         return sum( ( nw for nw in num_words if nw is not None ) )
         
     
-    def GetPrettyInfoLines( self ):
+    def GetPrettyInfoLines( self, only_interesting_lines = False ):
         
         size = HydrusData.ToHumanBytes( self._size )
         
@@ -2269,6 +2429,11 @@ class MediaCollection( MediaList, Media ):
     def HasAudio( self ):
         
         return self._has_audio
+        
+    
+    def HasDeleteLocked( self ):
+        
+        return True in ( media.HasDeleteLocked() for media in self._sorted_media )
         
     
     def HasDuration( self ):
@@ -2367,9 +2532,9 @@ class MediaSingleton( Media ):
         return self._media_result.GetHashId()
         
     
-    def GetHashes( self, has_location = None, discriminant = None, not_uploaded_to = None, ordered = False ):
+    def GetHashes( self, is_in_file_service_key = None, discriminant = None, is_not_in_file_service_key = None, ordered = False ):
         
-        if self.MatchesDiscriminant( has_location = has_location, discriminant = discriminant, not_uploaded_to = not_uploaded_to ):
+        if self.MatchesDiscriminant( is_in_file_service_key = is_in_file_service_key, discriminant = discriminant, is_not_in_file_service_key = is_not_in_file_service_key ):
             
             if ordered:
                 
@@ -2429,7 +2594,19 @@ class MediaSingleton( Media ):
         return self._media_result.GetLocationsManager().GetDeletedTimestamps( service_key )
         
     
-    def GetPrettyInfoLines( self ):
+    def GetPrettyInfoLines( self, only_interesting_lines = False ):
+        
+        def timestamp_is_interesting( timestamp_1, timestamp_2 ):
+            
+            distance_1 = abs( timestamp_1 - HydrusData.GetNow() )
+            distance_2 = abs( timestamp_2 - HydrusData.GetNow() )
+            
+            # 50000 / 51000 = 0.98 = not interesting
+            # 10000 / 51000 = 0.20 = interesting
+            difference = min( distance_1, distance_2 ) / max( distance_1, distance_2, 1 )
+            
+            return difference < 0.9
+            
         
         file_info_manager = self._media_result.GetFileInfoManager()
         locations_manager = self._media_result.GetLocationsManager()
@@ -2469,7 +2646,7 @@ class MediaSingleton( Media ):
         
         if num_words is not None: info_string += ' (' + HydrusData.ToHumanInt( num_words ) + ' words)'
         
-        lines = [ info_string ]
+        lines = [ ( True, info_string ) ]
         
         locations_manager = self._media_result.GetLocationsManager()
         
@@ -2477,6 +2654,8 @@ class MediaSingleton( Media ):
         deleted_service_keys = locations_manager.GetDeleted()
         
         local_file_services = HG.client_controller.services_manager.GetLocalMediaFileServices()
+        
+        seen_local_file_service_timestamps = set()
         
         current_local_file_services = [ service for service in local_file_services if service.GetServiceKey() in current_service_keys ]
         
@@ -2486,14 +2665,25 @@ class MediaSingleton( Media ):
                 
                 timestamp = locations_manager.GetCurrentTimestamp( local_file_service.GetServiceKey() )
                 
-                lines.append( 'added to {} {}'.format( local_file_service.GetName(), ClientData.TimestampToPrettyTimeDelta( timestamp ) ) )
+                lines.append( ( True, 'added to {}: {}'.format( local_file_service.GetName(), ClientData.TimestampToPrettyTimeDelta( timestamp ) ) ) )
+                
+                seen_local_file_service_timestamps.add( timestamp )
                 
             
-        elif CC.COMBINED_LOCAL_FILE_SERVICE_KEY in current_service_keys:
+        
+        if CC.COMBINED_LOCAL_FILE_SERVICE_KEY in current_service_keys:
             
-            timestamp = locations_manager.GetCurrentTimestamp( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
+            import_timestamp = locations_manager.GetCurrentTimestamp( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
             
-            lines.append( 'imported {}'.format( ClientData.TimestampToPrettyTimeDelta( timestamp ) ) )
+            # if we haven't already printed this timestamp somewhere
+            line_is_interesting = False not in ( timestamp_is_interesting( t, import_timestamp ) for t in seen_local_file_service_timestamps )
+            
+            lines.append( ( line_is_interesting, 'imported: {}'.format( ClientData.TimestampToPrettyTimeDelta( import_timestamp ) ) ) )
+            
+            if line_is_interesting:
+                
+                seen_local_file_service_timestamps.add( import_timestamp )
+                
             
         
         deleted_local_file_services = [ service for service in local_file_services if service.GetServiceKey() in deleted_service_keys ]
@@ -2504,7 +2694,7 @@ class MediaSingleton( Media ):
             
             ( timestamp, original_timestamp ) = locations_manager.GetDeletedTimestamps( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
             
-            lines.append( 'deleted from this client {} ({})'.format( ClientData.TimestampToPrettyTimeDelta( timestamp ), local_file_deletion_reason ) )
+            lines.append( ( True, 'deleted from this client {} ({})'.format( ClientData.TimestampToPrettyTimeDelta( timestamp ), local_file_deletion_reason ) ) )
             
         elif len( deleted_local_file_services ) > 0:
             
@@ -2519,18 +2709,18 @@ class MediaSingleton( Media ):
                     l = '{} ({})'.format( l, local_file_deletion_reason )
                     
                 
-                lines.append( l )
+                lines.append( ( True, l ) )
                 
             
             if len( deleted_local_file_services ) > 1:
                 
-                lines.append( 'Deletion reason: {}'.format( local_file_deletion_reason ) )
+                lines.append( ( False, 'Deletion reason: {}'.format( local_file_deletion_reason ) ) )
                 
             
         
         if locations_manager.IsTrashed():
             
-            lines.append( 'in the trash' )
+            lines.append( ( True, 'in the trash' ) )
             
         
         timestamp_manager = locations_manager.GetTimestampManager()
@@ -2539,7 +2729,10 @@ class MediaSingleton( Media ):
         
         if file_modified_timestamp is not None:
             
-            lines.append( 'file modified: {}'.format( ClientData.TimestampToPrettyTimeDelta( file_modified_timestamp ) ) )
+            # if we haven't already printed this timestamp somewhere
+            line_is_interesting = False not in ( timestamp_is_interesting( timestamp, file_modified_timestamp ) for timestamp in seen_local_file_service_timestamps )
+            
+            lines.append( ( line_is_interesting, 'modified: {}'.format( ClientData.TimestampToPrettyTimeDelta( file_modified_timestamp ) ) ) )
             
         
         if not locations_manager.inbox:
@@ -2548,7 +2741,7 @@ class MediaSingleton( Media ):
             
             if archive_timestamp is not None:
                 
-                lines.append( 'file archived: {}'.format( ClientData.TimestampToPrettyTimeDelta( archive_timestamp ) ) )
+                lines.append( ( True, 'archived: {}'.format( ClientData.TimestampToPrettyTimeDelta( archive_timestamp ) ) ) )
                 
             
         
@@ -2569,15 +2762,17 @@ class MediaSingleton( Media ):
             
             if service_type == HC.IPFS:
                 
-                status = 'pinned '
+                status_label = 'pinned'
                 
             else:
                 
-                status = 'uploaded '
+                status_label = 'uploaded'
                 
             
-            lines.append( status + 'to ' + service.GetName() + ' ' + ClientData.TimestampToPrettyTimeDelta( timestamp ) )
+            lines.append( ( True, '{} to {} {}'.format( status_label, service.GetName(), ClientData.TimestampToPrettyTimeDelta( timestamp ) ) ) )
             
+        
+        lines = [ line for ( interesting, line ) in lines if interesting or not only_interesting_lines ]
         
         return lines
         
@@ -2635,6 +2830,13 @@ class MediaSingleton( Media ):
         return self._media_result.HasAudio()
         
     
+    def HasDeleteLocked( self ):
+        
+        return self._media_result.IsDeleteLocked()
+        
+    
+    IsDeleteLocked = HasDeleteLocked
+    
     def HasDuration( self ):
         
         duration = self._media_result.GetDuration()
@@ -2665,7 +2867,7 @@ class MediaSingleton( Media ):
         return self._media_result.IsStaticImage()
         
     
-    def MatchesDiscriminant( self, has_location = None, discriminant = None, not_uploaded_to = None ):
+    def MatchesDiscriminant( self, is_in_file_service_key = None, discriminant = None, is_not_in_file_service_key = None ):
         
         if discriminant is not None:
             
@@ -2704,21 +2906,21 @@ class MediaSingleton( Media ):
                 
             
         
-        if has_location is not None:
+        if is_in_file_service_key is not None:
             
             locations_manager = self._media_result.GetLocationsManager()
             
-            if has_location not in locations_manager.GetCurrent():
+            if is_in_file_service_key not in locations_manager.GetCurrent():
                 
                 return False
                 
             
         
-        if not_uploaded_to is not None:
+        if is_not_in_file_service_key is not None:
             
             locations_manager = self._media_result.GetLocationsManager()
             
-            if not_uploaded_to in locations_manager.GetCurrent():
+            if is_not_in_file_service_key in locations_manager.GetCurrent():
                 
                 return False
                 
@@ -2743,9 +2945,9 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_MEDIA_SORT
     SERIALISABLE_NAME = 'Media Sort'
-    SERIALISABLE_VERSION = 2
+    SERIALISABLE_VERSION = 3
     
-    def __init__( self, sort_type = None, sort_order = None ):
+    def __init__( self, sort_type = None, sort_order = None, tag_context = None ):
         
         if sort_type is None:
             
@@ -2755,6 +2957,11 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
         if sort_order is None:
             
             sort_order = CC.SORT_ASC
+            
+        
+        if tag_context is None:
+            
+            tag_context = ClientSearch.TagContext( service_key = CC.COMBINED_TAG_SERVICE_KEY )
             
         
         ( sort_metatype, sort_data ) = sort_type
@@ -2770,6 +2977,7 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
         
         self.sort_type = sort_type
         self.sort_order = sort_order
+        self.tag_context = tag_context
         
     
     def _GetSerialisableInfo( self ):
@@ -2791,12 +2999,14 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
             serialisable_sort_data = service_key.hex()
             
         
-        return ( sort_metatype, serialisable_sort_data, self.sort_order )
+        serialisable_tag_context = self.tag_context.GetSerialisableTuple()
+        
+        return ( sort_metatype, serialisable_sort_data, self.sort_order, serialisable_tag_context )
         
     
     def _InitialiseFromSerialisableInfo( self, serialisable_info ):
         
-        ( sort_metatype, serialisable_sort_data, self.sort_order ) = serialisable_info
+        ( sort_metatype, serialisable_sort_data, self.sort_order, serialisable_tag_context ) = serialisable_info
         
         if sort_metatype == 'system':
             
@@ -2815,6 +3025,8 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
         
         self.sort_type = ( sort_metatype, sort_data )
         
+        self.tag_context = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_tag_context )
+        
     
     def _UpdateSerialisableInfo( self, version, old_serialisable_info ):
         
@@ -2831,6 +3043,19 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
             new_serialisable_info = ( sort_metatype, serialisable_sort_data, sort_order )
             
             return ( 2, new_serialisable_info )
+            
+        
+        if version == 2:
+            
+            ( sort_metatype, serialisable_sort_data, sort_order ) = old_serialisable_info
+            
+            tag_context = ClientSearch.TagContext( service_key = CC.COMBINED_TAG_SERVICE_KEY )
+            
+            serialisable_tag_context = tag_context.GetSerialisableTuple()
+            
+            new_serialisable_info = ( sort_metatype, serialisable_sort_data, sort_order, serialisable_tag_context )
+            
+            return ( 3, new_serialisable_info )
             
         
     
@@ -3102,7 +3327,7 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
                     
                     tags_manager = x.GetTagsManager()
                     
-                    return len( tags_manager.GetCurrentAndPending( CC.COMBINED_TAG_SERVICE_KEY, ClientTags.TAG_DISPLAY_ACTUAL ) )
+                    return len( tags_manager.GetCurrentAndPending( self.tag_context.service_key, ClientTags.TAG_DISPLAY_ACTUAL ) )
                     
                 
             elif sort_data == CC.SORT_FILES_BY_MIME:
@@ -3143,7 +3368,7 @@ class MediaSort( HydrusSerialisable.SerialisableBase ):
                 
                 x_tags_manager = x.GetTagsManager()
                 
-                return [ x_tags_manager.GetComparableNamespaceSlice( ( namespace, ), tag_display_type ) for namespace in namespaces ]
+                return [ x_tags_manager.GetComparableNamespaceSlice( self.tag_context.service_key, ( namespace, ), tag_display_type ) for namespace in namespaces ]
                 
             
         elif sort_metadata == 'rating':

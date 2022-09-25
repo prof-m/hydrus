@@ -1121,9 +1121,9 @@ def LastShutdownWasBad( db_path, instance ):
         return False
         
 
-def MassUnion( lists ):
+def MassUnion( iterables ):
     
-    return { item for item in itertools.chain.from_iterable( lists ) }
+    return { item for item in itertools.chain.from_iterable( iterables ) }
     
 def MedianPop( population ):
     
@@ -1710,7 +1710,7 @@ def BaseToHumanBytes( size, sig_figs = 3 ):
         pass
         
     
-    return '{}{}B'.format( d, suffix )
+    return '{} {}B'.format( d, suffix )
     
 ToHumanBytes = BaseToHumanBytes
 
@@ -1987,6 +1987,11 @@ class ContentUpdate( object ):
     def IsInboxRelated( self ):
         
         return self._action in ( HC.CONTENT_UPDATE_ARCHIVE, HC.CONTENT_UPDATE_INBOX )
+        
+    
+    def SetReason( self, reason: str ):
+        
+        self._reason = reason
         
     
     def SetRow( self, row ):

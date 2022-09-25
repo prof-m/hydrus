@@ -1,6 +1,8 @@
 ---
-title: running from source  
+title: Running From Source  
 ---
+
+# running from source
 
 I write the client and server entirely in [python](https://python.org), which can run straight from source. It is not simple to get hydrus running this way, but if none of the built packages work for you (for instance you use a non-Ubuntu-compatible flavour of Linux), it may be the only way you can get the program to run. Also, if you have a general interest in exploring the code or wish to otherwise modify the program, you will obviously need to do this.
 
@@ -64,13 +66,19 @@ pip3 install -r requirements_windows.txt
 
 If you prefer to do things manually, inspect the document and install the modules yourself.
 
-## PyQt5 support { id="pyqt5" }
+## Qt { id="qt" }
 
-For Qt, either PySide2 (default) or PyQt5 are supported, through qtpy. For PyQt5, go:
+Qt is the UI library. You can run PySide2, PySide6, PyQt5, or PyQt6. A wrapper library called `qtpy` allows this. The default for now is PySide2, but it will soon be PySide6. For PyQt5 or PyQt6, go:
 
 ```
 pip3 install qtpy PyQtChart PyQt5
+-or-
+pip3 install qtpy PyQt6-Charts PyQt6
 ```
+
+If you have multiple Qts installed, then select which one you want to use by setting the `QT_API` environment variable to 'pyside2', 'pyside6', 'pyqt5', or 'pyqt6'. Check _help->about_ to make sure it loaded the right one. 
+
+If you run Windows 7, you cannot run Qt6. Please try PySide2 or PyQt5.
 
 ## FFMPEG { id="ffmpeg" }
 
@@ -82,9 +90,13 @@ MPV is optional and complicated, but it is great, so it is worth the time to fig
 
 As well as the python wrapper, 'python-mpv' as in the requirements.txt, you also need the underlying library. This is _not_ mpv the program, but 'libmpv', often called 'libmpv1'.
 
-For Windows, the dll builds are [here](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/), although getting the right version for the current wrapper can be difficult (you will get errors when you try to load video if it is not correct). Just put it in your hydrus base install directory. You can also just grab the 'mpv-1.dll' I bundle in my release. In my experience, [this](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20210228-git-d1be8bb.7z/download) works with python-mpv 0.5.2.
+For Windows, the dll builds are [here](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/), although getting the right version for the current wrapper can be difficult (you will get errors when you try to load video if it is not correct). Just put it in your hydrus base install directory. You can also just grab the 'mpv-2.dll' I bundle in my release. In my experience, [this](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20210228-git-d1be8bb.7z/download) works with python-mpv 0.5.2.
 
-If you are on Linux/macOS, you can usually get 'libmpv1' with _apt_. You might have to adjust your python-mpv version (e.g. `pip3 install python-mpv==0.4.5`) to get it to work.
+If you are on Linux, you can usually get 'libmpv1' with _apt_. You might have to adjust your python-mpv version (e.g. `pip3 install python-mpv==0.4.5`) to get it to work.
+
+On macOS, you should be able to get it with `brew install mpv`, but you may find mpv crashes the program when it tries to load. Hydev is working on this.
+
+Hit _help->about_ to see your mpv status. If you don't have it, it will present an error popup box with more info.
 
 ## SQLite { id="sqlite" }
 

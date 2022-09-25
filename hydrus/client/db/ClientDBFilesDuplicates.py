@@ -336,6 +336,33 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
         return allowed_hash_ids.difference( all_non_king_hash_ids )
         
     
+    def DuplicatesFilterMediaIdPairs( self, db_location_context: ClientDBFilesStorage.DBLocationContext, media_id_pairs ):
+        
+        if len( media_id_pairs ) == 0:
+            
+            return []
+            
+        
+        # this is pretty wonked out due to me not wanting to force db_location_context to make a single table
+        
+        all_media_ids = { i for i in itertools.chain.from_iterable( media_id_pairs ) }
+        
+        with self._MakeTemporaryIntegerTable( all_media_ids, 'media_id' ) as temp_media_ids_table_name:
+            
+            hash_ids_to_media_ids = dict( self._Execute( 'SELECT hash_id, media_id FROM {} CROSS JOIN {} USING ( media_id );'.format( temp_media_ids_table_name, 'duplicate_file_members' ) ) )
+            
+        
+        all_hash_ids = set( hash_ids_to_media_ids.keys() )
+        
+        good_hash_ids = self.modules_files_storage.FilterHashIds( db_location_context.location_context, all_hash_ids )
+        
+        good_media_ids = { hash_ids_to_media_ids[ hash_id ] for hash_id in good_hash_ids }
+        
+        good_media_id_pairs = [ ( smaller_media_id, larger_media_id ) for ( smaller_media_id, larger_media_id ) in media_id_pairs if smaller_media_id in good_media_ids and larger_media_id in good_media_ids ]
+        
+        return good_media_id_pairs
+        
+    
     def DuplicatesGetAlternatesGroupId( self, media_id, do_not_create = False ):
         
         result = self._Execute( 'SELECT alternates_group_id FROM alternate_file_group_members WHERE media_id = ?;', ( media_id, ) ).fetchone()
@@ -389,7 +416,7 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
                     
                     if king_hash_id not in preferred_hash_ids:
                         
-                        king_hash_id = random.sample( preferred_hash_ids, 1 )[0]
+                        king_hash_id = random.choice( list( preferred_hash_ids ) )
                         
                     
                     return king_hash_id
@@ -398,7 +425,7 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
             
             if king_hash_id not in media_hash_ids:
                 
-                king_hash_id = random.sample( media_hash_ids, 1 )[0]
+                king_hash_id = random.choice( list( media_hash_ids ) )
                 
             
             return king_hash_id
@@ -412,6 +439,15 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
         table_join = 'duplicate_file_members'
         
         if db_location_context is not None:
+            
+            if not db_location_context.SingleTableIsFast():
+                
+                hash_ids = self._STS( self._Execute( 'SELECT hash_id FROM {} WHERE media_id = ?;'.format( table_join ), ( media_id, ) ) )
+                
+                hash_ids = self.modules_files_storage.FilterHashIds( db_location_context.location_context, hash_ids )
+                
+                return hash_ids
+                
             
             table_join = db_location_context.GetTableJoinLimitedByFileDomain( table_join )
             
@@ -469,13 +505,13 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
             
             db_location_context = self.modules_files_storage.GetDBLocationContext( location_context )
             
-            table_join = self.DuplicatesGetPotentialDuplicatePairsTableJoinOnFileService( db_location_context )
+            all_potential_pairs = self._Execute( 'SELECT DISTINCT smaller_media_id, larger_media_id FROM potential_duplicate_pairs WHERE smaller_media_id = ? OR larger_media_id = ?;', ( media_id, media_id, ) ).fetchall()
             
-            ( num_potentials, ) = self._Execute( 'SELECT COUNT( * ) FROM ( SELECT DISTINCT smaller_media_id, larger_media_id FROM {} WHERE smaller_media_id = ? OR larger_media_id = ? );'.format( table_join ), ( media_id, media_id, ) ).fetchone()
+            potential_pairs = self.DuplicatesFilterMediaIdPairs( db_location_context, all_potential_pairs )
             
-            if num_potentials > 0:
+            if len( potential_pairs ) > 0:
                 
-                counter[ HC.DUPLICATE_POTENTIAL ] = num_potentials
+                counter[ HC.DUPLICATE_POTENTIAL ] = len( potential_pairs )
                 
             
             king_hash_id = self.DuplicatesGetKingHashId( media_id )
@@ -890,21 +926,21 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
     
     def DuplicatesGetPotentialDuplicatePairsTableJoinOnEverythingSearchResults( self, db_location_context: ClientDBFilesStorage.DBLocationContext, pixel_dupes_preference: int, max_hamming_distance: int ):
         
-        tables = 'potential_duplicate_pairs, duplicate_file_members AS duplicate_file_members_smaller, duplicate_file_members AS duplicate_file_members_larger'
-        join_predicate = 'smaller_media_id = duplicate_file_members_smaller.media_id AND larger_media_id = duplicate_file_members_larger.media_id AND distance <= {}'.format( max_hamming_distance )
+        tables = 'potential_duplicate_pairs, duplicate_files AS duplicate_files_smaller, duplicate_files AS duplicate_files_larger'
+        join_predicate = 'smaller_media_id = duplicate_files_smaller.media_id AND larger_media_id = duplicate_files_larger.media_id AND distance <= {}'.format( max_hamming_distance )
         
         if not db_location_context.location_context.IsAllKnownFiles():
             
-            files_table_name = db_location_context.files_table_name
+            files_table_name = db_location_context.GetSingleFilesTableName()
             
             tables = '{}, {} AS current_files_smaller, {} AS current_files_larger'.format( tables, files_table_name, files_table_name )
             
-            join_predicate = '{} AND duplicate_file_members_smaller.hash_id = current_files_smaller.hash_id AND duplicate_file_members_larger.hash_id = current_files_larger.hash_id'.format( join_predicate )
+            join_predicate = '{} AND duplicate_files_smaller.king_hash_id = current_files_smaller.hash_id AND duplicate_files_larger.king_hash_id = current_files_larger.hash_id'.format( join_predicate )
             
         
         if pixel_dupes_preference in ( CC.SIMILAR_FILES_PIXEL_DUPES_REQUIRED, CC.SIMILAR_FILES_PIXEL_DUPES_EXCLUDED ):
             
-            join_predicate_pixel_dupes = 'duplicate_file_members_smaller.hash_id = pixel_hash_map_smaller.hash_id AND duplicate_file_members_larger.hash_id = pixel_hash_map_larger.hash_id AND pixel_hash_map_smaller.pixel_hash_id = pixel_hash_map_larger.pixel_hash_id'
+            join_predicate_pixel_dupes = 'duplicate_files_smaller.king_hash_id = pixel_hash_map_smaller.hash_id AND duplicate_files_larger.king_hash_id = pixel_hash_map_larger.hash_id AND pixel_hash_map_smaller.pixel_hash_id = pixel_hash_map_larger.pixel_hash_id'
             
             if pixel_dupes_preference == CC.SIMILAR_FILES_PIXEL_DUPES_REQUIRED:
                 
@@ -935,9 +971,9 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
             
         else:
             
-            files_table_name = db_location_context.files_table_name
+            files_table_name = db_location_context.GetSingleFilesTableName()
             
-            table_join = 'potential_duplicate_pairs, duplicate_file_members AS duplicate_file_members_smaller, {} AS current_files_smaller, duplicate_file_members AS duplicate_file_members_larger, {} AS current_files_larger ON ( smaller_media_id = duplicate_file_members_smaller.media_id AND duplicate_file_members_smaller.hash_id = current_files_smaller.hash_id AND larger_media_id = duplicate_file_members_larger.media_id AND duplicate_file_members_larger.hash_id = current_files_larger.hash_id )'.format( files_table_name, files_table_name )
+            table_join = 'potential_duplicate_pairs, duplicate_files AS duplicate_files_smaller, {} AS current_files_smaller, duplicate_files AS duplicate_files_larger, {} AS current_files_larger ON ( smaller_media_id = duplicate_files_smaller.media_id AND duplicate_files_smaller.king_hash_id = current_files_smaller.hash_id AND larger_media_id = duplicate_files_larger.media_id AND duplicate_files_larger.king_hash_id = current_files_larger.hash_id )'.format( files_table_name, files_table_name )
             
         
         return table_join
@@ -994,15 +1030,15 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
         # ████████████████████████████████████████████████████████████████████████
         #
         
-        base_tables = 'potential_duplicate_pairs, duplicate_file_members AS duplicate_file_members_smaller, duplicate_file_members AS duplicate_file_members_larger'
+        base_tables = 'potential_duplicate_pairs, duplicate_files AS duplicate_files_smaller, duplicate_files AS duplicate_files_larger'
         
-        join_predicate_media_to_hashes = 'smaller_media_id = duplicate_file_members_smaller.media_id AND larger_media_id = duplicate_file_members_larger.media_id AND distance <= {}'.format( max_hamming_distance )
+        join_predicate_media_to_hashes = 'smaller_media_id = duplicate_files_smaller.media_id AND larger_media_id = duplicate_files_larger.media_id AND distance <= {}'.format( max_hamming_distance )
         
         if both_files_match:
             
             tables = '{}, {} AS results_smaller, {} AS results_larger'.format( base_tables, results_table_name, results_table_name )
             
-            join_predicate_hashes_to_allowed_results = 'duplicate_file_members_smaller.hash_id = results_smaller.hash_id AND duplicate_file_members_larger.hash_id = results_larger.hash_id'
+            join_predicate_hashes_to_allowed_results = 'duplicate_files_smaller.king_hash_id = results_smaller.hash_id AND duplicate_files_larger.king_hash_id = results_larger.hash_id'
             
         else:
             
@@ -1010,17 +1046,17 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
                 
                 tables = '{}, {} AS results_table_for_this_query'.format( base_tables, results_table_name )
                 
-                join_predicate_hashes_to_allowed_results = '( duplicate_file_members_smaller.hash_id = results_table_for_this_query.hash_id OR duplicate_file_members_larger.hash_id = results_table_for_this_query.hash_id )'
+                join_predicate_hashes_to_allowed_results = '( duplicate_files_smaller.king_hash_id = results_table_for_this_query.hash_id OR duplicate_files_larger.king_hash_id = results_table_for_this_query.hash_id )'
                 
             else:
                 
-                files_table_name = db_location_context.files_table_name
+                files_table_name = db_location_context.GetSingleFilesTableName()
                 
                 tables = '{}, {} AS results_table_for_this_query, {} AS current_files_for_this_query'.format( base_tables, results_table_name, files_table_name )
                 
-                join_predicate_smaller_matches = '( duplicate_file_members_smaller.hash_id = results_table_for_this_query.hash_id AND duplicate_file_members_larger.hash_id = current_files_for_this_query.hash_id )'
+                join_predicate_smaller_matches = '( duplicate_files_smaller.king_hash_id = results_table_for_this_query.hash_id AND duplicate_files_larger.king_hash_id = current_files_for_this_query.hash_id )'
                 
-                join_predicate_larger_matches = '( duplicate_file_members_smaller.hash_id = current_files_for_this_query.hash_id AND duplicate_file_members_larger.hash_id = results_table_for_this_query.hash_id )'
+                join_predicate_larger_matches = '( duplicate_files_smaller.king_hash_id = current_files_for_this_query.hash_id AND duplicate_files_larger.king_hash_id = results_table_for_this_query.hash_id )'
                 
                 join_predicate_hashes_to_allowed_results = '( {} OR {} )'.format( join_predicate_smaller_matches, join_predicate_larger_matches )
                 
@@ -1028,7 +1064,7 @@ class ClientDBFilesDuplicates( ClientDBModule.ClientDBModule ):
         
         if pixel_dupes_preference in ( CC.SIMILAR_FILES_PIXEL_DUPES_REQUIRED, CC.SIMILAR_FILES_PIXEL_DUPES_EXCLUDED ):
             
-            join_predicate_pixel_dupes = 'duplicate_file_members_smaller.hash_id = pixel_hash_map_smaller.hash_id AND duplicate_file_members_larger.hash_id = pixel_hash_map_larger.hash_id AND pixel_hash_map_smaller.pixel_hash_id = pixel_hash_map_larger.pixel_hash_id'
+            join_predicate_pixel_dupes = 'duplicate_files_smaller.king_hash_id = pixel_hash_map_smaller.hash_id AND duplicate_files_larger.king_hash_id = pixel_hash_map_larger.hash_id AND pixel_hash_map_smaller.pixel_hash_id = pixel_hash_map_larger.pixel_hash_id'
             
             if pixel_dupes_preference == CC.SIMILAR_FILES_PIXEL_DUPES_REQUIRED:
                 

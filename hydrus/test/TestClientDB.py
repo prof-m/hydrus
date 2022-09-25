@@ -12,11 +12,11 @@ from hydrus.core.networking import HydrusNetwork
 
 from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientDefaults
-from hydrus.client import ClientExporting
 from hydrus.client import ClientLocation
 from hydrus.client import ClientSearch
 from hydrus.client import ClientServices
 from hydrus.client.db import ClientDB
+from hydrus.client.exporting import ClientExportingFiles
 from hydrus.client.gui.pages import ClientGUIManagement
 from hydrus.client.gui.pages import ClientGUIPages
 from hydrus.client.gui.pages import ClientGUISession
@@ -83,13 +83,13 @@ class TestClientDB( unittest.TestCase ):
     
     def test_autocomplete( self ):
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
-        
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_FILE_SERVICE_KEY )
-        tag_search_context = ClientSearch.TagSearchContext( service_key = CC.DEFAULT_LOCAL_TAG_SERVICE_KEY )
+        tag_context = ClientSearch.TagContext( service_key = CC.DEFAULT_LOCAL_TAG_SERVICE_KEY )
         
-        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_search_context = tag_search_context )
+        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_context = tag_context )
         
         TestClientDB._clear_db()
         
@@ -245,13 +245,13 @@ class TestClientDB( unittest.TestCase ):
     
     def test_export_folders( self ):
         
-        tag_search_context = ClientSearch.TagSearchContext( service_key = HydrusData.GenerateKey() )
+        tag_context = ClientSearch.TagContext( service_key = HydrusData.GenerateKey() )
         
         location_context = ClientLocation.LocationContext.STATICCreateSimple( HydrusData.GenerateKey() )
         
-        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_search_context = tag_search_context, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'test' ) ] )
+        file_search_context = ClientSearch.FileSearchContext( location_context = location_context, tag_context = tag_context, predicates = [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'test' ) ] )
         
-        export_folder = ClientExporting.ExportFolder( 'test path', export_type = HC.EXPORT_FOLDER_TYPE_REGULAR, delete_from_client_after_export = False, file_search_context = file_search_context, period = 3600, phrase = '{hash}' )
+        export_folder = ClientExportingFiles.ExportFolder( 'test path', export_type = HC.EXPORT_FOLDER_TYPE_REGULAR, delete_from_client_after_export = False, file_search_context = file_search_context, period = 3600, phrase = '{hash}' )
         
         self._write( 'serialisable', export_folder )
         
@@ -366,7 +366,8 @@ class TestClientDB( unittest.TestCase ):
         
         path = os.path.join( HC.STATIC_DIR, 'hydrus.png' )
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -755,7 +756,8 @@ class TestClientDB( unittest.TestCase ):
         
         path = os.path.join( HC.STATIC_DIR, 'hydrus.png' )
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -767,7 +769,7 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        file_search_context = ClientSearch.FileSearchContext( location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.LOCAL_FILE_SERVICE_KEY ), tag_search_context = ClientSearch.TagSearchContext() )
+        file_search_context = ClientSearch.FileSearchContext( location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.LOCAL_FILE_SERVICE_KEY ), tag_context = ClientSearch.TagContext() )
         
         result = self._read( 'file_system_predicates', file_search_context )
         
@@ -811,7 +813,8 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -919,7 +922,8 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -1121,11 +1125,11 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        tag_search_context = ClientSearch.TagSearchContext( service_key = CC.DEFAULT_LOCAL_TAG_SERVICE_KEY )
+        tag_context = ClientSearch.TagContext( service_key = CC.DEFAULT_LOCAL_TAG_SERVICE_KEY )
         
         location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.LOCAL_FILE_SERVICE_KEY )
         
-        fsc = ClientSearch.FileSearchContext( location_context = location_context, tag_search_context = tag_search_context, predicates = [] )
+        fsc = ClientSearch.FileSearchContext( location_context = location_context, tag_context = tag_context, predicates = [] )
         
         management_controller = ClientGUIManagement.CreateManagementControllerQuery( 'search', fsc, False )
         
@@ -1241,7 +1245,8 @@ class TestClientDB( unittest.TestCase ):
         test_files.append( ( 'muh_apng.png', '9e7b8b5abc7cb11da32db05671ce926a2a2b701415d1b2cb77a28deea51010c3', 616956, HC.IMAGE_APNG, 500, 500, { 3133, 1880, 1125, 1800 }, { 27, 47 }, False, None ) )
         test_files.append( ( 'muh_gif.gif', '00dd9e9611ebc929bfc78fde99a0c92800bbb09b9d18e0946cea94c099b211c2', 15660, HC.IMAGE_GIF, 329, 302, { 600 }, { 5 }, False, None ) )
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         for ( filename, hex_hash, size, mime, width, height, durations, num_frames, has_audio, num_words ) in test_files:
             
@@ -1292,8 +1297,8 @@ class TestClientDB( unittest.TestCase ):
     
     def test_import_folders( self ):
         
-        import_folder_1 = ClientImportLocal.ImportFolder( 'imp 1', path = TestController.DB_DIR, mimes = HC.VIDEO, publish_files_to_popup_button = False )
-        import_folder_2 = ClientImportLocal.ImportFolder( 'imp 2', path = TestController.DB_DIR, mimes = HC.IMAGES, period = 1200, publish_files_to_popup_button = False )
+        import_folder_1 = ClientImportLocal.ImportFolder( 'imp 1', path = TestController.DB_DIR, publish_files_to_popup_button = False )
+        import_folder_2 = ClientImportLocal.ImportFolder( 'imp 2', path = TestController.DB_DIR, period = 1200, publish_files_to_popup_button = False )
         
         #
         
@@ -1368,7 +1373,8 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -1436,7 +1442,8 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -1488,7 +1495,8 @@ class TestClientDB( unittest.TestCase ):
         
         path = os.path.join( HC.STATIC_DIR, 'hydrus.png' )
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         file_import_job = ClientImportFiles.FileImportJob( path, file_import_options )
         
@@ -1718,7 +1726,8 @@ class TestClientDB( unittest.TestCase ):
             '9e7b8b5abc7cb11da32db05671ce926a2a2b701415d1b2cb77a28deea51010c3' : 'muh_apng.png'
         }
         
-        file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'loud' )
+        file_import_options = FileImportOptions.FileImportOptions()
+        file_import_options.SetIsDefault( True )
         
         for ( hash, filename ) in test_files.items():
             
@@ -1856,11 +1865,11 @@ class TestClientDB( unittest.TestCase ):
         
         TestClientDB._clear_db()
         
-        result = self._read( 'services', ( HC.LOCAL_FILE_DOMAIN, HC.LOCAL_FILE_TRASH_DOMAIN, HC.COMBINED_LOCAL_FILE, HC.LOCAL_TAG, HC.LOCAL_RATING_LIKE ) )
+        result = self._read( 'services', ( HC.LOCAL_FILE_DOMAIN, HC.LOCAL_FILE_UPDATE_DOMAIN, HC.LOCAL_FILE_TRASH_DOMAIN, HC.COMBINED_LOCAL_FILE, HC.COMBINED_LOCAL_MEDIA, HC.LOCAL_TAG, HC.LOCAL_RATING_LIKE ) )
         
         result_service_keys = { service.GetServiceKey() for service in result }
         
-        self.assertEqual( { CC.TRASH_SERVICE_KEY, CC.LOCAL_FILE_SERVICE_KEY, CC.LOCAL_UPDATE_SERVICE_KEY, CC.COMBINED_LOCAL_FILE_SERVICE_KEY, CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY }, result_service_keys )
+        self.assertEqual( { CC.TRASH_SERVICE_KEY, CC.LOCAL_FILE_SERVICE_KEY, CC.LOCAL_UPDATE_SERVICE_KEY, CC.COMBINED_LOCAL_FILE_SERVICE_KEY, CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY }, result_service_keys )
         
         #
         
@@ -1876,7 +1885,7 @@ class TestClientDB( unittest.TestCase ):
         
         #
         
-        NUM_DEFAULT_SERVICES = 13
+        NUM_DEFAULT_SERVICES = 14
         
         services = self._read( 'services' )
         

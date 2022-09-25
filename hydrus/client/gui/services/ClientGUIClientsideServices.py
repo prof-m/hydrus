@@ -129,9 +129,20 @@ class ManageClientServicesPanel( ClientGUIScrolledPanels.ManagePanel ):
         
         if deletable:
             
-            if service_type in HC.MUST_HAVE_AT_LEAST_ONE_SERVICES:
+            if service_type in HC.MUST_HAVE_AT_LEAST_ONE_SERVICES or service_type in HC.MUST_BE_EMPTY_OF_FILES_SERVICES:
                 
-                pretty_deletable = 'must have at least one'
+                clauses = []
+                
+                if service_type in HC.MUST_BE_EMPTY_OF_FILES_SERVICES:
+                    
+                    clauses.append( 'must be empty of files' )
+                    
+                if service_type in HC.MUST_HAVE_AT_LEAST_ONE_SERVICES:
+                    
+                    clauses.append( 'must have at least one' )
+                    
+                
+                pretty_deletable = ', '.join( clauses )
                 
             else:
                 
@@ -176,6 +187,27 @@ class ManageClientServicesPanel( ClientGUIScrolledPanels.ManagePanel ):
                 
                 return
                 
+            
+        
+        for service_type in HC.MUST_BE_EMPTY_OF_FILES_SERVICES:
+            
+            for service in deletable_services:
+                
+                if service.GetServiceType() == service_type:
+                    
+                    service_info = HG.client_controller.Read( 'service_info', service.GetServiceKey() )
+                    
+                    num_files = service_info[ HC.SERVICE_INFO_NUM_FILES ]
+                    
+                    if num_files > 0:
+                        
+                        message = 'The service {} needs to be empty before it can be deleted, but it seems to have {} files in it! Please delete or migrate all the files from it and then try again.'.format( service.GetName(), HydrusData.ToHumanInt( num_files ) )
+                        
+                        QW.QMessageBox.information( self, "Information", message )
+                        
+                        return
+                        
+                    
             
         
         if len( deletable_services ) > 0:
@@ -1213,7 +1245,8 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
         
         self._shape.addItem( 'circle', ClientRatings.CIRCLE )
         self._shape.addItem( 'square', ClientRatings.SQUARE )
-        self._shape.addItem( 'star', ClientRatings.STAR )
+        self._shape.addItem( 'fat star', ClientRatings.FAT_STAR )
+        self._shape.addItem( 'pentagram star', ClientRatings.PENTAGRAM_STAR )
         
         self._colour_ctrls = {}
         
@@ -1255,10 +1288,22 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
             QP.AddToLayout( hbox, border_ctrl, CC.FLAGS_CENTER_PERPENDICULAR )
             QP.AddToLayout( hbox, fill_ctrl, CC.FLAGS_CENTER_PERPENDICULAR )
             
-            if colour_type == ClientRatings.LIKE: colour_text = 'liked'
-            elif colour_type == ClientRatings.DISLIKE: colour_text = 'disliked'
-            elif colour_type == ClientRatings.NULL: colour_text = 'not rated'
-            elif colour_type == ClientRatings.MIXED: colour_text = 'a mixture of ratings'
+            if colour_type == ClientRatings.LIKE:
+                
+                colour_text = 'liked'
+                
+            elif colour_type == ClientRatings.DISLIKE:
+                
+                colour_text = 'disliked'
+                
+            elif colour_type == ClientRatings.NULL:
+                
+                colour_text = 'not rated'
+                
+            else:
+                
+                colour_text = 'a mixture of ratings'
+                
             
             rows.append( ( 'border/fill for ' + colour_text + ': ', hbox ) )
             
@@ -1478,6 +1523,15 @@ class ReviewServicePanel( QW.QWidget ):
         
         self._service = service
         
+        self._id_button = ClientGUICommon.BetterButton( self, 'id', self._GetAndShowID )
+        self._id_button.setToolTip( 'Click to fetch your service\'s database id.' )
+        
+        width = ClientGUIFunctions.ConvertTextToPixelWidth( self._id_button, 4 )
+        
+        self._id_button.setFixedWidth( width )
+        
+        self._service_key_button = ClientGUICommon.BetterButton( self, 'copy service key', HG.client_controller.pub, 'clipboard', 'text', service.GetServiceKey().hex() )
+        
         self._refresh_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().refresh, self._RefreshButton )
         
         service_type = self._service.GetServiceType()
@@ -1543,9 +1597,21 @@ class ReviewServicePanel( QW.QWidget ):
         
         #
         
+        if not HG.client_controller.new_options.GetBoolean( 'advanced_mode' ):
+            
+            self._id_button.hide()
+            self._service_key_button.hide()
+            
+        
         vbox = QP.VBoxLayout()
         
-        QP.AddToLayout( vbox, self._refresh_button, CC.FLAGS_ON_RIGHT )
+        hbox = QP.HBoxLayout( margin = 0 )
+        
+        QP.AddToLayout( hbox, self._id_button, CC.FLAGS_CENTER )
+        QP.AddToLayout( hbox, self._service_key_button, CC.FLAGS_CENTER )
+        QP.AddToLayout( hbox, self._refresh_button, CC.FLAGS_CENTER )
+        
+        QP.AddToLayout( vbox, hbox, CC.FLAGS_ON_RIGHT )
         
         saw_both_ways = False
         
@@ -1565,6 +1631,29 @@ class ReviewServicePanel( QW.QWidget ):
             
         
         self.setLayout( vbox )
+        
+    
+    def _GetAndShowID( self ):
+        
+        service_key = self._service.GetServiceKey()
+        
+        def work_callable():
+            
+            service_id = HG.client_controller.Read( 'service_id', service_key )
+            
+            return service_id
+            
+        
+        def publish_callable( service_id ):
+            
+            message = 'The service id is: {}'.format( service_id )
+            
+            QP.CallAfter( QW.QMessageBox.information, None, 'Service ID', message )
+            
+        
+        job = ClientGUIAsync.AsyncQtJob( self, work_callable, publish_callable )
+        
+        job.start()
         
     
     def _RefreshButton( self ):
@@ -2137,7 +2226,7 @@ class ReviewServiceFileSubPanel( ClientGUICommon.StaticBox ):
         
         text = HydrusData.ToHumanInt( num_files ) + ' files, totalling ' + HydrusData.ToHumanBytes( total_size )
         
-        if service.GetServiceType() in ( HC.LOCAL_FILE_DOMAIN, HC.COMBINED_LOCAL_FILE, HC.FILE_REPOSITORY ):
+        if service.GetServiceType() in ( HC.LOCAL_FILE_DOMAIN, HC.COMBINED_LOCAL_MEDIA, HC.COMBINED_LOCAL_FILE, HC.FILE_REPOSITORY ):
             
             num_deleted_files = service_info[ HC.SERVICE_INFO_NUM_DELETED_FILES ]
             
@@ -2543,6 +2632,8 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
         self._update_downloading_paused_button = ClientGUICommon.BetterBitmapButton( self._network_panel, CC.global_pixmaps().pause, self._PausePlayUpdateDownloading )
         self._update_downloading_paused_button.setToolTip( 'pause/play update downloading' )
         
+        self._service_info_button = ClientGUICommon.BetterButton( self._network_panel, 'fetch service info', self._FetchServiceInfo )
+        
         self._sync_remote_now_button = ClientGUICommon.BetterButton( self._network_panel, 'download now', self._SyncRemoteNow )
         
         reset_menu_items = []
@@ -2616,6 +2707,7 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
         
         hbox = QP.HBoxLayout()
         
+        QP.AddToLayout( hbox, self._service_info_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._sync_remote_now_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._reset_downloading_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._export_updates_button, CC.FLAGS_CENTER_PERPENDICULAR )
@@ -2785,6 +2877,61 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
             
         
     
+    def _FetchServiceInfo( self ):
+        
+        service = self._service
+        
+        def work_callable():
+            
+            result = service.Request( HC.GET, 'service_info' )
+            
+            return dict( result[ 'service_info' ] )
+            
+        
+        def publish_callable( service_info_dict ):
+            
+            if self._service.GetServiceType() == HC.TAG_REPOSITORY:
+                
+                l = HC.TAG_REPOSITORY_SERVICE_INFO_TYPES
+                
+            else:
+                
+                l = HC.FILE_REPOSITORY_SERVICE_INFO_TYPES
+                
+            
+            message = 'Note that num file hashes and tags here include deleted content so will likely not line up with your review services value, which is only for current content.'
+            message += os.linesep * 2
+            
+            tuples = [ ( HC.service_info_enum_str_lookup[ info_type ], HydrusData.ToHumanInt( service_info_dict[ info_type ] ) ) for info_type in l if info_type in service_info_dict ]
+            string_rows = [ '{}: {}'.format( info_type, info ) for ( info_type, info ) in tuples ]
+            
+            message += os.linesep.join( string_rows )
+            
+            QW.QMessageBox.information( self, 'Service Info', message )
+            
+            self._my_updater.Update()
+            
+        
+        def errback_callable( etype, value, tb ):
+            
+            if not isinstance( etype, HydrusExceptions.ServerBusyException ):
+                
+                HydrusData.ShowExceptionTuple( etype, value, tb, do_wait = False )
+                
+            
+            QW.QMessageBox.critical( self, 'Error', str( value ) )
+            
+            self._my_updater.Update()
+            
+        
+        self._service_info_button.setEnabled( False )
+        self._service_info_button.setText( 'fetching\u2026' )
+        
+        job = ClientGUIAsync.AsyncQtJob( self, work_callable, publish_callable, errback_callable = errback_callable )
+        
+        job.start()
+        
+    
     def _PausePlayUpdateDownloading( self ):
         
         self._service.PausePlayUpdateDownloading()
@@ -2815,6 +2962,13 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
             
             ClientGUIFunctions.SetBitmapButtonBitmap( self._update_downloading_paused_button, CC.global_pixmaps().pause )
             
+        
+        #
+        
+        
+        self._service_info_button.setText( 'service info' )
+        self._service_info_button.setEnabled( True )
+        self._service_info_button.setVisible( HG.client_controller.new_options.GetBoolean( 'advanced_mode' ) )
         
         #
         
@@ -3274,7 +3428,7 @@ class ReviewServiceIPFSSubPanel( ClientGUICommon.StaticBox ):
             
             try:
                 
-                location_context = ClientLocation.GetLocationContextForAllLocalMedia()
+                location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
                 
                 for ( multihash, num_files, total_size, note ) in shares:
                     
@@ -3557,7 +3711,7 @@ class ReviewServiceLocalBooruSubPanel( ClientGUICommon.StaticBox ):
     
     def _OpenSearch( self ):
         
-        location_context = ClientLocation.GetLocationContextForAllLocalMedia()
+        location_context = ClientLocation.LocationContext.STATICCreateSimple( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
         
         for share_key in self._booru_shares.GetData( only_selected = True ):
             
@@ -3714,7 +3868,7 @@ class ReviewServiceRatingSubPanel( ClientGUICommon.StaticBox ):
         
         service_info = HG.client_controller.Read( 'service_info', service.GetServiceKey() )
         
-        num_files = service_info[ HC.SERVICE_INFO_NUM_FILES ]
+        num_files = service_info[ HC.SERVICE_INFO_NUM_FILE_HASHES ]
         
         text = HydrusData.ToHumanInt( num_files ) + ' files are rated'
         
@@ -3788,7 +3942,7 @@ class ReviewServiceTagSubPanel( ClientGUICommon.StaticBox ):
         
         service_info = HG.client_controller.Read( 'service_info', service.GetServiceKey() )
         
-        num_files = service_info[ HC.SERVICE_INFO_NUM_FILES ]
+        num_files = service_info[ HC.SERVICE_INFO_NUM_FILE_HASHES ]
         num_tags = service_info[ HC.SERVICE_INFO_NUM_TAGS ]
         num_mappings = service_info[ HC.SERVICE_INFO_NUM_MAPPINGS ]
         
@@ -3973,7 +4127,20 @@ class ReviewServicesPanel( ClientGUIScrolledPanels.ReviewPanel ):
         
         notebook_dict = {}
         
-        services = self._controller.services_manager.GetServices()
+        service_types = list( HC.ALL_SERVICES )
+        
+        # we want these in exactly this order, so a bit of shuffling
+        for service_type in HC.LOCAL_FILE_SERVICES_IN_NICE_ORDER:
+            
+            if service_type in service_types:
+                
+                service_types.remove( service_type )
+                
+            
+        
+        service_types = list( HC.LOCAL_FILE_SERVICES_IN_NICE_ORDER ) + service_types
+        
+        services = self._controller.services_manager.GetServices( service_types )
         
         for service in services:
             

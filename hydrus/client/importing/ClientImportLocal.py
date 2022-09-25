@@ -4,6 +4,7 @@ import time
 
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
+from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusFileHandling
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusPaths
@@ -14,7 +15,9 @@ from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientData
 from hydrus.client import ClientFiles
 from hydrus.client import ClientPaths
+from hydrus.client import ClientSearch
 from hydrus.client import ClientThreading
+from hydrus.client.importing import ClientImportControl
 from hydrus.client.importing import ClientImporting
 from hydrus.client.importing import ClientImportFileSeeds
 from hydrus.client.importing.options import FileImportOptions
@@ -70,7 +73,9 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
         self._file_import_options = file_import_options
         self._delete_after_success = delete_after_success
         
-        self._current_action = ''
+        self._page_key = b'initialising page key'
+        
+        self._files_status = ''
         self._paused = False
         
         self._lock = threading.Lock()
@@ -131,7 +136,7 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
             
         
     
-    def _WorkOnFiles( self, page_key ):
+    def _WorkOnFiles( self ):
         
         file_seed = self._file_seed_cache.GetNextFileSeed( CC.STATUS_UNKNOWN )
         
@@ -140,39 +145,30 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
             return
             
         
-        did_substantial_work = False
-        
         path = file_seed.file_seed_data
         
         with self._lock:
             
-            self._current_action = 'importing'
+            self._files_status = 'importing'
             
         
         def status_hook( text ):
             
             with self._lock:
                 
-                if len( text ) > 0:
-                    
-                    text = text.splitlines()[0]
-                    
-                
-                self._current_action = text
+                self._files_status = ClientImportControl.NeatenStatusText( text )
                 
             
         
-        file_seed.ImportPath( self._file_seed_cache, self._file_import_options, status_hook = status_hook )
-        
-        did_substantial_work = True
+        file_seed.ImportPath( self._file_seed_cache, self._file_import_options, FileImportOptions.IMPORT_TYPE_LOUD, status_hook = status_hook )
         
         if file_seed.status in CC.SUCCESSFUL_IMPORT_STATES:
             
-            if file_seed.ShouldPresent( self._file_import_options.GetPresentationImportOptions() ):
+            real_presentation_import_options = FileImportOptions.GetRealPresentationImportOptions( self._file_import_options, FileImportOptions.IMPORT_TYPE_LOUD )
+            
+            if file_seed.ShouldPresent( real_presentation_import_options ):
                 
-                file_seed.PresentToPage( page_key )
-                
-                did_substantial_work = True
+                file_seed.PresentToPage( self._page_key )
                 
             
             if self._delete_after_success:
@@ -206,13 +202,10 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
         
         with self._lock:
             
-            self._current_action = ''
+            self._files_status = ''
             
         
-        if did_substantial_work:
-            
-            time.sleep( ClientImporting.DID_SUBSTANTIAL_FILE_WORK_MINIMUM_SLEEP_TIME )
-            
+        time.sleep( ClientImporting.DID_SUBSTANTIAL_FILE_WORK_MINIMUM_SLEEP_TIME )
         
     
     def CurrentlyWorking( self ):
@@ -264,7 +257,9 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
         
         with self._lock:
             
-            return ( self._current_action, self._paused )
+            text = ClientImportControl.GenerateLiveStatusText( self._files_status, self._paused, 0, '' )
+            
+            return ( text, self._paused )
             
         
     
@@ -321,69 +316,55 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
     
     def Start( self, page_key ):
         
-        self._files_repeating_job = HG.client_controller.CallRepeating( ClientImporting.GetRepeatingJobInitialDelay(), ClientImporting.REPEATING_JOB_TYPICAL_PERIOD, self.REPEATINGWorkOnFiles, page_key )
+        self._page_key = page_key
+        
+        self._files_repeating_job = HG.client_controller.CallRepeating( ClientImporting.GetRepeatingJobInitialDelay(), ClientImporting.REPEATING_JOB_TYPICAL_PERIOD, self.REPEATINGWorkOnFiles )
         
         self._files_repeating_job.SetThreadSlotType( 'misc' )
         
     
-    def CanDoFileWork( self, page_key ):
+    def CheckCanDoFileWork( self ):
         
         with self._lock:
             
-            if ClientImporting.PageImporterShouldStopWorking( page_key ):
+            try:
+                
+                ClientImportControl.CheckImporterCanDoWorkBecauseStopped( self._page_key )
+                
+            except HydrusExceptions.VetoException:
                 
                 self._files_repeating_job.Cancel()
                 
-                return False
+                raise
                 
             
-            paused = self._paused or HG.client_controller.new_options.GetBoolean( 'pause_all_file_queues' )
-            
-            if paused:
-                
-                return False
-                
-            
-            try:
-                
-                self._file_import_options.CheckReadyToImport()
-                
-            except Exception as e:
-                
-                self._current_action = str( e )
-                
-                HydrusData.ShowText( str( e ) )
-                
-                self._paused = True
-                
-                return False
-                
-            
-            work_to_do = self._file_seed_cache.WorkToDo()
-            
-            if not work_to_do:
-                
-                return False
-                
-            
-            page_shown = not HG.client_controller.PageClosedButNotDestroyed( page_key )
-            
-            if not page_shown:
-                
-                return False
-                
+            ClientImportControl.CheckImporterCanDoFileWorkBecausePaused( self._paused, self._file_seed_cache, self._page_key )
             
         
         return True
         
     
-    def REPEATINGWorkOnFiles( self, page_key ):
+    def REPEATINGWorkOnFiles( self ):
         
-        while self.CanDoFileWork( page_key ):
+        while True:
             
             try:
                 
-                self._WorkOnFiles( page_key )
+                try:
+                    
+                    self.CheckCanDoFileWork()
+                    
+                except HydrusExceptions.VetoException as e:
+                    
+                    with self._lock:
+                        
+                        self._files_status = str( e )
+                        
+                    
+                    break
+                    
+                
+                self._WorkOnFiles()
                 
                 HG.client_controller.WaitUntilViewFree()
                 
@@ -391,7 +372,14 @@ class HDDImport( HydrusSerialisable.SerialisableBase ):
                 
             except Exception as e:
                 
+                with self._lock:
+                    
+                    self._files_status = 'stopping work: {}'.format( str( e ) )
+                    
+                
                 HydrusData.ShowException( e )
+                
+                return
                 
             
         
@@ -402,18 +390,14 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_IMPORT_FOLDER
     SERIALISABLE_NAME = 'Import Folder'
-    SERIALISABLE_VERSION = 6
+    SERIALISABLE_VERSION = 7
     
-    def __init__( self, name, path = '', file_import_options = None, tag_import_options = None, tag_service_keys_to_filename_tagging_options = None, mimes = None, actions = None, action_locations = None, period = 3600, check_regularly = True, show_working_popup = True, publish_files_to_popup_button = True, publish_files_to_page = False ):
-        
-        if mimes is None:
-            
-            mimes = HC.ALLOWED_MIMES
-            
+    def __init__( self, name, path = '', file_import_options = None, tag_import_options = None, tag_service_keys_to_filename_tagging_options = None, actions = None, action_locations = None, period = 3600, check_regularly = True, show_working_popup = True, publish_files_to_popup_button = True, publish_files_to_page = False ):
         
         if file_import_options is None:
             
-            file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( 'quiet' )
+            file_import_options = FileImportOptions.FileImportOptions()
+            file_import_options.SetIsDefault( True )
             
         
         if tag_import_options is None:
@@ -444,7 +428,6 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
         HydrusSerialisable.SerialisableBaseNamed.__init__( self, name )
         
         self._path = path
-        self._mimes = mimes
         self._file_import_options = file_import_options
         self._tag_import_options = tag_import_options
         self._tag_service_keys_to_filename_tagging_options = tag_service_keys_to_filename_tagging_options
@@ -637,7 +620,7 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
         action_pairs = list(self._actions.items())
         action_location_pairs = list(self._action_locations.items())
         
-        return ( self._path, list( self._mimes ), serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, self._period, self._check_regularly, serialisable_file_seed_cache, self._last_checked, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page )
+        return ( self._path, serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, self._period, self._check_regularly, serialisable_file_seed_cache, self._last_checked, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page )
         
     
     def _ImportFiles( self, job_key ):
@@ -685,7 +668,7 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
             
             path = file_seed.file_seed_data
             
-            file_seed.ImportPath( self._file_seed_cache, self._file_import_options, limited_mimes = self._mimes )
+            file_seed.ImportPath( self._file_seed_cache, self._file_import_options, FileImportOptions.IMPORT_TYPE_QUIET )
             
             if file_seed.status in CC.SUCCESSFUL_IMPORT_STATES:
                 
@@ -747,7 +730,9 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
                 
                 if hash not in presentation_hashes_fast:
                     
-                    if file_seed.ShouldPresent( self._file_import_options.GetPresentationImportOptions() ):
+                    real_presentation_import_options = FileImportOptions.GetRealPresentationImportOptions( self._file_import_options, FileImportOptions.IMPORT_TYPE_LOUD )
+                    
+                    if file_seed.ShouldPresent( real_presentation_import_options ):
                         
                         presentation_hashes.append( hash )
                         
@@ -785,9 +770,7 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
     
     def _InitialiseFromSerialisableInfo( self, serialisable_info ):
         
-        ( self._path, mimes, serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, self._period, self._check_regularly, serialisable_file_seed_cache, self._last_checked, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page ) = serialisable_info
-        
-        self._mimes = set( mimes )
+        ( self._path, serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, self._period, self._check_regularly, serialisable_file_seed_cache, self._last_checked, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page ) = serialisable_info
         
         self._actions = dict( action_pairs )
         self._action_locations = dict( action_location_pairs )
@@ -875,6 +858,21 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
             return ( 6, new_serialisable_info )
             
         
+        if version == 6:
+            
+            ( path, mimes, serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, period, check_regularly, serialisable_file_seed_cache, last_checked, paused, check_now, show_working_popup, publish_files_to_popup_button, publish_files_to_page ) = old_serialisable_info
+            
+            file_import_options = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_file_import_options )
+            
+            file_import_options.SetAllowedSpecificFiletypes( mimes )
+            
+            serialisable_file_import_options = file_import_options.GetSerialisableTuple()
+            
+            new_serialisable_info = ( path, serialisable_file_import_options, serialisable_tag_import_options, serialisable_tag_service_keys_to_filename_tagging_options, action_pairs, action_location_pairs, period, check_regularly, serialisable_file_seed_cache, last_checked, paused, check_now, show_working_popup, publish_files_to_popup_button, publish_files_to_page )
+            
+            return ( 7, new_serialisable_info )
+            
+        
     
     def CheckNow( self ):
         
@@ -906,7 +904,9 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
         
         try:
             
-            self._file_import_options.CheckReadyToImport()
+            real_file_import_options = FileImportOptions.GetRealFileImportOptions( self._file_import_options, FileImportOptions.IMPORT_TYPE_QUIET )
+            
+            real_file_import_options.CheckReadyToImport()
             
             if not os.path.exists( self._path ) or not os.path.isdir( self._path ):
                 
@@ -987,7 +987,7 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
     
     def ToTuple( self ):
         
-        return ( self._name, self._path, self._mimes, self._file_import_options, self._tag_import_options, self._tag_service_keys_to_filename_tagging_options, self._actions, self._action_locations, self._period, self._check_regularly, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page )
+        return ( self._name, self._path, self._file_import_options, self._tag_import_options, self._tag_service_keys_to_filename_tagging_options, self._actions, self._action_locations, self._period, self._check_regularly, self._paused, self._check_now, self._show_working_popup, self._publish_files_to_popup_button, self._publish_files_to_page )
         
     
     def SetFileSeedCache( self, file_seed_cache ):
@@ -995,23 +995,25 @@ class ImportFolder( HydrusSerialisable.SerialisableBaseNamed ):
         self._file_seed_cache = file_seed_cache
         
     
-    def SetTuple( self, name, path, mimes, file_import_options, tag_import_options, tag_service_keys_to_filename_tagging_options, actions, action_locations, period, check_regularly, paused, check_now, show_working_popup, publish_files_to_popup_button, publish_files_to_page ):
+    def SetTuple( self, name, path, file_import_options, tag_import_options, tag_service_keys_to_filename_tagging_options, actions, action_locations, period, check_regularly, paused, check_now, show_working_popup, publish_files_to_popup_button, publish_files_to_page ):
         
         if path != self._path:
             
             self._file_seed_cache = ClientImportFileSeeds.FileSeedCache()
             
         
-        mimes = set( mimes )
-        
-        if mimes != self._mimes:
+        if not file_import_options.IsDefault() and not self._file_import_options.IsDefault():
             
-            self._file_seed_cache.RemoveFileSeedsByStatus( ( CC.STATUS_VETOED, ) )
+            mimes = set( file_import_options.GetAllowedSpecificFiletypes() )
+            
+            if mimes != set( self._file_import_options.GetAllowedSpecificFiletypes() ):
+                
+                self._file_seed_cache.RemoveFileSeedsByStatus( ( CC.STATUS_VETOED, ) )
+                
             
         
         self._name = name
         self._path = path
-        self._mimes = mimes
         self._file_import_options = file_import_options
         self._tag_import_options = tag_import_options
         self._tag_service_keys_to_filename_tagging_options = tag_service_keys_to_filename_tagging_options

@@ -130,6 +130,42 @@ def AppendMenuLabel( menu, label, description = '' ):
     
     return menu_item
     
+def AppendMenuOrItem( menu, submenu_name, menu_tuples, sort_tuples = True ):
+    
+    if sort_tuples:
+        
+        try:
+            
+            menu_tuples = sorted( menu_tuples )
+            
+        except:
+            
+            pass
+            
+        
+    
+    if len( menu_tuples ) == 1:
+        
+        submenu = menu
+        
+        item_prefix = '{} '.format( submenu_name )
+        
+    else:
+        
+        submenu = QW.QMenu( menu )
+        
+        AppendMenu( menu, submenu, submenu_name )
+        
+        item_prefix = ''
+        
+    
+    for ( label, description, call ) in menu_tuples:
+        
+        label = '{}{}'.format( item_prefix, label )
+        
+        AppendMenuItem( submenu, label, description, call )
+        
+    
 def AppendSeparator( menu ):
     
     num_items = len( menu.actions() )
@@ -138,7 +174,11 @@ def AppendSeparator( menu ):
         
         last_item = menu.actions()[-1]
         
-        if not last_item.isSeparator():
+        # got this once, who knows what happened, so we test for QAction now
+        # 'PySide2.QtGui.QStandardItem' object has no attribute 'isSeparator'
+        last_item_is_separator = isinstance( last_item, QW.QAction ) and last_item.isSeparator()
+        
+        if not last_item_is_separator:
             
             menu.addSeparator()
             

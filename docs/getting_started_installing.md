@@ -1,6 +1,8 @@
 ---
-title: installing and updating  
+title: Installing and Updating  
 ---
+
+# installing and updating
 
 If any of this is confusing, a simpler guide is [here](https://github.com/Zweibach/text/blob/master/Hydrus/Hydrus%20Help%20Docs/00_tableOfContents.md), and some video guides are [here](https://github.com/CuddleBear92/Hydrus-guides)!
 
@@ -22,7 +24,9 @@ I try to release a new version every Wednesday by 8pm EST and write an accompany
     *   _Note if you run <Win10, you may need [Visual C++ Redistributable for Visual Studio 2015](https://www.microsoft.com/en-us/download/details.aspx?id=48145), if you don't already have it for vidya. If you run Win7, you will need some/all core OS updates released before 2017._
     *   If you use Windows 10 N (a version of Windows without some media playback features), you will likely need the 'Media Feature Pack'. There have been several versions of this, so it may best found by searching for the latest version or hitting Windows Update, but otherwise check [here](https://support.microsoft.com/en-us/help/3145500/media-feature-pack-list-for-windows-n-editions).  
     *   **Third parties (not maintained by Hydrus Developer)**:  
-    [Chocolatey](https://community.chocolatey.org/packages/hydrus-network), Scoop, and winget. If these cause problems or are out of date contact the package maintainers.
+        * [Chocolatey](https://community.chocolatey.org/packages/hydrus-network)
+        * [Scoop](https://github.com/ScoopInstaller/Scoop) (`hydrus-network` in the 'Extras' bucket)    
+        * Winget. The command is `winget install --id=HydrusNetwork.HydrusNetwork  -e --location "\PATH\TO\INSTALL\HERE"`, which can, if you know what you are doing, be `winget install --id=HydrusNetwork.HydrusNetwork  -e --location ".\"`, maybe rolled into a batch file.
 
 === "macOS"
 
@@ -32,16 +36,34 @@ I try to release a new version every Wednesday by 8pm EST and write an accompany
 
     *   Get the .tag.gz. Extract it somewhere useful and create shortcuts to 'client' and 'server' as you like. The build is made on Ubuntu, so if you run something else, compatibility is hit and miss.
     *   If you have problems running the Ubuntu build, users with some python experience generally find running from source works well.
-    *   You might need to get 'libmpv1' to get mpv working and playing video/audio. This is the mpv library, not the player. Check help->about to see if it is available--if not, see if you can get it with _apt_.
+    *   You might need to get 'libmpv1' to get mpv working and playing video/audio. This is the mpv _library_, not the necessarily the player. Check _help->about_ to see if it is available--if not, see if you can get it with `apt`.  
+    If the about window provides you an error popup like this:  
+    ```
+    OSError: /lib/x86_64-linux-gnu/libgio-2.0.so.0: undefined symbol: g_module_open_full
+    (traceback)
+    pyimod04_ctypes.install.<locals>.PyInstallerImportError: Failed to load dynlib/dll 'libmpv.so.1'. Most likely this dynlib/dll was not found when the application was frozen.
+    ```  
+    Then please do this:  
+        1. Search your /usr/ dir for `libgmodule*`. You are looking for something like `libgmodule-2.0.so`. Users report finding it in `/usr/lib64/` and `/usr/lib/x86_64-linux-gnu`.
+        2. Copy that .so file to the hydrus install base directory.
+        3. Boot the client and hit _help->about_ to see if it reports a version.
+        4. If it all seems good, hit _options->media_ to set up mpv as your player for video/audio and try to view some things.
+        5. If it still doesn't work, see if you can do the same for libmpv.so and libcdio.so--or consider [running from source](running_from_source.md)
     *   You can also try [running the Windows version in wine](wine.md).
     *   **Third parties (not maintained by Hydrus Developer)**:  
-    If you use Arch Linux, you can check out the AUR package a user maintains [here](https://aur.archlinux.org/packages/hydrus/).
+        * (These both run from source, so if you have trouble with the built release, they may work better for you!)
+        * [AUR package](https://aur.archlinux.org/packages/hydrus/)
+        * [flatpak](https://flathub.org/apps/details/io.github.hydrusnetwork.hydrus) 
+    
 
 === "From Source"
 
     *   If you have some python experience, you can [run from source](running_from_source.md).
 
 By default, hydrus stores all its data—options, files, subscriptions, _everything_—entirely inside its own directory. You can extract it to a usb stick, move it from one place to another, have multiple installs for multiple purposes, wrap it all up inside a truecrypt volume, whatever you like. The .exe installer writes some unavoidable uninstall registry stuff to Windows, but the 'installed' client itself will run fine if you manually move it.
+
+!!! warning "Network Install"
+    Unless you are an expert, do not install your client to a network location (i.e. on a different computer's hard drive)! The database is sensitive to interruption and requires good file locking, which network storage often fakes. There are [ways of splitting your client up](database_migration.md) so the database is on a local SSD but the files are on a network--this is fine--but you really should not put the database on a remote machine unless you know what you are doing and have a backup in case things go wrong.
 
 !!! info "For macOS users"
     The Hydrus App is **non-portable** and puts your database in `~/Library/Hydrus` (i.e. `/Users/[You]/Library/Hydrus`). You can update simply by replacing the old App with the new, but if you wish to backup, you should be looking at `~/Library/Hydrus`, not the App itself.
@@ -79,7 +101,7 @@ To run the client:
 
 === "Linux"
 
-    *   Run the 'client' executable in the base directory. You may be able to double-click it, otherwise you are talking `./client` from the terminal.
+    *   Run the 'client' executable in the base directory. You may be able to double-click it, otherwise you are run `./client` from the terminal.
     *   If you experience virtual memory crashes, please review [this thorough guide](Fixing_Hydrus_Random_Crashes_Under_Linux.md) by a user.
 
 ## updating
@@ -142,17 +164,22 @@ _All that said, and while updating is complex and every client is different, one
 
 Hydrus's database engine, SQLite, is excellent at keeping data safe, but it cannot work in a faulty environment. Ways in which users of hydrus have damaged/lost their database:
 
-*   Hard drive hardware failure (age, bad ventilation, bad cables, etc...)
-*   Lightning strike on non-protected socket or rough power cut on non-UPS'd power supply
-*   RAM failure
-*   Motherboard/PSU power problems
-*   Accidental deletion
-*   Accidental overwrite (usually during a borked update)
-*   Encrypted partition auto-dismount/other borked settings
-*   Cloud backup interfering with ongoing writes
-*   Network drive location not guaranteeing accurate file locks
+* Hard drive hardware failure (age, bad ventilation, bad cables, etc...)
+* Lightning strike on non-protected socket or rough power cut on non-UPS'd power supply
+* RAM failure
+* Motherboard/PSU power problems
+* Accidental deletion
+* Accidental overwrite (usually during a borked update)
+* Encrypted partition auto-dismount/other borked settings
+* Cloud backup interfering with ongoing writes
+* A laptop that incorrectly and roughly disconnected an external USB drive on every sleep
+* Network drive location not guaranteeing accurate file locks
+* Windows NVMe driver bugs necessitating a different SQLite journalling method
 
 Some of those you can mitigate (don't run the database over a network!) and some will always be a problem, but if you have a backup, none of them can kill you.
+
+!!! note "This mostly means your database, not your files"
+    Note that nearly all the serious and difficult-to-fix problems occur to the _database_, which is four large .db files, not your media. All your images and movies are read-only in hydrus, and there's less worry if they are on a network share with bad locks or a machine that suddenly loses power. The database, however, maintains a live connection, with regular complex writes, and here a hardware failure can lead to corruption (Basically the failure scrambles the data that is written, so when you try to boot back up, a small section of the database is incomprehensible garbage).
 
 If you do not already have a backup routine for your files, this is a great time to start. I now run a backup every week of all my data so that if my computer blows up or anything else awful happens, I'll at worst have lost a few days' work. Before I did this, I once lost an entire drive with tens of thousands of files, and it felt awful. If you are new to saving a lot of media, I hope you can avoid what I felt. ;\_;
 
@@ -166,7 +193,7 @@ By default, hydrus stores all your user data in one location, so backing up is s
 
     Once you have your location set up, you can thereafter hit _database->update database backup_. It will lock everything and mirror your files, showing its progress in a popup message. The first time you make this backup, it may take a little while (as it will have to fully copy your database and all its files), but after that, it will only have to copy new or altered files and should only ever take a couple of minutes.
 
-    Advanced users who have migrated their database across multiple locations will not have this option--use an external program in this case.
+    Advanced users who have migrated their database and files across multiple locations will not have this option--use an external program in this case.
     
 #### the powerful (and best) way - using an external program
 :   
@@ -182,19 +209,35 @@ By default, hydrus stores all your user data in one location, so backing up is s
 
     Note it has 'file time and size' and 'mirror' as the main settings. This quickly ensures that changes to the left-hand side are copied to the right-hand side, adding new files and removing since-deleted files and overwriting modified files. You can save a backup profile like that and it should only take a few minutes every week to stay safely backed up, even if you have hundreds of thousands of files.
 
-    Shut the client down while you run the backup, obviously.
+    **Shut the client down while you run the backup, obviously.**
+
+    
+##### A few options
+There are a host of other great alternatives out there, probably far too many to count. These are a couple that are often recommended and used by Hydrus users and are, in the spirit of Hydrus Network itself, free and open source.
+
+
+[FreeFileSync](https://freefilesync.org/)  
+Linux, MacOS, Windows.  
+Recommended and used by dev. Somewhat basic but does the job well enough.
+
+[Borg Backup](https://www.borgbackup.org/)  
+FreeBSD, Linux, MacOS.  
+More advanced and featureful backup tool.
+
+[Restic](https://restic.net/)  
+Almost every OS you can name.
 
 !!! danger
     Do not put your live database in a folder that continuously syncs to a cloud backup. Many of these services will interfere with a running client and can cause database corruption. If you still want to use a system like this, either turn the sync off while the client is running, or use the above backup workflows to safely backup your client to a separate folder that syncs to the cloud.
 
 There is significantly more information about the database structure [here](database_migration.md).
 
-I recommend you always backup before you update, just in case there is a problem with my code that breaks your database. If that happens, please [contact me](contact.md), describing the problem, and revert to the functioning older version. I'll get on any problems like that immediately.
+I recommend you always backup before you update, just in case there is a problem with my update code that breaks your database. If that happens, please [contact me](contact.md), describing the problem, and revert to the functioning older version. I'll get on any problems like that immediately.
 
 ## backing up with not much space { id="backing_up_small" }
 
 If you decide not to maintain a backup because you cannot afford drive space for all your files, please please at least back up your actual database files. Use FreeFileSync or a similar program to back up the four 'client*.db' files in install_dir/db when the client is not running. Just make sure you have a copy of those files, and then if your main install becomes damaged, we will have a reference to either roll back to or manually restore data from. Even if you lose a bunch of media files in this case, with an intact database we'll be able to schedule recovery of anything with a URL.
 
-If you are really short on space, note also that the database files are very compressible. A very large database where the four files add up to 70GB can compress down to 17GB zip with 7zip on default settings. This obviously takes some additional time to do, but if you are really short on space it may be the only way it fits, and if your only backup drive is a slow USB stick, then you might actually save time from not having to transfer the other 53GB! Media files (jpegs, webms, etc...) are generally not very compressible, usually 5% at best, so it is usually not worth trying.
+If you are really short on space, note also that the database files are very compressible. A very large database where the four files add up to 70GB can compress down to 17GB zip with 7zip on default settings. Better compression ratios are possible if you make sure to put all four files in the same archive and turn up the quality. This obviously takes some additional time to do, but if you are really short on space it may be the only way it fits, and if your only backup drive is a slow USB stick, then you might actually save time from not having to transfer the other 53GB! Media files (jpegs, webms, etc...) are generally not very compressible, usually 5% at best, so it is usually not worth trying.
 
 It is best to have all four database files. It is generally easy and quick to fix problems if you have a backup of all four. If client.caches.db is missing, you can recover but it might take ten or more hours of CPU work to regenerate. If client.mappings.db is missing, you might be able to recover tags for your local files from a mirror in an intact client.caches.db. However, client.master.db and client.db are the most important. If you lose either of those, or they become too damaged to read and you have no backup, then your database is essentially dead and likely every single archive and view and tag and note and url record you made is lost. This has happened before, do not let it be you.
