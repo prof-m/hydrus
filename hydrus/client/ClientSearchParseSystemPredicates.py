@@ -6,6 +6,7 @@ from hydrus.core import HydrusData
 from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusGlobals as HG
 
+from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientSearch
 
 from hydrus.external import SystemPredicateParser
@@ -71,12 +72,19 @@ def date_pred_generator( pred_type, o, v ):
     #Either a tuple of 4 non-negative integers: (years, months, days, hours) where the latter is < 24 OR
     #a datetime.date object. For the latter, only the YYYY-MM-DD format is accepted.
     
-    date_type = 'delta'
-    
-    if isinstance( v, datetime.date ):
+    if isinstance( v, datetime.datetime ):
         
         date_type = 'date'
-        v = ( v.year, v.month, v.day )
+        v = ( v.year, v.month, v.day, v.hour, v.minute )
+        
+    else:
+        
+        date_type = 'delta'
+        
+        if o == '=':
+            
+            o = CC.UNICODE_ALMOST_EQUAL_TO
+            
         
     
     return ClientSearch.Predicate( pred_type, ( o, date_type, tuple( v ) ) )
@@ -138,15 +146,19 @@ pred_generators = {
     SystemPredicateParser.Predicate.NOT_BEST_QUALITY_OF_GROUP : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_RELATIONSHIPS_KING, False ),
     SystemPredicateParser.Predicate.HAS_AUDIO : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, True ),
     SystemPredicateParser.Predicate.NO_AUDIO : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, False ),
+    SystemPredicateParser.Predicate.HAS_EXIF : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, True ),
+    SystemPredicateParser.Predicate.NO_EXIF : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, False ),
+    SystemPredicateParser.Predicate.HAS_HUMAN_READABLE_EMBEDDED_METADATA : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, True ),
+    SystemPredicateParser.Predicate.NO_HUMAN_READABLE_EMBEDDED_METADATA : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, False ),
     SystemPredicateParser.Predicate.HAS_ICC_PROFILE : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, True ),
     SystemPredicateParser.Predicate.NO_ICC_PROFILE : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, False ),
     SystemPredicateParser.Predicate.LIMIT : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_LIMIT, v ),
     SystemPredicateParser.Predicate.FILETYPE : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, tuple( v ) ),
     SystemPredicateParser.Predicate.HAS_DURATION : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ( '>', 0 ) ),
     SystemPredicateParser.Predicate.NO_DURATION : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ( '=', 0 ) ),
-    SystemPredicateParser.Predicate.HAS_TAGS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( None, '>', 0 ) ),
-    SystemPredicateParser.Predicate.UNTAGGED : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( None, '=', 0 ) ),
-    SystemPredicateParser.Predicate.NUM_OF_TAGS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( None, o, v ) ),
+    SystemPredicateParser.Predicate.HAS_TAGS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( '*', '>', 0 ) ),
+    SystemPredicateParser.Predicate.UNTAGGED : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( '*', '=', 0 ) ),
+    SystemPredicateParser.Predicate.NUM_OF_TAGS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( '*', o, v ) ),
     SystemPredicateParser.Predicate.NUM_OF_WORDS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_WORDS, ( o, v ) ),
     SystemPredicateParser.Predicate.HEIGHT : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HEIGHT, ( o, v ) ),
     SystemPredicateParser.Predicate.WIDTH : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_WIDTH, ( o, v ) ),
@@ -154,6 +166,8 @@ pred_generators = {
     SystemPredicateParser.Predicate.SIMILAR_TO : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_SIMILAR_TO, convert_hex_hashlist_and_other_to_bytes_and_other( v ) ),
     SystemPredicateParser.Predicate.HASH : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HASH, convert_hex_hashlist_and_other_to_bytes_and_other( v ), inclusive = o == '=' ),
     SystemPredicateParser.Predicate.DURATION : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ( o, v[0] * 1000 + v[1] ) ),
+    SystemPredicateParser.Predicate.FRAMERATE : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FRAMERATE, ( o, v ) ),
+    SystemPredicateParser.Predicate.NUM_OF_FRAMES : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_FRAMES, ( o, v ) ),
     SystemPredicateParser.Predicate.NUM_PIXELS : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_PIXELS, ( o, v, HydrusData.ConvertPixelsToInt( u ) ) ),
     SystemPredicateParser.Predicate.RATIO : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATIO, ( o, v[0], v[1] ) ),
     SystemPredicateParser.Predicate.TAG_AS_NUMBER : lambda o, v, u: ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_TAG_AS_NUMBER, ( o[0], o[1], v ) ),

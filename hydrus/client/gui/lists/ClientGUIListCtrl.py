@@ -34,7 +34,7 @@ class BetterListCtrl( QW.QTreeWidget ):
     columnListContentsChanged = QC.Signal()
     columnListStatusChanged = QC.Signal()
     
-    def __init__( self, parent, column_list_type, height_num_chars, data_to_tuples_func, use_simple_delete = False, delete_key_callback = None, activation_callback = None, style = None, column_types_to_name_overrides = None ):           
+    def __init__( self, parent, column_list_type, height_num_chars, data_to_tuples_func, use_simple_delete = False, delete_key_callback = None, can_delete_callback = None, activation_callback = None, style = None, column_types_to_name_overrides = None ):
         
         QW.QTreeWidget.__init__( self, parent )
         
@@ -59,6 +59,7 @@ class BetterListCtrl( QW.QTreeWidget ):
         self._data_to_tuples_func = data_to_tuples_func
         
         self._use_simple_delete = use_simple_delete
+        self._can_delete_callback = can_delete_callback
         
         self._menu_callable = None
         
@@ -646,6 +647,14 @@ class BetterListCtrl( QW.QTreeWidget ):
         
     
     def ProcessDeleteAction( self ):
+        
+        if self._can_delete_callback is not None:
+            
+            if not self._can_delete_callback():
+                
+                return
+                
+            
         
         if self._use_simple_delete:
             
@@ -1261,15 +1270,19 @@ class BetterListCtrlPanel( QW.QWidget ):
         self._listctrl.Sort()
         
     
-    def _ImportObject( self, obj ):
+    def _ImportObject( self, obj, can_present_messages = True ):
         
+        num_added = 0
         bad_object_type_names = set()
         
         if isinstance( obj, HydrusSerialisable.SerialisableList ):
             
             for sub_obj in obj:
                 
-                self._ImportObject( sub_obj )
+                ( sub_num_added, sub_bad_object_type_names ) = self._ImportObject( sub_obj, can_present_messages = False )
+                
+                num_added += sub_num_added
+                bad_object_type_names.update( sub_bad_object_type_names )
                 
             
         else:
@@ -1278,13 +1291,15 @@ class BetterListCtrlPanel( QW.QWidget ):
                 
                 self._import_add_callable( obj )
                 
+                num_added += 1
+                
             else:
                 
                 bad_object_type_names.add( HydrusData.GetTypeName( type( obj ) ) )
                 
             
         
-        if len( bad_object_type_names ) > 0:
+        if can_present_messages and len( bad_object_type_names ) > 0:
             
             message = 'The imported objects included these types:'
             message += os.linesep * 2
@@ -1296,6 +1311,15 @@ class BetterListCtrlPanel( QW.QWidget ):
             
             QW.QMessageBox.critical( self, 'Error', message )
             
+        
+        if can_present_messages and num_added > 0:
+            
+            message = '{} objects added!'.format( HydrusData.ToHumanInt( num_added ) )
+            
+            QW.QMessageBox.information( self, 'Success', message )
+            
+        
+        return ( num_added, bad_object_type_names )
         
     
     def _ImportJSONs( self, paths ):

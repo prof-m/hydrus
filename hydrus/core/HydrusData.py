@@ -277,6 +277,7 @@ def ConvertStatusToPrefix( status ):
     elif status == HC.CONTENT_STATUS_PENDING: return '(+) '
     elif status == HC.CONTENT_STATUS_PETITIONED: return '(-) '
     elif status == HC.CONTENT_STATUS_DELETED: return '(X) '
+    else: return '(?)'
     
 def TimeDeltaToPrettyTimeDelta( seconds, show_seconds = True ):
     
@@ -604,6 +605,11 @@ def DebugPrint( debug_info ):
     sys.stderr.flush()
     
 def DedupeList( xs: typing.Iterable ):
+    
+    if isinstance( xs, set ):
+        
+        return list( xs )
+        
     
     xs_seen = set()
     
@@ -1380,7 +1386,7 @@ def RestartProcess():
         
         # exe is python's exe, me is the script
         
-        args = [ sys.executable ] + sys.argv
+        args = [ exe ] + sys.argv
         
     else:
         
@@ -1397,6 +1403,7 @@ def RestartProcess():
     
     os.execv( exe, args )
     
+
 def SampleSetByGettingFirst( s: set, n ):
     
     # sampling from a big set can be slow, so if we don't care about super random, let's just rip off the front and let __hash__ be our random
@@ -1822,6 +1829,7 @@ class ContentUpdate( object ):
         self._action = action
         self._row = row
         self._reason = reason
+        self._hashes = None
         
     
     def __eq__( self, other ):
@@ -1856,24 +1864,16 @@ class ContentUpdate( object ):
     
     def GetHashes( self ):
         
+        if self._hashes is not None:
+            
+            return self._hashes
+            
+        
         hashes = set()
         
         if self._data_type == HC.CONTENT_TYPE_FILES:
             
-            if self._action == HC.CONTENT_UPDATE_ADVANCED:
-                
-                ( sub_action, possible_hashes ) = self._row
-                
-                if possible_hashes is None:
-                    
-                    hashes = set()
-                    
-                else:
-                    
-                    hashes = possible_hashes
-                    
-                
-            elif self._action == HC.CONTENT_UPDATE_ADD:
+            if self._action == HC.CONTENT_UPDATE_ADD:
                 
                 ( file_info_manager, timestamp ) = self._row
                 
@@ -1882,6 +1882,11 @@ class ContentUpdate( object ):
             else:
                 
                 hashes = self._row
+                
+                if hashes is None:
+                    
+                    hashes = set()
+                    
                 
             
         elif self._data_type == HC.CONTENT_TYPE_DIRECTORIES:
@@ -1954,6 +1959,8 @@ class ContentUpdate( object ):
             hashes = set( hashes )
             
         
+        self._hashes = hashes
+        
         return hashes
         
     
@@ -1998,6 +2005,8 @@ class ContentUpdate( object ):
         
         self._row = row
         
+        self._hashes = None
+        
     
     def ToTuple( self ):
         
@@ -2038,11 +2047,14 @@ class JobDatabase( object ):
         
         while True:
             
-            if self._result_ready.wait( 2 ) == True:
+            result_was_ready = self._result_ready.wait( 2 )
+            
+            if result_was_ready:
                 
                 break
                 
-            elif HG.model_shutdown:
+            
+            if HG.model_shutdown:
                 
                 raise HydrusExceptions.ShutdownException( 'Application quit before db could serve result!' )
                 

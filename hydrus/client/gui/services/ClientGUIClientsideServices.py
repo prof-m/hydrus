@@ -31,10 +31,12 @@ from hydrus.client.gui import ClientGUIPanels
 from hydrus.client.gui import ClientGUIScrolledPanels
 from hydrus.client.gui import ClientGUIScrolledPanelsReview
 from hydrus.client.gui import ClientGUIStringControls
+from hydrus.client.gui import ClientGUITags
 from hydrus.client.gui import ClientGUITopLevelWindowsPanels
 from hydrus.client.gui import QtPorting as QP
 from hydrus.client.gui.lists import ClientGUIListConstants as CGLC
 from hydrus.client.gui.lists import ClientGUIListCtrl
+from hydrus.client.gui.widgets import ClientGUIColourPicker
 from hydrus.client.gui.widgets import ClientGUICommon
 from hydrus.client.gui.widgets import ClientGUIControls
 from hydrus.client.gui.widgets import ClientGUIMenuButton
@@ -352,11 +354,16 @@ class EditClientServicePanel( ClientGUIScrolledPanels.EditPanel ):
         
         if self._service_type in HC.RATINGS_SERVICES:
             
-            self._panels.append( EditServiceRatingsSubPanel( self, self._dictionary ) )
+            self._panels.append( EditServiceRatingsSubPanel( self, self._service_type, self._dictionary ) )
             
-            if self._service_type == HC.LOCAL_RATING_NUMERICAL:
+            if self._service_type in HC.STAR_RATINGS_SERVICES:
                 
-                self._panels.append( EditServiceRatingsNumericalSubPanel( self, self._dictionary ) )
+                self._panels.append( EditServiceStarRatingsSubPanel( self, self._dictionary ) )
+                
+                if self._service_type == HC.LOCAL_RATING_NUMERICAL:
+                    
+                    self._panels.append( EditServiceRatingsNumericalSubPanel( self, self._dictionary ) )
+                    
                 
             
         
@@ -1237,23 +1244,16 @@ class EditServiceTagSubPanel( ClientGUICommon.StaticBox ):
 
 class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
     
-    def __init__( self, parent, dictionary ):
+    def __init__( self, parent, service_type, dictionary ):
         
-        ClientGUICommon.StaticBox.__init__( self, parent, 'ratings' )
-        
-        self._shape = ClientGUICommon.BetterChoice( self )
-        
-        self._shape.addItem( 'circle', ClientRatings.CIRCLE )
-        self._shape.addItem( 'square', ClientRatings.SQUARE )
-        self._shape.addItem( 'fat star', ClientRatings.FAT_STAR )
-        self._shape.addItem( 'pentagram star', ClientRatings.PENTAGRAM_STAR )
+        ClientGUICommon.StaticBox.__init__( self, parent, 'rating colours' )
         
         self._colour_ctrls = {}
         
         for colour_type in [ ClientRatings.LIKE, ClientRatings.DISLIKE, ClientRatings.NULL, ClientRatings.MIXED ]:
             
-            border_ctrl = ClientGUICommon.BetterColourControl( self )
-            fill_ctrl = ClientGUICommon.BetterColourControl( self )
+            border_ctrl = ClientGUIColourPicker.ColourPickerButton( self )
+            fill_ctrl = ClientGUIColourPicker.ColourPickerButton( self )
             
             border_ctrl.setMaximumWidth( 20 )
             fill_ctrl.setMaximumWidth( 20 )
@@ -1262,8 +1262,6 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
             
         
         #
-        
-        self._shape.SetValue( dictionary[ 'shape' ] )
         
         for ( colour_type, ( border_rgb, fill_rgb ) ) in dictionary[ 'colours' ]:
             
@@ -1277,11 +1275,17 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
         
         rows = []
         
-        rows.append( ( 'shape: ', self._shape ) )
-        
         for colour_type in [ ClientRatings.LIKE, ClientRatings.DISLIKE, ClientRatings.NULL, ClientRatings.MIXED ]:
             
             ( border_ctrl, fill_ctrl ) = self._colour_ctrls[ colour_type ]
+            
+            if service_type == HC.LOCAL_RATING_INCDEC and colour_type in ( ClientRatings.DISLIKE, ClientRatings.NULL ):
+                
+                border_ctrl.setVisible( False )
+                fill_ctrl.setVisible( False )
+                
+                continue
+                
             
             hbox = QP.HBoxLayout()
             
@@ -1290,7 +1294,14 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
             
             if colour_type == ClientRatings.LIKE:
                 
-                colour_text = 'liked'
+                if service_type == HC.LOCAL_RATING_INCDEC:
+                    
+                    colour_text = 'normal rating'
+                    
+                else:
+                    
+                    colour_text = 'liked'
+                    
                 
             elif colour_type == ClientRatings.DISLIKE:
                 
@@ -1317,8 +1328,6 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
         
         dictionary_part = {}
         
-        dictionary_part[ 'shape' ] = self._shape.GetValue()
-        
         dictionary_part[ 'colours' ] = {}
         
         for ( colour_type, ( border_ctrl, fill_ctrl ) ) in list(self._colour_ctrls.items()):
@@ -1337,6 +1346,45 @@ class EditServiceRatingsSubPanel( ClientGUICommon.StaticBox ):
         return dictionary_part
         
     
+
+class EditServiceStarRatingsSubPanel( ClientGUICommon.StaticBox ):
+    
+    def __init__( self, parent, dictionary ):
+        
+        ClientGUICommon.StaticBox.__init__( self, parent, 'rating shape' )
+        
+        self._shape = ClientGUICommon.BetterChoice( self )
+        
+        self._shape.addItem( 'circle', ClientRatings.CIRCLE )
+        self._shape.addItem( 'square', ClientRatings.SQUARE )
+        self._shape.addItem( 'fat star', ClientRatings.FAT_STAR )
+        self._shape.addItem( 'pentagram star', ClientRatings.PENTAGRAM_STAR )
+        
+        #
+        
+        self._shape.SetValue( dictionary[ 'shape' ] )
+        
+        #
+        
+        rows = []
+        
+        rows.append( ( 'shape: ', self._shape ) )
+        
+        gridbox = ClientGUICommon.WrapInGrid( self, rows )
+        
+        self.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+        
+    
+    def GetValue( self ):
+        
+        dictionary_part = {}
+        
+        dictionary_part[ 'shape' ] = self._shape.GetValue()
+        
+        return dictionary_part
+        
+    
+
 class EditServiceRatingsNumericalSubPanel( ClientGUICommon.StaticBox ):
     
     def __init__( self, parent, dictionary ):
@@ -1600,7 +1648,6 @@ class ReviewServicePanel( QW.QWidget ):
         if not HG.client_controller.new_options.GetBoolean( 'advanced_mode' ):
             
             self._id_button.hide()
-            self._service_key_button.hide()
             
         
         vbox = QP.VBoxLayout()
@@ -1668,7 +1715,7 @@ class ReviewServicePanel( QW.QWidget ):
             job_key = ClientThreading.JobKey( pausable = True, cancellable = True )
             
             job_key.SetStatusTitle( self._service.GetName() + ': immediate sync' )
-            job_key.SetVariable( 'popup_text_1', 'downloading' )
+            job_key.SetStatusText( 'downloading' )
             
             self._controller.pub( 'message', job_key )
             
@@ -1681,7 +1728,7 @@ class ReviewServicePanel( QW.QWidget ):
             
             content_update_index_string = 'content row ' + HydrusData.ConvertValueRangeToPrettyString( c_u_p_total_weight_processed, c_u_p_num_rows ) + ': '
             
-            job_key.SetVariable( 'popup_text_1', content_update_index_string + 'committing' + update_speed_string )
+            job_key.SetStatusText( content_update_index_string + 'committing' + update_speed_string )
             
             job_key.SetVariable( 'popup_gauge_1', ( c_u_p_total_weight_processed, c_u_p_num_rows ) )
             
@@ -1698,7 +1745,7 @@ class ReviewServicePanel( QW.QWidget ):
                 
                 content_update_index_string = 'content row ' + HydrusData.ConvertValueRangeToPrettyString( c_u_p_total_weight_processed, c_u_p_num_rows ) + ': '
                 
-                job_key.SetVariable( 'popup_text_1', content_update_index_string + 'committing' + update_speed_string )
+                job_key.SetStatusText( content_update_index_string + 'committing' + update_speed_string )
                 
                 job_key.SetVariable( 'popup_gauge_1', ( c_u_p_total_weight_processed, c_u_p_num_rows ) )
                 
@@ -1719,7 +1766,7 @@ class ReviewServicePanel( QW.QWidget ):
             
             self._service.SyncThumbnails( job_key )
             
-            job_key.SetVariable( 'popup_text_1', 'done! ' + HydrusData.ToHumanInt( c_u_p_num_rows ) + ' rows added.' )
+            job_key.SetStatusText( 'done! ' + HydrusData.ToHumanInt( c_u_p_num_rows ) + ' rows added.' )
             
             job_key.Finish()
             
@@ -2107,7 +2154,7 @@ class ReviewServiceCombinedLocalFilesSubPanel( ClientGUICommon.StaticBox ):
                 
                 hashes = None
                 
-                content_update = HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_ADVANCED, ( 'delete_deleted', hashes ) )
+                content_update = HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD, hashes )
                 
                 service_keys_to_content_updates = { CC.COMBINED_LOCAL_FILE_SERVICE_KEY : [ content_update ] }
                 
@@ -2627,6 +2674,9 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
         
         self._metadata_st = ClientGUICommon.BetterStaticText( self._network_panel )
         
+        self._tag_filter_button = ClientGUICommon.BetterButton( self._network_panel, 'tag filter', self._ReviewTagFilter )
+        self._tag_filter_button.setEnabled( False )
+        
         self._download_progress = ClientGUICommon.TextAndGauge( self._network_panel )
         
         self._update_downloading_paused_button = ClientGUICommon.BetterBitmapButton( self._network_panel, CC.global_pixmaps().pause, self._PausePlayUpdateDownloading )
@@ -2700,6 +2750,11 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
             self._reset_processing_button.hide()
             
         
+        if not self._service.GetServiceType() == HC.TAG_REPOSITORY:
+            
+            self._tag_filter_button.hide()
+            
+        
         self._network_panel.Add( self._repo_options_st, CC.FLAGS_EXPAND_PERPENDICULAR )
         self._network_panel.Add( self._metadata_st, CC.FLAGS_EXPAND_PERPENDICULAR )
         self._network_panel.Add( self._download_progress, CC.FLAGS_EXPAND_PERPENDICULAR )
@@ -2708,6 +2763,7 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
         hbox = QP.HBoxLayout()
         
         QP.AddToLayout( hbox, self._service_info_button, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( hbox, self._tag_filter_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._sync_remote_now_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._reset_downloading_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._export_updates_button, CC.FLAGS_CENTER_PERPENDICULAR )
@@ -2823,7 +2879,7 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
                             
                             if should_quit:
                                 
-                                job_key.SetVariable( 'popup_text_1', 'Cancelled!' )
+                                job_key.SetStatusText( 'Cancelled!' )
                                 
                                 return
                                 
@@ -2842,12 +2898,12 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
                                 
                             finally:
                                 
-                                job_key.SetVariable( 'popup_text_1', HydrusData.ConvertValueRangeToPrettyString( i + 1, num_to_do ) )
+                                job_key.SetStatusText( HydrusData.ConvertValueRangeToPrettyString( i + 1, num_to_do ) )
                                 job_key.SetVariable( 'popup_gauge_1', ( i, num_to_do ) )
                                 
                             
                         
-                        job_key.SetVariable( 'popup_text_1', 'Done!' )
+                        job_key.SetStatusText( 'Done!' )
                         
                     finally:
                         
@@ -3030,6 +3086,25 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
         
         self._repo_options_st.setText( ', '.join( repo_options_text_components ) )
         
+        if self._service.GetServiceType() == HC.TAG_REPOSITORY:
+            
+            try:
+                
+                tag_filter = self._service.GetTagFilter()
+                
+                self._tag_filter_button.setEnabled( True )
+                
+                tt = 'See which tags this repository accepts. Summary:{}{}'.format( os.linesep * 2, tag_filter.ToPermittedString() )
+                
+                self._tag_filter_button.setToolTip( tt )
+                
+            except HydrusExceptions.DataMissing:
+                
+                self._tag_filter_button.setEnabled( False )
+                self._tag_filter_button.setToolTip( 'Do not have a tag filter for this repository. Try refreshing your account, or, if your client is old, update it.' )
+                
+            
+        
         self._metadata_st.setText( self._service.GetNextUpdateDueString() )
         
         HG.client_controller.CallToThread( self.THREADFetchInfo, self._service )
@@ -3143,6 +3218,28 @@ class ReviewServiceRepositorySubPanel( QW.QWidget ):
             
             HG.client_controller.CallToThread( do_it, self._service, self._my_updater, content_types )
             
+        
+    
+    def _ReviewTagFilter( self ):
+        
+        try:
+            
+            tag_filter = self._service.GetTagFilter()
+            
+        except HydrusExceptions.DataMissing:
+            
+            return
+            
+        
+        frame = ClientGUITopLevelWindowsPanels.FrameThatTakesScrollablePanel( self, 'review tag filter' )
+        
+        message = 'The Tag Repository applies this to all new pending tag mapping uploads. If you upload a mapping that this filter denies, it will be silently discarded serverside. Siblings and parents are not affected.'
+        
+        namespaces = HG.client_controller.network_engine.domain_manager.GetParserNamespaces()
+        
+        panel = ClientGUITags.EditTagFilterPanel( frame, tag_filter, namespaces = namespaces, message = message, read_only = True )
+        
+        frame.SetPanel( panel )
         
     
     def _SelectContentTypes( self ):
@@ -4157,6 +4254,7 @@ class ReviewServicesPanel( ClientGUIScrolledPanels.ReviewPanel ):
             elif service_type == HC.LOCAL_TAG: service_type_name = 'tags'
             elif service_type == HC.LOCAL_RATING_LIKE: service_type_name = 'like/dislike ratings'
             elif service_type == HC.LOCAL_RATING_NUMERICAL: service_type_name = 'numerical ratings'
+            elif service_type == HC.LOCAL_RATING_INCDEC: service_type_name = 'inc/dec ratings'
             elif service_type == HC.LOCAL_BOORU: service_type_name = 'booru'
             elif service_type == HC.CLIENT_API_SERVICE: service_type_name = 'client api'
             elif service_type == HC.IPFS: service_type_name = 'ipfs'

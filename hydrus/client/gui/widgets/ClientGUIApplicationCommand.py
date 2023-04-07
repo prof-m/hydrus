@@ -329,7 +329,7 @@ class RatingNumericalSubPanel( QW.QWidget ):
             
         
     
-class RatingNumericalIncDecSubPanel( QW.QWidget ):
+class RatingIncDecSubPanel( QW.QWidget ):
     
     def __init__( self, parent: QW.QWidget ):
         
@@ -337,18 +337,18 @@ class RatingNumericalIncDecSubPanel( QW.QWidget ):
         
         self._service_keys = ClientGUICommon.BetterChoice( self )
         
-        self._ratings_numerical_incdec = ClientGUICommon.BetterChoice( self )
+        self._ratings_incdec = ClientGUICommon.BetterChoice( self )
         
-        self._ratings_numerical_incdec.addItem( HC.content_update_string_lookup[ HC.CONTENT_UPDATE_INCREMENT ], HC.CONTENT_UPDATE_INCREMENT )
-        self._ratings_numerical_incdec.addItem( HC.content_update_string_lookup[ HC.CONTENT_UPDATE_DECREMENT ], HC.CONTENT_UPDATE_DECREMENT )
+        self._ratings_incdec.addItem( HC.content_update_string_lookup[ HC.CONTENT_UPDATE_INCREMENT ], HC.CONTENT_UPDATE_INCREMENT )
+        self._ratings_incdec.addItem( HC.content_update_string_lookup[ HC.CONTENT_UPDATE_DECREMENT ], HC.CONTENT_UPDATE_DECREMENT )
         
         #
         
-        services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_NUMERICAL, ) )
+        services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_NUMERICAL, HC.LOCAL_RATING_INCDEC ) )
         
         if len( services ) == 0:
             
-            self._service_keys.addItem( 'you have no numerical rating services', None )
+            self._service_keys.addItem( 'you have no numerical or inc/dec rating services', None )
             
         else:
             
@@ -366,7 +366,7 @@ class RatingNumericalIncDecSubPanel( QW.QWidget ):
         hbox = QP.HBoxLayout()
         
         QP.AddToLayout( hbox, self._service_keys, CC.FLAGS_CENTER_PERPENDICULAR_EXPAND_DEPTH )
-        QP.AddToLayout( hbox, self._ratings_numerical_incdec, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( hbox, self._ratings_incdec, CC.FLAGS_CENTER_PERPENDICULAR )
         
         self.setLayout( hbox )
         
@@ -380,7 +380,7 @@ class RatingNumericalIncDecSubPanel( QW.QWidget ):
             raise HydrusExceptions.VetoException( 'Please select a rating service!' )
             
         
-        action = self._ratings_numerical_incdec.GetValue()
+        action = self._ratings_incdec.GetValue()
         
         distance = 1
         
@@ -391,7 +391,7 @@ class RatingNumericalIncDecSubPanel( QW.QWidget ):
         
         self._service_keys.SetValue( service_key )
         
-        self._ratings_numerical_incdec.SetValue( action )
+        self._ratings_incdec.SetValue( action )
         
     
 class SimpleSubPanel( QW.QWidget ):
@@ -418,6 +418,16 @@ class SimpleSubPanel( QW.QWidget ):
             self._simple_actions.addItem( display_string, data )
             
         
+        #
+        
+        self._duplicates_type_panel = QW.QWidget( self )
+        
+        choices = [ ( HC.duplicate_type_string_lookup[ t ], t ) for t in ( HC.DUPLICATE_MEMBER, HC.DUPLICATE_ALTERNATE, HC.DUPLICATE_FALSE_POSITIVE, HC.DUPLICATE_POTENTIAL ) ]
+        
+        self._duplicate_type = ClientGUICommon.BetterRadioBox( self._duplicates_type_panel, choices = choices )
+        
+        #
+        
         self._seek_panel = QW.QWidget( self )
         
         choices = [
@@ -439,14 +449,21 @@ class SimpleSubPanel( QW.QWidget ):
         
         #
         
+        vbox = QP.VBoxLayout()
+        
+        QP.AddToLayout( vbox, self._duplicate_type, CC.FLAGS_EXPAND_BOTH_WAYS )
+        
+        self._duplicates_type_panel.setLayout( vbox )
+        
+        #
+        
         hbox = QP.HBoxLayout()
         
-        QP.AddToLayout( hbox, self._seek_direction, CC.FLAGS_CENTER )
+        QP.AddToLayout( hbox, self._seek_direction, CC.FLAGS_EXPAND_BOTH_WAYS )
         QP.AddToLayout( hbox, self._seek_duration_s, CC.FLAGS_CENTER )
         QP.AddToLayout( hbox, ClientGUICommon.BetterStaticText( self._seek_panel, label = 's' ), CC.FLAGS_CENTER )
         QP.AddToLayout( hbox, self._seek_duration_ms, CC.FLAGS_CENTER )
         QP.AddToLayout( hbox, ClientGUICommon.BetterStaticText( self._seek_panel, label = 'ms' ), CC.FLAGS_CENTER )
-        hbox.addStretch( 1 )
         
         self._seek_panel.setLayout( hbox )
         
@@ -455,6 +472,7 @@ class SimpleSubPanel( QW.QWidget ):
         vbox = QP.VBoxLayout()
         
         QP.AddToLayout( vbox, self._simple_actions, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+        QP.AddToLayout( vbox, self._duplicates_type_panel, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
         QP.AddToLayout( vbox, self._seek_panel, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
         
         self.setLayout( vbox )
@@ -468,6 +486,7 @@ class SimpleSubPanel( QW.QWidget ):
         
         action = self._simple_actions.GetValue()
         
+        self._duplicates_type_panel.setVisible( action == CAC.SIMPLE_SHOW_DUPLICATES )
         self._seek_panel.setVisible( action == CAC.SIMPLE_MEDIA_SEEK_DELTA )
         
     
@@ -481,7 +500,13 @@ class SimpleSubPanel( QW.QWidget ):
             
         else:
             
-            if action == CAC.SIMPLE_MEDIA_SEEK_DELTA:
+            if action == CAC.SIMPLE_SHOW_DUPLICATES:
+                
+                duplicate_type = self._duplicate_type.GetValue()
+                
+                simple_data = duplicate_type
+                
+            elif action == CAC.SIMPLE_MEDIA_SEEK_DELTA:
                 
                 direction = self._seek_direction.GetValue()
                 
@@ -505,7 +530,13 @@ class SimpleSubPanel( QW.QWidget ):
         
         self._simple_actions.SetValue( action )
         
-        if action == CAC.SIMPLE_MEDIA_SEEK_DELTA:
+        if action == CAC.SIMPLE_SHOW_DUPLICATES:
+            
+            duplicate_type = command.GetSimpleData()
+            
+            self._duplicate_type.SetValue( duplicate_type )
+            
+        elif action == CAC.SIMPLE_MEDIA_SEEK_DELTA:
             
             ( direction, ms ) = command.GetSimpleData()
             
@@ -633,7 +664,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
     PANEL_TAG = 1
     PANEL_RATING_LIKE = 2
     PANEL_RATING_NUMERICAL = 3
-    PANEL_RATING_NUMERICAL_INCDEC = 4
+    PANEL_RATING_INCDEC = 4
     PANEL_LOCAL_FILES = 5
     
     def __init__( self, parent: QW.QWidget, command: CAC.ApplicationCommand, shortcuts_name: str ):
@@ -654,7 +685,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
             self._panel_choice.addItem( 'local file command', self.PANEL_LOCAL_FILES )
             self._panel_choice.addItem( 'like/dislike rating command', self.PANEL_RATING_LIKE )
             self._panel_choice.addItem( 'numerical rating command', self.PANEL_RATING_NUMERICAL )
-            self._panel_choice.addItem( 'numerical rating increment/decrement command', self.PANEL_RATING_NUMERICAL_INCDEC )
+            self._panel_choice.addItem( 'rating increment/decrement command', self.PANEL_RATING_INCDEC )
             
         else:
             
@@ -669,7 +700,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
         
         self._rating_numerical_sub_panel = RatingNumericalSubPanel( self )
         
-        self._rating_numerical_inc_dec_sub_panel = RatingNumericalIncDecSubPanel( self )
+        self._rating_inc_dec_sub_panel = RatingIncDecSubPanel( self )
         
         self._local_files_sub_panel = LocalFilesSubPanel( self )
         
@@ -729,7 +760,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
                 
                 self._panel_choice.SetValue( self.PANEL_RATING_LIKE )
                 
-            elif service_type == HC.LOCAL_RATING_NUMERICAL:
+            elif service_type == ( HC.LOCAL_RATING_NUMERICAL, HC.LOCAL_RATING_INCDEC ):
                 
                 if action in ( HC.CONTENT_UPDATE_SET, HC.CONTENT_UPDATE_FLIP ):
                     
@@ -743,9 +774,9 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
                     
                     distance = 1
                     
-                    self._rating_numerical_inc_dec_sub_panel.SetValue( action, service_key, distance )
+                    self._rating_inc_dec_sub_panel.SetValue( action, service_key, distance )
                     
-                    self._panel_choice.SetValue( self.PANEL_RATING_NUMERICAL_INCDEC )
+                    self._panel_choice.SetValue( self.PANEL_RATING_INCDEC )
                     
                 
             
@@ -760,7 +791,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
         QP.AddToLayout( vbox, self._local_files_sub_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         QP.AddToLayout( vbox, self._rating_like_sub_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         QP.AddToLayout( vbox, self._rating_numerical_sub_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
-        QP.AddToLayout( vbox, self._rating_numerical_inc_dec_sub_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+        QP.AddToLayout( vbox, self._rating_inc_dec_sub_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         vbox.addStretch( 1 )
         
         self.widget().setLayout( vbox )
@@ -781,7 +812,7 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
         self._local_files_sub_panel.setVisible( panel_type == self.PANEL_LOCAL_FILES )
         self._rating_like_sub_panel.setVisible( panel_type == self.PANEL_RATING_LIKE )
         self._rating_numerical_sub_panel.setVisible( panel_type == self.PANEL_RATING_NUMERICAL )
-        self._rating_numerical_inc_dec_sub_panel.setVisible( panel_type == self.PANEL_RATING_NUMERICAL_INCDEC )
+        self._rating_inc_dec_sub_panel.setVisible( panel_type == self.PANEL_RATING_INCDEC )
         
     
     def GetValue( self ):
@@ -808,9 +839,9 @@ class ApplicationCommandWidget( ClientGUIScrolledPanels.EditPanel ):
             
             return self._rating_numerical_sub_panel.GetValue()
             
-        elif panel_type == self.PANEL_RATING_NUMERICAL_INCDEC:
+        elif panel_type == self.PANEL_RATING_INCDEC:
             
-            return self._rating_numerical_inc_dec_sub_panel.GetValue()
+            return self._rating_inc_dec_sub_panel.GetValue()
             
         
     

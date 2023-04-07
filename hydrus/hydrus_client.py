@@ -24,6 +24,9 @@ try:
     from hydrus.client.gui import QtInit
     
     from hydrus.core import HydrusConstants as HC
+    
+    HC.RUNNING_CLIENT = True
+    
     from hydrus.core import HydrusData
     from hydrus.core import HydrusGlobals as HG
     from hydrus.core import HydrusLogger
@@ -41,6 +44,7 @@ try:
     argparser.add_argument( '--no_db_temp_files', action='store_true', help = 'run db temp operations entirely in memory' )
     argparser.add_argument( '--boot_debug', action='store_true', help = 'print additional bootup information to the log' )
     argparser.add_argument( '--profile_mode', action='store_true', help = 'start the program with profile mode on, capturing boot performance' )
+    argparser.add_argument( '--win_qt_darkmode_test', action='store_true', help = 'Try Qt\'s automatic darkmode recognition.' )
     argparser.add_argument( '--no_wal', action='store_true', help = 'OBSOLETE: run using TRUNCATE db journaling' )
     argparser.add_argument( '--db_memory_journaling', action='store_true', help = 'OBSOLETE: run using MEMORY db journaling (DANGEROUS)' )
     
@@ -104,6 +108,7 @@ try:
         
         HG.db_journal_mode = 'TRUNCATE'
         
+    
     if result.db_memory_journaling:
         
         HG.db_journal_mode = 'MEMORY'
@@ -149,6 +154,11 @@ try:
     
     HG.profile_mode = result.profile_mode
     HG.profile_start_time = HydrusData.GetNow()
+    
+    if HC.PLATFORM_WINDOWS and result.win_qt_darkmode_test:
+        
+        QtInit.DoWinDarkMode()
+        
     
     try:
         

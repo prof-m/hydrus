@@ -1,3 +1,6 @@
+import abc
+import collections.abc
+import json
 import os
 import typing
 
@@ -549,6 +552,8 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
         
         ClientGUIScrolledPanels.EditPanel.__init__( self, parent )
         
+        self._default_reason = default_reason
+        
         local_file_services = list( HG.client_controller.services_manager.GetServices( ( HC.LOCAL_FILE_DOMAIN, ) ) )
         
         if suggested_file_service_key is None:
@@ -646,6 +651,8 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
             
             permitted_reason_choices.append( ( 'keep existing reason: {}'.format( self._existing_shared_file_deletion_reason ), self._existing_shared_file_deletion_reason ) )
             
+            selection_index = len( permitted_reason_choices ) - 1
+            
         
         custom_index = len( permitted_reason_choices )
         
@@ -654,6 +661,8 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
         if self._all_files_have_existing_file_deletion_reasons and self._existing_shared_file_deletion_reason is None:
             
             permitted_reason_choices.append( ( '(all files have existing file deletion reasons and they differ): do not alter them.', self.SPECIAL_CHOICE_NO_REASON ) )
+            
+            selection_index = len( permitted_reason_choices ) - 1
             
         
         self._reason_radio = ClientGUICommon.BetterRadioBox( self._reason_panel, choices = permitted_reason_choices, vertical = True )
@@ -764,7 +773,7 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
     
     def _GetReason( self ):
         
-        if self._reason_panel.isEnabled():
+        if self._reason_panel.isVisible() and self._reason_panel.isEnabled():
             
             reason = self._reason_radio.GetValue()
             
@@ -779,7 +788,15 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
             
         else:
             
-            reason = None
+            if self._all_files_have_existing_file_deletion_reasons or self._existing_shared_file_deletion_reason is not None:
+                
+                # do not overwrite
+                reason = None
+                
+            else:
+                
+                reason = self._default_reason
+                
             
         
         return reason
@@ -810,7 +827,7 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
         
         if trashed_key in keys_to_hashes and combined_key in keys_to_hashes and keys_to_hashes[ trashed_key ] == keys_to_hashes[ combined_key ]:
             
-            del keys_to_hashes[ trashed_key ]
+            del keys_to_hashes[ combined_key ]
             
         
         possible_file_service_keys_and_hashes = [ ( fsk, keys_to_hashes[ fsk ] ) for fsk in possible_file_service_keys if fsk in keys_to_hashes and len( keys_to_hashes[ fsk ] ) > 0 ]
@@ -998,7 +1015,7 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
                 
                 list_of_service_keys_to_content_updates.extend( [ { CC.COMBINED_LOCAL_FILE_SERVICE_KEY : [ content_update ] } for content_update in content_updates ] )
                 
-                content_updates = [ HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_ADVANCED, ( 'delete_deleted', chunk_of_hashes ) ) for chunk_of_hashes in chunks_of_hashes ]
+                content_updates = [ HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD, chunk_of_hashes ) for chunk_of_hashes in chunks_of_hashes ]
                 
                 list_of_service_keys_to_content_updates.extend( [ { CC.COMBINED_LOCAL_FILE_SERVICE_KEY : [ content_update ] } for content_update in content_updates ] )
                 
@@ -1147,16 +1164,23 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
         
         if save_reason and HG.client_controller.new_options.GetBoolean( 'remember_last_advanced_file_deletion_reason' ):
             
-            if self._reason_radio.GetCurrentIndex() <= 0:
-                
-                last_advanced_file_deletion_reason = None
-                
-            else:
-                
-                last_advanced_file_deletion_reason = reason
-                
+            reasons_ok = self._reason_radio.isVisible() and self._reason_radio.isEnabled()
             
-            HG.client_controller.new_options.SetNoneableString( 'last_advanced_file_deletion_reason', last_advanced_file_deletion_reason )
+            user_selected_existing_or_make_no_change = reason == self._existing_shared_file_deletion_reason or reason is None
+            
+            if reasons_ok and not user_selected_existing_or_make_no_change:
+                
+                if self._reason_radio.GetCurrentIndex() <= 0:
+                    
+                    last_advanced_file_deletion_reason = None
+                    
+                else:
+                    
+                    last_advanced_file_deletion_reason = reason
+                    
+                
+                HG.client_controller.new_options.SetNoneableString( 'last_advanced_file_deletion_reason', last_advanced_file_deletion_reason )
+                
             
         
         return ( involves_physical_delete, list_of_service_keys_to_content_updates )
@@ -1167,9 +1191,9 @@ class EditDeleteFilesPanel( ClientGUIScrolledPanels.EditPanel ):
         return self._question_is_already_resolved
         
     
-class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
+class EditDuplicateContentMergeOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
     
-    def __init__( self, parent: QW.QWidget, duplicate_action, duplicate_action_options, for_custom_action = False ):
+    def __init__( self, parent: QW.QWidget, duplicate_action, duplicate_content_merge_options: ClientDuplicates.DuplicateContentMergeOptions, for_custom_action = False ):
         
         ClientGUIScrolledPanels.EditPanel.__init__( self, parent )
         
@@ -1181,7 +1205,7 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         tag_services_listctrl_panel = ClientGUIListCtrl.BetterListCtrlPanel( tag_services_panel )
         
-        self._tag_service_actions = ClientGUIListCtrl.BetterListCtrl( tag_services_listctrl_panel, CGLC.COLUMN_LIST_DUPLICATE_ACTION_OPTIONS_TAG_SERVICES.ID, 5, self._ConvertTagDataToListCtrlTuple, delete_key_callback = self._DeleteTag, activation_callback = self._EditTag )
+        self._tag_service_actions = ClientGUIListCtrl.BetterListCtrl( tag_services_listctrl_panel, CGLC.COLUMN_LIST_DUPLICATE_CONTENT_MERGE_OPTIONS_TAG_SERVICES.ID, 5, self._ConvertTagDataToListCtrlTuple, delete_key_callback = self._DeleteTag, activation_callback = self._EditTag )
         
         tag_services_listctrl_panel.SetListCtrl( self._tag_service_actions )
         
@@ -1195,7 +1219,7 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         rating_services_listctrl_panel = ClientGUIListCtrl.BetterListCtrlPanel( rating_services_panel )
         
-        self._rating_service_actions = ClientGUIListCtrl.BetterListCtrl( rating_services_listctrl_panel, CGLC.COLUMN_LIST_DUPLICATE_ACTION_OPTIONS_RATING_SERVICES.ID, 5, self._ConvertRatingDataToListCtrlTuple, delete_key_callback = self._DeleteRating, activation_callback = self._EditRating )
+        self._rating_service_actions = ClientGUIListCtrl.BetterListCtrl( rating_services_listctrl_panel, CGLC.COLUMN_LIST_DUPLICATE_CONTENT_MERGE_OPTIONS_RATING_SERVICES.ID, 5, self._ConvertRatingDataToListCtrlTuple, delete_key_callback = self._DeleteRating, activation_callback = self._EditRating )
         
         rating_services_listctrl_panel.SetListCtrl( self._rating_service_actions )
         
@@ -1215,19 +1239,31 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         self._sync_archive_action.addItem( 'always archive both', ClientDuplicates.SYNC_ARCHIVE_DO_BOTH_REGARDLESS )
         
         self._sync_urls_action = ClientGUICommon.BetterChoice( self )
+        self._sync_notes_action = ClientGUICommon.BetterChoice( self )
         
-        self._sync_urls_action.addItem( 'sync nothing', None )
+        self._sync_urls_action.addItem( 'make no change', HC.CONTENT_MERGE_ACTION_NONE )
+        self._sync_notes_action.addItem( 'make no change', HC.CONTENT_MERGE_ACTION_NONE )
         
         if self._duplicate_action == HC.DUPLICATE_BETTER:
             
-            self._sync_urls_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_COPY], HC.CONTENT_MERGE_ACTION_COPY )
+            self._sync_urls_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_COPY ], HC.CONTENT_MERGE_ACTION_COPY )
+            self._sync_notes_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_COPY ], HC.CONTENT_MERGE_ACTION_COPY )
+            self._sync_notes_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_MOVE ], HC.CONTENT_MERGE_ACTION_MOVE )
             
         
         self._sync_urls_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ], HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE )
+        self._sync_notes_action.addItem( HC.content_merge_string_lookup[ HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ], HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE )
+        
+        self._sync_note_import_options_button = ClientGUICommon.BetterButton( self, 'note merge settings', self._EditNoteImportOptions )
         
         #
         
-        ( tag_service_options, rating_service_options, sync_archive_action, sync_urls_action ) = duplicate_action_options.ToTuple()
+        tag_service_options = duplicate_content_merge_options.GetTagServiceActions()
+        rating_service_options = duplicate_content_merge_options.GetRatingServiceActions()
+        sync_archive_action = duplicate_content_merge_options.GetSyncArchiveAction()
+        sync_urls_action = duplicate_content_merge_options.GetSyncURLsAction()
+        sync_notes_action = duplicate_content_merge_options.GetSyncNotesAction()
+        self._sync_note_import_options = duplicate_content_merge_options.GetSyncNoteImportOptions()
         
         services_manager = HG.client_controller.services_manager
         
@@ -1250,12 +1286,15 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         if self._duplicate_action in ( HC.DUPLICATE_ALTERNATE, HC.DUPLICATE_FALSE_POSITIVE ) and not for_custom_action:
             
             self._sync_urls_action.setEnabled( False )
+            self._sync_notes_action.setEnabled( False )
             
-            self._sync_urls_action.SetValue( None )
+            self._sync_urls_action.SetValue( HC.CONTENT_MERGE_ACTION_NONE )
+            self._sync_notes_action.SetValue( HC.CONTENT_MERGE_ACTION_NONE )
             
         else:
             
             self._sync_urls_action.SetValue( sync_urls_action )
+            self._sync_notes_action.SetValue( sync_notes_action )
             
         
         #
@@ -1277,12 +1316,18 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         rows.append( ( 'sync archived status?: ', self._sync_archive_action ) )
         rows.append( ( 'sync known urls?: ', self._sync_urls_action ) )
+        rows.append( ( 'sync notes?: ', self._sync_notes_action ) )
+        rows.append( ( '', self._sync_note_import_options_button ) )
         
         gridbox = ClientGUICommon.WrapInGrid( self, rows )
         
         QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         
         self.widget().setLayout( vbox )
+        
+        self._UpdateNoteControls()
+        
+        self._sync_notes_action.currentIndexChanged.connect( self._UpdateNoteControls )
         
     
     def _AddRating( self ):
@@ -1291,7 +1336,7 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         choice_tuples = []
         
-        for service in services_manager.GetServices( ( HC.LOCAL_RATING_LIKE, HC.LOCAL_RATING_NUMERICAL ) ):
+        for service in services_manager.GetServices( HC.RATINGS_SERVICES ):
             
             service_key = service.GetServiceKey()
             
@@ -1322,16 +1367,24 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
                 
                 service = services_manager.GetService( service_key )
                 
-                if service.GetServiceType() == HC.TAG_REPOSITORY:
+                service_type = service.GetServiceType()
+                
+                if service_type == HC.LOCAL_RATING_INCDEC:
                     
-                    possible_actions = [ HC.CONTENT_MERGE_ACTION_COPY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ]
+                    str_lookup_dict = HC.content_number_merge_string_lookup
+                    
+                elif service_type in HC.STAR_RATINGS_SERVICES:
+                    
+                    str_lookup_dict = HC.content_merge_string_lookup
                     
                 else:
                     
-                    possible_actions = [ HC.CONTENT_MERGE_ACTION_COPY, HC.CONTENT_MERGE_ACTION_MOVE, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ]
+                    return
                     
                 
-                choice_tuples = [ ( HC.content_merge_string_lookup[ action ], action ) for action in possible_actions ]
+                possible_actions = [ HC.CONTENT_MERGE_ACTION_COPY, HC.CONTENT_MERGE_ACTION_MOVE, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ]
+                
+                choice_tuples = [ ( str_lookup_dict[ action ], action ) for action in possible_actions ]
                 
                 try:
                     
@@ -1447,14 +1500,28 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         try:
             
-            service_name = HG.client_controller.services_manager.GetName( service_key )
+            service = HG.client_controller.services_manager.GetService( service_key )
+            
+            service_name = service.GetName()
+            
+            service_type = service.GetServiceType()
             
         except HydrusExceptions.DataMissing:
             
             service_name = 'missing service!'
+            service_type = HC.LOCAL_RATING_LIKE
             
         
-        pretty_action = HC.content_merge_string_lookup[ action ]
+        if service_type == HC.LOCAL_RATING_INCDEC:
+            
+            str_lookup_dict = HC.content_number_merge_string_lookup
+            
+        else:
+            
+            str_lookup_dict = HC.content_merge_string_lookup
+            
+        
+        pretty_action = str_lookup_dict[ action ]
         
         display_tuple = ( service_name, pretty_action )
         sort_tuple = ( service_name, pretty_action )
@@ -1514,6 +1581,23 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
             
         
     
+    def _EditNoteImportOptions( self ):
+        
+        allow_default_selection = False
+        
+        with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit note merge options' ) as dlg:
+            
+            panel = ClientGUIImportOptions.EditNoteImportOptionsPanel( dlg, self._sync_note_import_options, allow_default_selection, simple_mode = True )
+            
+            dlg.SetPanel( panel )
+            
+            if dlg.exec() == QW.QDialog.Accepted:
+                
+                self._sync_note_import_options = panel.GetValue()
+                
+            
+        
+    
     def _EditRating( self ):
         
         service_keys = self._rating_service_actions.GetData( only_selected = True )
@@ -1524,9 +1608,26 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
             
             if self._duplicate_action == HC.DUPLICATE_BETTER:
                 
+                service = HG.client_controller.services_manager.GetService( service_key )
+                
+                service_type = service.GetServiceType()
+                
+                if service_type == HC.LOCAL_RATING_INCDEC:
+                    
+                    str_lookup_dict = HC.content_number_merge_string_lookup
+                    
+                elif service_type in HC.STAR_RATINGS_SERVICES:
+                    
+                    str_lookup_dict = HC.content_merge_string_lookup
+                    
+                else:
+                    
+                    return
+                    
+                
                 possible_actions = [ HC.CONTENT_MERGE_ACTION_COPY, HC.CONTENT_MERGE_ACTION_MOVE, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ]
                 
-                choice_tuples = [ ( HC.content_merge_string_lookup[ action ], action ) for action in possible_actions ]
+                choice_tuples = [ ( str_lookup_dict[ action ], action ) for action in possible_actions ]
                 
                 try:
                     
@@ -1604,21 +1705,31 @@ class EditDuplicateActionOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
             
         
     
-    def GetValue( self ) -> ClientDuplicates.DuplicateActionOptions:
+    def _UpdateNoteControls( self ):
+        
+        sync_notes_action = self._sync_notes_action.GetValue()
+        
+        self._sync_note_import_options_button.setEnabled( sync_notes_action != HC.CONTENT_MERGE_ACTION_NONE )
+        
+    
+    def GetValue( self ) -> ClientDuplicates.DuplicateContentMergeOptions:
         
         tag_service_actions = [ ( service_key, action, tag_filter ) for ( service_key, ( action, tag_filter ) ) in self._service_keys_to_tag_options.items() ]
         rating_service_actions = [ ( service_key, action ) for ( service_key, action ) in self._service_keys_to_rating_options.items() ]
         sync_archive_action = self._sync_archive_action.GetValue()
         sync_urls_action = self._sync_urls_action.GetValue()
+        sync_notes_action = self._sync_notes_action.GetValue()
         
-        duplicate_action_options = ClientDuplicates.DuplicateActionOptions(
-            tag_service_actions = tag_service_actions,
-            rating_service_actions = rating_service_actions,
-            sync_archive_action = sync_archive_action,
-            sync_urls_action = sync_urls_action
-        )
+        duplicate_content_merge_options = ClientDuplicates.DuplicateContentMergeOptions()
         
-        return duplicate_action_options
+        duplicate_content_merge_options.SetTagServiceActions( tag_service_actions )
+        duplicate_content_merge_options.SetRatingServiceActions( rating_service_actions )
+        duplicate_content_merge_options.SetSyncArchiveAction( sync_archive_action )
+        duplicate_content_merge_options.SetSyncURLsAction( sync_urls_action )
+        duplicate_content_merge_options.SetSyncNotesAction( sync_notes_action )
+        duplicate_content_merge_options.SetSyncNoteImportOptions( self._sync_note_import_options )
+        
+        return duplicate_content_merge_options
         
     
 class EditFileNotesPanel( ClientGUIScrolledPanels.EditPanel, CAC.ApplicationCommandProcessorMixin ):
@@ -1639,6 +1750,12 @@ class EditFileNotesPanel( ClientGUIScrolledPanels.EditPanel, CAC.ApplicationComm
         self._add_button = ClientGUICommon.BetterButton( self, 'add', self._AddNote )
         self._edit_button = ClientGUICommon.BetterButton( self, 'edit current name', self._EditName )
         self._delete_button = ClientGUICommon.BetterButton( self, 'delete current note', self._DeleteNote )
+        
+        self._copy_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().copy, self._Copy )
+        self._copy_button.setToolTip( 'Copy all notes to the clipboard.' )
+        
+        self._paste_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().paste, self._Paste )
+        self._paste_button.setToolTip( 'Paste from a copy from another notes dialog.' )
         
         #
         
@@ -1689,6 +1806,8 @@ class EditFileNotesPanel( ClientGUIScrolledPanels.EditPanel, CAC.ApplicationComm
         QP.AddToLayout( button_hbox, self._add_button )
         QP.AddToLayout( button_hbox, self._edit_button )
         QP.AddToLayout( button_hbox, self._delete_button )
+        QP.AddToLayout( button_hbox, self._copy_button )
+        QP.AddToLayout( button_hbox, self._paste_button )
         
         vbox = QP.VBoxLayout()
         
@@ -1743,6 +1862,109 @@ class EditFileNotesPanel( ClientGUIScrolledPanels.EditPanel, CAC.ApplicationComm
         HG.client_controller.CallAfterQtSafe( control, 'moving cursor to end', control.moveCursor, QG.QTextCursor.End )
         
         self._UpdateButtons()
+        
+    
+    def _Copy( self ):
+        
+        ( names_to_notes, deletee_names ) = self.GetValue()
+        
+        text = json.dumps( names_to_notes )
+        
+        HG.client_controller.pub( 'clipboard', 'text', text )
+        
+    
+    def _Paste( self ):
+        
+        try:
+            
+            raw_text = HG.client_controller.GetClipboardText()
+            
+        except HydrusExceptions.DataMissing as e:
+            
+            QW.QMessageBox.critical( self, 'Error', str(e) )
+            
+            return
+            
+        
+        try:
+            
+            names_and_notes = json.loads( raw_text )
+            
+            clean_names_and_notes = []
+            
+            if isinstance( names_and_notes, dict ):
+                
+                names_and_notes = list( names_and_notes.items() )
+                
+            
+            for item in names_and_notes:
+                
+                if not isinstance( item, collections.abc.Collection ):
+                    
+                    continue
+                    
+                
+                if len( item ) != 2:
+                    
+                    raise Exception( 'Not a two-tuple!' )
+                    
+
+                ( key, value ) = item
+                
+                if not isinstance( key, str ):
+                    
+                    raise Exception( 'Key not a string!' )
+                    
+                
+                if not isinstance( value, str ):
+                    
+                    raise Exception( 'Value not a string!' )
+                    
+                
+                clean_names_and_notes.append( item )
+                
+            
+            names_and_notes = clean_names_and_notes
+            
+        except:
+            
+            QW.QMessageBox.critical( self, 'Error', 'Did not understand what was in the clipboard!' )
+            
+            return
+            
+        
+        ( existing_names_to_notes, deletee_names ) = self.GetValue()
+        
+        note_import_options = NoteImportOptions.NoteImportOptions()
+        
+        note_import_options.SetIsDefault( False )
+        note_import_options.SetExtendExistingNoteIfPossible( True )
+        note_import_options.SetConflictResolution( NoteImportOptions.NOTE_IMPORT_CONFLICT_RENAME )
+        
+        new_names_to_notes = note_import_options.GetUpdateeNamesToNotes( existing_names_to_notes, names_and_notes )
+        
+        existing_panel_names_to_widgets = { self._notebook.tabText( i ) : self._notebook.widget( i ) for i in range( self._notebook.count() ) }
+        
+        for ( name, note ) in new_names_to_notes.items():
+            
+            if name in existing_panel_names_to_widgets:
+                
+                control = existing_panel_names_to_widgets[ name ]
+                
+                try:
+                    
+                    control.setPlainText( note )
+                    
+                except:
+                    
+                    control.setPlainText( repr( note ) )
+                    
+                
+            else:
+                
+                self._AddNotePanel( name, note )
+                
+            
         
     
     def _DeleteNote( self ):

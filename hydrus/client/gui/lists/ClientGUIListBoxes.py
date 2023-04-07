@@ -25,6 +25,7 @@ from hydrus.client.gui import ClientGUIFunctions
 from hydrus.client.gui import ClientGUIMenus
 from hydrus.client.gui import ClientGUIShortcuts
 from hydrus.client.gui import ClientGUITagSorting
+from hydrus.client.gui import QtInit
 from hydrus.client.gui import QtPorting as QP
 from hydrus.client.gui.lists import ClientGUIListBoxesData
 from hydrus.client.gui.search import ClientGUISearch
@@ -119,7 +120,7 @@ class BetterQListWidget( QW.QListWidget ):
         list_widget_item.setSelected( was_selected )
         
     
-    def Append( self, text: str, data: object ):
+    def Append( self, text: str, data: object, select = False ):
         
         item = QW.QListWidgetItem()
         
@@ -127,6 +128,11 @@ class BetterQListWidget( QW.QListWidget ):
         item.setData( QC.Qt.UserRole, data )
         
         self.addItem( item )
+        
+        if select:
+            
+            item.setSelected( True )
+            
         
     
     def DeleteData( self, datas: typing.Collection[ object ] ):
@@ -233,7 +239,7 @@ class AddEditDeleteListBox( QW.QWidget ):
         
         self._enabled_only_on_selection_buttons = []
         
-        self._permitted_object_types = []
+        self._permitted_object_types = tuple()
         
         #
         
@@ -301,13 +307,13 @@ class AddEditDeleteListBox( QW.QWidget ):
         self.listBoxChanged.emit()
         
     
-    def _AddData( self, data ):
+    def _AddData( self, data, select = False ):
         
         self._SetNonDupeName( data )
         
         pretty_data = self._data_to_pretty_callable( data )
         
-        self._listbox.Append( pretty_data, data )
+        self._listbox.Append( pretty_data, data, select = select )
         
     
     def _AddSomeDefaults( self, defaults_callable ):
@@ -335,6 +341,11 @@ class AddEditDeleteListBox( QW.QWidget ):
             
         
         self.listBoxChanged.emit()
+        
+    
+    def _CheckImportObjectCustom( self, obj ):
+        
+        pass
         
     
     def _Delete( self ):
@@ -544,22 +555,46 @@ class AddEditDeleteListBox( QW.QWidget ):
             
         
     
-    def _ImportObject( self, obj ):
+    def _ImportObject( self, obj, can_present_messages = True ):
         
+        num_added = 0
         bad_object_type_names = set()
+        other_bad_errors = set()
         
         if isinstance( obj, HydrusSerialisable.SerialisableList ):
             
             for sub_obj in obj:
                 
-                self._ImportObject( sub_obj )
+                ( sub_num_added, sub_bad_object_type_names, sub_other_bad_errors ) = self._ImportObject( sub_obj, can_present_messages = False )
+                
+                num_added += sub_num_added
+                bad_object_type_names.update( sub_bad_object_type_names )
+                other_bad_errors.update( sub_other_bad_errors )
                 
             
         else:
             
             if isinstance( obj, self._permitted_object_types ):
                 
-                self._AddData( obj )
+                import_ok = True
+                
+                try:
+                    
+                    self._CheckImportObjectCustom( obj )
+                    
+                except HydrusExceptions.VetoException as e:
+                    
+                    import_ok = False
+                    
+                    other_bad_errors.add( str( e ) )
+                    
+                
+                if import_ok:
+                    
+                    self._AddData( obj, select = True )
+                    
+                    num_added += 1
+                    
                 
             else:
                 
@@ -567,20 +602,41 @@ class AddEditDeleteListBox( QW.QWidget ):
                 
             
         
-        if len( bad_object_type_names ) > 0:
+        if can_present_messages:
             
-            message = 'The imported objects included these types:'
-            message += os.linesep * 2
-            message += os.linesep.join( bad_object_type_names )
-            message += os.linesep * 2
-            message += 'Whereas this control only allows:'
-            message += os.linesep * 2
-            message += os.linesep.join( ( HydrusData.GetTypeName( o ) for o in self._permitted_object_types ) )
+            if len( bad_object_type_names ) > 0:
+                
+                message = 'The imported objects included these types:'
+                message += os.linesep * 2
+                message += os.linesep.join( bad_object_type_names )
+                message += os.linesep * 2
+                message += 'Whereas this control only allows:'
+                message += os.linesep * 2
+                message += os.linesep.join( ( HydrusData.GetTypeName( o ) for o in self._permitted_object_types ) )
+                
+                QW.QMessageBox.critical( self, 'Error', message )
+                
             
-            QW.QMessageBox.critical( self, 'Error', message )
+            if len( other_bad_errors ) > 0:
+                
+                message = 'The imported objects were wrong for this control:'
+                message += os.linesep * 2
+                message += os.linesep.join( other_bad_errors )
+                
+                QW.QMessageBox.critical( self, 'Error', message )
+                
+            
+            if num_added > 0:
+                
+                message = '{} objects added!'.format( HydrusData.ToHumanInt( num_added ) )
+                
+                QW.QMessageBox.information( self, 'Success', message )
+                
             
         
         self.listBoxChanged.emit()
+        
+        return ( num_added, bad_object_type_names, other_bad_errors )
         
     
     def _SetNonDupeName( self, obj ):
@@ -639,7 +695,7 @@ class AddEditDeleteListBox( QW.QWidget ):
     
     def AddImportExportButtons( self, permitted_object_types ):
         
-        self._permitted_object_types = permitted_object_types
+        self._permitted_object_types = tuple( permitted_object_types )
         
         export_menu_items = []
         
@@ -900,6 +956,11 @@ class QueueListBox( QW.QWidget ):
         self.listBoxChanged.emit()
         
     
+    def Clear( self ):
+        
+        self._listbox.clear()
+        
+    
     def GetCount( self ):
         
         return self._listbox.count()
@@ -925,7 +986,7 @@ class ListBox( QW.QScrollArea ):
     listBoxChanged = QC.Signal()
     mouseActivationOccurred = QC.Signal()
     
-    TEXT_X_PADDING = 3
+    TEXT_X_PADDING = 2
     
     def __init__( self, parent: QW.QWidget, terms_may_have_sibling_or_parent_info: bool, height_num_chars = 10, has_async_text_info = False ):
         
@@ -946,8 +1007,11 @@ class ListBox( QW.QScrollArea ):
         self._total_positional_rows = 0
         
         self._last_hit_logical_index = None
-        self._last_drag_start_logical_index = None
-        self._drag_started = False
+        self._shift_click_start_logical_index = None
+        self._logical_indices_selected_this_shift_click = set()
+        self._logical_indices_deselected_this_shift_click = set()
+        self._in_drag = False
+        self._this_drag_is_a_deselection = False
         
         self._last_view_start = None
         
@@ -969,7 +1033,6 @@ class ListBox( QW.QScrollArea ):
         self._pending_async_text_info_terms = set()
         self._currently_fetching_async_text_info_terms = set()
         self._async_text_info_lock = threading.Lock()
-        self._async_text_info_shared_data = dict()
         self._async_text_info_updater = self._InitialiseAsyncTextInfoUpdater()
         
     
@@ -1104,6 +1167,8 @@ class ListBox( QW.QScrollArea ):
         
         self.listBoxChanged.emit()
         
+        self._SelectionChanged()
+        
     
     def _Deselect( self, index ):
         
@@ -1129,22 +1194,9 @@ class ListBox( QW.QScrollArea ):
     
     def _GetLogicalIndexUnderMouse( self, mouse_event ):
         
-        y = mouse_event.position().toPoint().y()
+        positional_index = self._GetPositionalIndexUnderMouse( mouse_event )
         
-        if mouse_event.type() == QC.QEvent.MouseMove:
-            
-            visible_rect = QP.ScrollAreaVisibleRect( self )
-            
-            visible_rect_y = visible_rect.y()
-            
-            y += visible_rect_y
-            
-        
-        text_height = self.fontMetrics().height()
-        
-        positional_index = y // text_height
-        
-        if positional_index >= self._total_positional_rows:
+        if positional_index < 0 or positional_index >= self._total_positional_rows:
             
             return None
             
@@ -1186,6 +1238,26 @@ class ListBox( QW.QScrollArea ):
             
         
         return self._terms_to_positional_indices[ term ]
+        
+    
+    def _GetPositionalIndexUnderMouse( self, mouse_event ):
+        
+        y = mouse_event.position().toPoint().y()
+        
+        if mouse_event.type() == QC.QEvent.MouseMove:
+            
+            visible_rect = QP.ScrollAreaVisibleRect( self )
+            
+            visible_rect_y = visible_rect.y()
+            
+            y += visible_rect_y
+            
+        
+        text_height = self.fontMetrics().height()
+        
+        positional_index = y // text_height
+        
+        return positional_index
         
     
     def _GetPredicatesFromTerms( self, terms: typing.Collection[ ClientGUIListBoxesData.ListBoxItem ] ):
@@ -1295,11 +1367,11 @@ class ListBox( QW.QScrollArea ):
         self._Hit( shift, ctrl, logical_index )
         
 
-    def _Hit( self, shift, ctrl, logical_index, only_add = False ):
+    def _Hit( self, shift, ctrl, hit_logical_index ):
         
-        if logical_index is not None and ( logical_index < 0 or logical_index >= len( self._ordered_terms ) ):
+        if hit_logical_index is not None and ( hit_logical_index < 0 or hit_logical_index >= len( self._ordered_terms ) ):
             
-            logical_index = None
+            hit_logical_index = None
             
         
         to_select = set()
@@ -1307,73 +1379,108 @@ class ListBox( QW.QScrollArea ):
         
         deselect_all = False
         
+        if not shift:
+            
+            self._shift_click_start_logical_index = hit_logical_index # this can be None
+            self._logical_indices_selected_this_shift_click = set()
+            self._logical_indices_deselected_this_shift_click = set()
+            
+        
         if shift:
             
-            if logical_index is not None:
+            # if we started a shift click already, then assume the end of the list
+            # this lets us shift-click in whitespace and select to the end
+            # however don't initialise a shift-click this way
+            if hit_logical_index is None and self._shift_click_start_logical_index is not None:
+                
+                hit_logical_index = len( self ) - 1
+                
+            
+            if hit_logical_index is not None:
+                
+                if self._shift_click_start_logical_index is None or self._last_hit_logical_index is None:
+                    
+                    if self._last_hit_logical_index is None:
+                        
+                        # no obvious start point to initialise from (blind shift-click out of nowhere), so let's start right here with this click
+                        self._last_hit_logical_index = hit_logical_index
+                        
+                    
+                    self._shift_click_start_logical_index = self._last_hit_logical_index
+                    
                 
                 if ctrl:
                     
-                    if self._LogicalIndexIsSelected( logical_index ):
+                    if len( self._logical_indices_selected_this_shift_click ) > 0:
                         
-                        if self._last_hit_logical_index is not None:
-                            
-                            lower = min( logical_index, self._last_hit_logical_index )
-                            upper = max( logical_index, self._last_hit_logical_index )
-                            
-                            to_deselect = list( range( lower, upper + 1 ) )
-                            
-                        else:
-                            
-                            to_deselect.add( logical_index )
-                            
+                        self._shift_click_start_logical_index = self._last_hit_logical_index
+                        self._logical_indices_selected_this_shift_click = set()
                         
                     
                 else:
                     
-                    # we are now saying if you shift-click on something already selected, we'll make no changes, but we'll move focus ghost
-                    if not self._LogicalIndexIsSelected( logical_index ):
+                    if len( self._logical_indices_deselected_this_shift_click ) > 0:
                         
-                        if self._last_hit_logical_index is not None:
-                            
-                            lower = min( logical_index, self._last_hit_logical_index )
-                            upper = max( logical_index, self._last_hit_logical_index )
-                            
-                            to_select = list( range( lower, upper + 1 ) )
-                            
-                        else:
-                            
-                            to_select.add( logical_index )
-                            
+                        self._shift_click_start_logical_index = self._last_hit_logical_index
+                        self._logical_indices_deselected_this_shift_click = set()
                         
+                    
+                
+                min_index = min( self._shift_click_start_logical_index, hit_logical_index )
+                max_index = max( self._shift_click_start_logical_index, hit_logical_index )
+                
+                logical_indices_between_start_and_hit = list( range( min_index, max_index + 1 ) )
+                
+                if ctrl:
+                    
+                    # deselect mode, either drag or shift-click
+                    
+                    to_deselect = [ logical_index for logical_index in logical_indices_between_start_and_hit if self._LogicalIndexIsSelected( logical_index ) ]
+                    
+                    # any that were previously deselected but no longer in our shift range should be re-selected
+                    to_select = [ logical_index for logical_index in self._logical_indices_deselected_this_shift_click if logical_index not in logical_indices_between_start_and_hit ]
+                    
+                    self._logical_indices_deselected_this_shift_click.update( to_deselect )
+                    self._logical_indices_deselected_this_shift_click.difference_update( to_select )
+                    
+                else:
+                    
+                    to_select = [ logical_index for logical_index in logical_indices_between_start_and_hit if not self._LogicalIndexIsSelected( logical_index ) ]
+                    
+                    # any that were previously selected but no longer in our shift range should be deselected
+                    to_deselect = [ logical_index for logical_index in self._logical_indices_selected_this_shift_click if logical_index not in logical_indices_between_start_and_hit ]
+                    
+                    self._logical_indices_selected_this_shift_click.update( to_select )
+                    self._logical_indices_selected_this_shift_click.difference_update( to_deselect )
                     
                 
             
         elif ctrl:
             
-            if logical_index is not None:
+            if hit_logical_index is not None:
                 
-                if self._LogicalIndexIsSelected( logical_index ):
+                if self._LogicalIndexIsSelected( hit_logical_index ):
                     
-                    to_deselect.add( logical_index )
+                    to_deselect.add( hit_logical_index )
                     
                 else:
                     
-                    to_select.add( logical_index )
+                    to_select.add( hit_logical_index )
                     
                 
             
         else:
             
-            if logical_index is None:
+            if hit_logical_index is None:
                 
                 deselect_all = True
                 
             else:
                 
-                if not self._LogicalIndexIsSelected( logical_index ):
+                if not self._LogicalIndexIsSelected( hit_logical_index ):
                     
                     deselect_all = True
-                    to_select.add( logical_index )
+                    to_select.add( hit_logical_index )
                     
                 
             
@@ -1393,7 +1500,7 @@ class ListBox( QW.QScrollArea ):
             self._Deselect( index )
             
         
-        self._last_hit_logical_index = logical_index
+        self._last_hit_logical_index = hit_logical_index
         
         if self._last_hit_logical_index is not None:
             
@@ -1418,6 +1525,8 @@ class ListBox( QW.QScrollArea ):
                 self.ensureVisible( 0, y + text_height , 0, 0 )
                 
             
+        
+        self._SelectionChanged()
         
         self.widget().update()
         
@@ -1451,14 +1560,42 @@ class ListBox( QW.QScrollArea ):
             
         
     
+    def _InitialiseAsyncTextInfoUpdaterWorkCallables( self ):
+        
+        def pre_work_callable():
+            
+            return ( self._async_text_info_lock, self._currently_fetching_async_text_info_terms, self._pending_async_text_info_terms )
+            
+        
+        def work_callable( args ):
+            
+            ( async_lock, currently_fetching, pending ) = args
+            
+            with async_lock:
+                
+                to_lookup = set( pending )
+                
+                pending.clear()
+                
+                currently_fetching.update( to_lookup )
+                
+            
+            terms_to_info = { term : None for term in to_lookup }
+            
+            return terms_to_info
+            
+        
+        return ( pre_work_callable, work_callable )
+        
+    
     def _InitialiseAsyncTextInfoUpdater( self ):
         
         def loading_callable():
             
             pass
-            
-        
-        work_callable = self._InitialiseAsyncTextInfoUpdaterWorkCallable()
+
+
+        ( pre_work_callable, work_callable ) = self._InitialiseAsyncTextInfoUpdaterWorkCallables()
         
         def publish_callable( terms_to_info ):
             
@@ -1506,32 +1643,7 @@ class ListBox( QW.QScrollArea ):
             self._DataHasChanged()
             
         
-        return ClientGUIAsync.AsyncQtUpdater( self, loading_callable, work_callable, publish_callable )
-        
-    
-    def _InitialiseAsyncTextInfoUpdaterWorkCallable( self ):
-        
-        async_lock = self._async_text_info_lock
-        currently_fetching = self._currently_fetching_async_text_info_terms
-        pending = self._pending_async_text_info_terms
-        
-        def work_callable():
-            
-            with async_lock:
-                
-                to_lookup = set( pending )
-                
-                pending.clear()
-                
-                currently_fetching.update( to_lookup )
-                
-            
-            terms_to_info = { term : None for term in to_lookup }
-            
-            return terms_to_info
-            
-        
-        return work_callable
+        return ClientGUIAsync.AsyncQtUpdater( self, loading_callable, work_callable, publish_callable, pre_work_callable = pre_work_callable )
         
     
     def _LogicalIndexIsSelected( self, logical_index ):
@@ -1592,6 +1704,8 @@ class ListBox( QW.QScrollArea ):
             return
             
         
+        fades_can_ever_happen = QtInit.WE_ARE_QT6 and HG.client_controller.new_options.GetBoolean( 'fade_sibling_connector' )
+        
         current_visible_index = first_visible_positional_index
         
         for logical_index in range( first_visible_logical_index, last_visible_logical_index + 1 ):
@@ -1600,41 +1714,93 @@ class ListBox( QW.QScrollArea ):
             
             rows_of_texts_and_colours = self._GetRowsOfTextsAndColours( term )
             
+            term_ok_with_fade = term.CanFadeColours()
+            
             for texts_and_colours in rows_of_texts_and_colours:
                 
                 x_start = self.TEXT_X_PADDING
                 y_top = current_visible_index * text_height
                 
+                last_used_namespace_colour = None
+                
                 for ( text, ( r, g, b ) ) in texts_and_colours:
-                    
-                    text_colour = QG.QColor( r, g, b )
-                    
-                    if term in self._selected_terms:
-                        
-                        if x_start == self.TEXT_X_PADDING:
-                            
-                            background_colour_x = 0
-                            
-                        else:
-                            
-                            background_colour_x = x_start
-                            
-                        
-                        painter.fillRect( background_colour_x, y_top, visible_rect_width, text_height, text_colour )
-                        
-                        text_colour = self._background_colour
-                        
-                    
-                    painter.setPen( QG.QPen( text_colour ) )
                     
                     ( this_text_size, text ) = ClientGUIFunctions.GetTextSizeFromPainter( painter, text )
                     
                     this_text_width = this_text_size.width()
                     this_text_height = this_text_size.height()
                     
+                    background_block_width = this_text_width + self.TEXT_X_PADDING
+                    
+                    if x_start == self.TEXT_X_PADDING:
+                        
+                        background_colour_x = 0
+                        
+                    else:
+                        
+                        background_colour_x = x_start
+                        
+                    
+                    namespace_colour = QG.QColor( r, g, b )
+                    
+                    text_colour = namespace_colour
+                    
+                    do_a_fade = fades_can_ever_happen and term_ok_with_fade and last_used_namespace_colour is not None and last_used_namespace_colour != namespace_colour
+                    
+                    if term in self._selected_terms:
+                        
+                        if do_a_fade:
+                            
+                            # this seems like a pain to set up, but I guess the correct way to do it is draw one rect in one go, since the lineargradient will draw beyond the fade fine
+                            gradient_brush = QG.QLinearGradient( background_colour_x, 0.0, background_colour_x + background_block_width, 0.0 )
+                            gradient_brush.setColorAt( 0.0, last_used_namespace_colour )
+                            gradient_brush.setColorAt( 1.0, namespace_colour )
+                            
+                            rect_drawing_fill = gradient_brush
+                            
+                            rect_width = background_block_width
+                            
+                        else:
+                            
+                            rect_drawing_fill = namespace_colour
+                            
+                            rect_width = visible_rect_width - background_colour_x
+                            
+                        
+                        try:
+                            
+                            painter.fillRect( background_colour_x, y_top, rect_width, text_height, rect_drawing_fill )
+                            
+                        except:
+                            
+                            painter.fillRect( background_colour_x, y_top, rect_width, text_height, namespace_colour )
+                            
+                        
+                        text_pen = QG.QPen( self._background_colour )
+                        
+                    else:
+                        
+                        if do_a_fade:
+                            
+                            gradient_brush = QG.QLinearGradient( x_start, 0.0, x_start + this_text_width, 0.0 )
+                            gradient_brush.setColorAt( 0.0, last_used_namespace_colour )
+                            gradient_brush.setColorAt( 1.0, namespace_colour )
+                            
+                            text_pen = QG.QPen( gradient_brush, 1 )
+                            
+                        else:
+                            
+                            text_pen = QG.QPen( text_colour )
+                            
+                        
+                    
+                    painter.setPen( text_pen )
+                    
                     painter.drawText( QC.QRectF( x_start, y_top, this_text_width, this_text_height ), text )
                     
-                    x_start += this_text_width
+                    x_start += background_block_width
+                    
+                    last_used_namespace_colour = namespace_colour
                     
                 
                 current_visible_index += 1
@@ -1685,6 +1851,11 @@ class ListBox( QW.QScrollArea ):
         self._RegenTermsToIndices()
         
         self._last_hit_logical_index = None
+        self._shift_click_start_logical_index = None
+        self._logical_indices_selected_this_shift_click = set()
+        self._logical_indices_deselected_this_shift_click = set()
+        self._in_drag = False
+        self._this_drag_is_a_deselection = False
         
     
     def _Select( self, index ):
@@ -1704,6 +1875,11 @@ class ListBox( QW.QScrollArea ):
     def _SelectAll( self ):
         
         self._selected_terms = set( self._terms_to_logical_indices.keys() )
+        
+    
+    def _SelectionChanged( self ):
+        
+        pass
         
     
     def _SetVirtualSize( self ):
@@ -1852,8 +2028,7 @@ class ListBox( QW.QScrollArea ):
                 
             elif event.type() == QC.QEvent.MouseButtonRelease:
                 
-                self._last_drag_start_logical_index = None
-                self._drag_started = False
+                self._in_drag = False
                 
                 event.ignore()
                 
@@ -1891,25 +2066,36 @@ class ListBox( QW.QScrollArea ):
         
         if is_dragging:
             
-            logical_index = self._GetLogicalIndexUnderMouse( event )
+            positional_index = self._GetPositionalIndexUnderMouse( event )
             
-            if self._last_drag_start_logical_index is None:
+            # this causes lelmode as we cycle a 'None' hit position to the end of the list on a drag up
+            # therefore, just clip to 0
+            if positional_index < 0:
                 
-                self._last_drag_start_logical_index = logical_index
+                logical_index = 0
                 
-            elif logical_index != self._last_drag_start_logical_index:
+            else:
                 
-                ctrl = event.modifiers() & QC.Qt.ControlModifier
+                logical_index = self._GetLogicalIndexUnderMouse( event )
                 
-                if not self._drag_started:
+            
+            if not self._in_drag:
+                
+                self._in_drag = True
+                
+                if self._last_hit_logical_index is None:
                     
-                    self._Hit( True, ctrl, self._last_drag_start_logical_index )
+                    self._this_drag_is_a_deselection = False
                     
-                    self._drag_started = True
+                else:
+                    
+                    self._this_drag_is_a_deselection = not self._LogicalIndexIsSelected( self._last_hit_logical_index )
                     
                 
-                self._Hit( True, ctrl, logical_index )
-                
+            
+            ctrl = self._this_drag_is_a_deselection
+            
+            self._Hit( True, ctrl, logical_index )
             
         else:
             
@@ -2084,6 +2270,7 @@ COPY_ALL_SUBTAGS_WITH_COUNTS = 7
 
 class ListBoxTags( ListBox ):
     
+    tagsSelected = QC.Signal( set )
     can_spawn_new_windows = True
     
     def __init__( self, parent, *args, tag_display_type: int = ClientTags.TAG_DISPLAY_STORAGE, **kwargs ):
@@ -2106,10 +2293,19 @@ class ListBoxTags( ListBox ):
         
         self._page_key = None # placeholder. if a subclass sets this, it changes menu behaviour to allow 'select this tag' menu pubsubs
         
+        self._sibling_connector_string = HG.client_controller.new_options.GetString( 'sibling_connector' )
+        self._sibling_connector_namespace = None
+        
+        if not HG.client_controller.new_options.GetBoolean( 'fade_sibling_connector' ):
+            
+            self._sibling_connector_namespace = HG.client_controller.new_options.GetNoneableString( 'sibling_connector_custom_namespace_colour' )
+            
+        
         self._UpdateBackgroundColour()
         
         HG.client_controller.sub( self, 'ForceTagRecalc', 'refresh_all_tag_presentation_gui' )
         HG.client_controller.sub( self, '_UpdateBackgroundColour', 'notify_new_colourset' )
+        HG.client_controller.sub( self, 'NotifyNewOptions', 'notify_new_options' )
         
     
     def _GetCopyableTagStrings( self, command ):
@@ -2177,7 +2373,7 @@ class ListBoxTags( ListBox ):
         
         show_parent_rows = self._show_parent_decorators and self._extra_parent_rows_allowed
         
-        rows_of_texts_and_namespaces = term.GetRowsOfPresentationTextsWithNamespaces( self._render_for_user, self._show_sibling_decorators, self._show_parent_decorators, show_parent_rows )
+        rows_of_texts_and_namespaces = term.GetRowsOfPresentationTextsWithNamespaces( self._render_for_user, self._show_sibling_decorators, self._sibling_connector_string, self._sibling_connector_namespace, self._show_parent_decorators, show_parent_rows )
         
         rows_of_texts_and_colours = []
         
@@ -2185,7 +2381,7 @@ class ListBoxTags( ListBox ):
             
             texts_and_colours = []
             
-            for ( text, namespace ) in texts_and_namespaces:
+            for ( text, colour_type, namespace ) in texts_and_namespaces:
                 
                 if namespace in namespace_colours:
                     
@@ -2352,6 +2548,13 @@ class ListBoxTags( ListBox ):
         pass
         
     
+    def _SelectionChanged( self ):
+        
+        tags = set( self._GetTagsFromTerms( self._selected_terms ) )
+        
+        self.tagsSelected.emit( tags )
+        
+    
     def _UpdateBackgroundColour( self ):
         
         new_options = HG.client_controller.new_options
@@ -2421,6 +2624,25 @@ class ListBoxTags( ListBox ):
             
         
         return ListBox.eventFilter( self, watched, event )
+        
+    
+    def NotifyNewOptions( self ):
+        
+        new_sibling_connector_string = HG.client_controller.new_options.GetString( 'sibling_connector' )
+        new_sibling_connector_namespace = None
+        
+        if not HG.client_controller.new_options.GetBoolean( 'fade_sibling_connector' ):
+            
+            new_sibling_connector_namespace = HG.client_controller.new_options.GetNoneableString( 'sibling_connector_custom_namespace_colour' )
+            
+        
+        if new_sibling_connector_string != self._sibling_connector_string or new_sibling_connector_namespace != self._sibling_connector_namespace:
+            
+            self._sibling_connector_string = new_sibling_connector_string
+            self._sibling_connector_namespace = new_sibling_connector_namespace
+            
+            self.widget().update()
+            
         
     
     def ShowMenu( self ):
@@ -2802,89 +3024,109 @@ class ListBoxTags( ListBox ):
                     
                     ClientGUIMenus.AppendMenu( menu, search_menu, 'search' )
                     
-                
-                if self.can_spawn_new_windows:
+                    if self.can_spawn_new_windows:
+                        
+                        ClientGUIMenus.AppendMenuItem( search_menu, 'open a new search page for ' + selection_string, 'Open a new search page starting with the selected predicates.', self._NewSearchPages, [ predicates ] )
+                        
+                        if or_predicate is not None:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'open a new OR search page for ' + selection_string, 'Open a new search page starting with the selected merged as an OR search predicate.', self._NewSearchPages, [ ( or_predicate, ) ] )
+                            
+                        
+                        if len( predicates ) > 1:
+                            
+                            for_each_predicates = [ ( predicate, ) for predicate in predicates ]
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'open new search pages for each in selection', 'Open one new search page for each selected predicate.', self._NewSearchPages, for_each_predicates )
+                            
+                        
+                        ClientGUIMenus.AppendSeparator( search_menu )
+                        
                     
-                    ClientGUIMenus.AppendMenuItem( search_menu, 'open a new search page for ' + selection_string, 'Open a new search page starting with the selected predicates.', self._NewSearchPages, [ predicates ] )
-                    
-                    if or_predicate is not None:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'open a new OR search page for ' + selection_string, 'Open a new search page starting with the selected merged as an OR search predicate.', self._NewSearchPages, [ ( or_predicate, ) ] )
-                        
-                    
-                    if len( predicates ) > 1:
-                        
-                        for_each_predicates = [ ( predicate, ) for predicate in predicates ]
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'open new search pages for each in selection', 'Open one new search page for each selected predicate.', self._NewSearchPages, for_each_predicates )
-                        
+                    self._AddEditMenu( search_menu )
                     
                     ClientGUIMenus.AppendSeparator( search_menu )
                     
-                
-                if self._CanProvideCurrentPagePredicates():
+                    if self._CanProvideCurrentPagePredicates():
+                        
+                        current_predicates = self._GetCurrentPagePredicates()
+                        
+                        predicates = set( predicates )
+                        inverse_predicates = set( inverse_predicates )
+                        
+                        if len( predicates ) == 1:
+                            
+                            ( p, ) = predicates
+                            
+                            predicates_selection_string = p.ToString( with_count = False )
+                            
+                        else:
+                            
+                            predicates_selection_string = 'selected'
+                            
+                        
+                        some_selected_not_in_current = len( predicates.intersection( current_predicates ) ) < len( predicates )
+                        
+                        if some_selected_not_in_current:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'add {} to current search'.format( predicates_selection_string ), 'Add the selected predicates to the current search.', self._ProcessMenuPredicateEvent, 'add_predicates' )
+                            
+                        
+                        if or_predicate is not None:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'add an OR of {} to current search'.format( predicates_selection_string ), 'Add the selected predicates as an OR predicate to the current search.', self._ProcessMenuPredicateEvent, 'add_or_predicate' )
+                            
+                        
+                        some_selected_in_current = HydrusData.SetsIntersect( predicates, current_predicates )
+                        
+                        if some_selected_in_current:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'remove {} from current search'.format( predicates_selection_string ), 'Remove the selected predicates from the current search.', self._ProcessMenuPredicateEvent, 'remove_predicates' )
+                            
+                        
+                        we_can_flip_some_of_selection = len( inverse_predicates ) > 0
+                        
+                        if we_can_flip_some_of_selection:
+                            
+                            inclusives = { p.IsInclusive() for p in inverse_predicates }
+                            
+                            inverse_all_exclusive = True not in inclusives
+                            inverse_all_inclusive = False not in inclusives
+                            
+                            if inverse_all_exclusive:
+                                
+                                text = 'exclude {} from the current search'.format( predicates_selection_string )
+                                desc = 'Disallow the selected predicates for the current search.'
+                                
+                            elif inverse_all_inclusive and len( inverse_predicates ) == 1:
+                                
+                                ( p, ) = inverse_predicates
+                                
+                                inverse_selection_string = p.ToString( with_count = False )
+                                
+                                text = 'require {} for the current search'.format( inverse_selection_string )
+                                desc = 'Stop disallowing the selected predicates from the current search.'
+                                
+                            else:
+                                
+                                text = 'invert selection for the current search'
+                                desc = 'Flip the inclusive/exclusive nature of the selected predicates from the current search.'
+                                
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, text, desc, self._ProcessMenuPredicateEvent, 'add_inverse_predicates' )
+                            
+                        
+                        if namespace_predicate is not None and namespace_predicate not in current_predicates:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'add {} to current search'.format( namespace_predicate.ToString( with_count = False ) ), 'Add the namespace predicate to the current search.', self._ProcessMenuPredicateEvent, 'add_namespace_predicate' )
+                            
+                        
+                        if inverse_namespace_predicate is not None and inverse_namespace_predicate not in current_predicates:
+                            
+                            ClientGUIMenus.AppendMenuItem( search_menu, 'exclude {} from the current search'.format( namespace_predicate.ToString( with_count = False ) ), 'Disallow the namespace predicate from the current search.', self._ProcessMenuPredicateEvent, 'add_inverse_namespace_predicate' )
+                            
+                        
                     
-                    current_predicates = self._GetCurrentPagePredicates()
-                    
-                    predicates = set( predicates )
-                    inverse_predicates = set( inverse_predicates )
-                    
-                    if len( predicates ) == 1:
-                        
-                        ( pred, ) = predicates
-                        
-                        predicates_selection_string = pred.ToString( with_count = False )
-                        
-                    else:
-                        
-                        predicates_selection_string = 'selected'
-                        
-                    
-                    some_selected_in_current = HydrusData.SetsIntersect( predicates, current_predicates )
-                    
-                    if some_selected_in_current:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'remove {} from current search'.format( predicates_selection_string ), 'Remove the selected predicates from the current search.', self._ProcessMenuPredicateEvent, 'remove_predicates' )
-                        
-                    
-                    some_selected_not_in_current = len( predicates.intersection( current_predicates ) ) < len( predicates )
-                    
-                    if some_selected_not_in_current:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'add {} to current search'.format( predicates_selection_string ), 'Add the selected predicates to the current search.', self._ProcessMenuPredicateEvent, 'add_predicates' )
-                        
-                    
-                    if or_predicate is not None:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'add an OR of {} to current search'.format( predicates_selection_string ), 'Add the selected predicates as an OR predicate to the current search.', self._ProcessMenuPredicateEvent, 'add_or_predicate' )
-                        
-                    
-                    some_selected_are_excluded_explicitly = HydrusData.SetsIntersect( inverse_predicates, current_predicates )
-                    
-                    if some_selected_are_excluded_explicitly:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'permit {} for current search'.format( predicates_selection_string ), 'Stop disallowing the selected predicates from the current search.', self._ProcessMenuPredicateEvent, 'remove_inverse_predicates' )
-                        
-                    
-                    some_selected_are_not_excluded_explicitly = len( inverse_predicates.intersection( current_predicates ) ) < len( inverse_predicates )
-                    
-                    if some_selected_are_not_excluded_explicitly:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'exclude {} from the current search'.format( predicates_selection_string ), 'Disallow the selected predicates for the current search.', self._ProcessMenuPredicateEvent, 'add_inverse_predicates' )
-                        
-                    
-                    if namespace_predicate is not None and namespace_predicate not in current_predicates:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'add {} to current search'.format( namespace_predicate.ToString( with_count = False ) ), 'Add the namespace predicate to the current search.', self._ProcessMenuPredicateEvent, 'add_namespace_predicate' )
-                        
-                    
-                    if inverse_namespace_predicate is not None and inverse_namespace_predicate not in current_predicates:
-                        
-                        ClientGUIMenus.AppendMenuItem( search_menu, 'exclude {} from the current search'.format( namespace_predicate.ToString( with_count = False ) ), 'Disallow the namespace predicate from the current search.', self._ProcessMenuPredicateEvent, 'add_inverse_namespace_predicate' )
-                        
-                    
-                
-                self._AddEditMenu( menu )
                 
             
             if len( selected_actual_tags ) > 0 and self._page_key is not None:
@@ -3119,6 +3361,23 @@ class ListBoxTagsColourOptions( ListBoxTags ):
         return dict( ( term.GetNamespaceAndColour() for term in self._ordered_terms ) )
         
     
+    def DeleteSelected( self ):
+        
+        self._DeleteActivate()
+        
+    
+    def GetNamespaceColours( self ):
+        
+        return self._GetNamespaceColours()
+        
+    
+    def GetSelectedNamespaceColours( self ):
+        
+        namespace_colours = dict( ( term.GetNamespaceAndColour() for term in self._selected_terms ) )
+        
+        return namespace_colours
+        
+    
     def SetNamespaceColour( self, namespace, colour: QG.QColor ):
         
         colour_tuple = ( colour.red(), colour.green(), colour.blue() )
@@ -3142,30 +3401,20 @@ class ListBoxTagsColourOptions( ListBoxTags ):
         self._DataHasChanged()
         
     
-    def GetNamespaceColours( self ):
-        
-        return self._GetNamespaceColours()
-        
-    
-    def GetSelectedNamespaceColours( self ):
-        
-        namespace_colours = dict( ( term.GetNamespaceAndColour() for term in self._selected_terms ) )
-        
-        return namespace_colours
-        
-    
 class ListBoxTagsFilter( ListBoxTags ):
     
     tagsRemoved = QC.Signal( list )
     
-    def __init__( self, parent ):
+    def __init__( self, parent, read_only = False ):
         
         ListBoxTags.__init__( self, parent )
+        
+        self._read_only = read_only
         
     
     def _Activate( self, ctrl_down, shift_down ) -> bool:
         
-        if len( self._selected_terms ) > 0:
+        if len( self._selected_terms ) > 0 and not self._read_only:
             
             tag_slices = [ term.GetTagSlice() for term in self._selected_terms ]
             
@@ -3293,21 +3542,21 @@ class ListBoxTagsDisplayCapable( ListBoxTags ):
         return ( sort_info_changed, num_rows_changed )
         
     
-    def _InitialiseAsyncTextInfoUpdaterWorkCallable( self ):
+    def _InitialiseAsyncTextInfoUpdaterWorkCallables( self ):
         
         if not self._has_async_text_info:
             
-            return ListBoxTags._InitialiseAsyncTextInfoUpdaterWorkCallable( self )
+            return ListBoxTags._InitialiseAsyncTextInfoUpdaterWorkCallables( self )
             
         
-        self._async_text_info_shared_data[ 'service_key' ] = self._service_key
+        def pre_work_callable():
+            
+            return ( self._service_key, self._async_text_info_lock, self._currently_fetching_async_text_info_terms, self._pending_async_text_info_terms )
+            
         
-        async_text_info_shared_data = self._async_text_info_shared_data
-        async_lock = self._async_text_info_lock
-        currently_fetching = self._currently_fetching_async_text_info_terms
-        pending = self._pending_async_text_info_terms
-        
-        def work_callable():
+        def work_callable( args ):
+            
+            ( service_key, async_lock, currently_fetching, pending ) = args
             
             with async_lock:
                 
@@ -3316,8 +3565,6 @@ class ListBoxTagsDisplayCapable( ListBoxTags ):
                 pending.clear()
                 
                 currently_fetching.update( to_lookup )
-                
-                service_key = async_text_info_shared_data[ 'service_key' ]
                 
             
             terms_to_info = { term : None for term in to_lookup }
@@ -3336,7 +3583,7 @@ class ListBoxTagsDisplayCapable( ListBoxTags ):
             return terms_to_info
             
         
-        return work_callable
+        return ( pre_work_callable, work_callable )
         
     
     def _SelectFilesWithTags( self, and_or_or ):
@@ -3359,8 +3606,6 @@ class ListBoxTagsDisplayCapable( ListBoxTags ):
         self._service_key = service_key
         
         with self._async_text_info_lock:
-            
-            self._async_text_info_shared_data[ 'service_key' ] = self._service_key
             
             self._pending_async_text_info_terms.clear()
             self._currently_fetching_async_text_info_terms.clear()

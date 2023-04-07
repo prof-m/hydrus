@@ -1,6 +1,7 @@
 import locale
 import os
 import traceback
+import typing
 
 from qtpy import QtCore as QC
 from qtpy import QtWidgets as QW
@@ -10,6 +11,7 @@ from hydrus.core import HydrusData
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusImageHandling
 from hydrus.core import HydrusPaths
+from hydrus.core import HydrusVideoHandling
 
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
@@ -17,6 +19,7 @@ from hydrus.client.gui import ClientGUIMedia
 from hydrus.client.gui import ClientGUIMediaControls
 from hydrus.client.gui import ClientGUIShortcuts
 from hydrus.client.gui import QtPorting as QP
+from hydrus.client.media import ClientMedia
 
 mpv_failed_reason = 'MPV seems ok!'
 
@@ -31,6 +34,7 @@ except Exception as e:
     mpv_failed_reason = traceback.format_exc()
     
     MPV_IS_AVAILABLE = False
+    
 
 def GetClientAPIVersionString():
     
@@ -71,9 +75,32 @@ def log_handler( loglevel, component, message ):
     
     HydrusData.DebugPrint( '[{}] {}: {}'.format( loglevel, component, message ) )
     
+
+MPVFileLoadedEventType = QP.registerEventType()
+
+class MPVFileLoadedEvent( QC.QEvent ):
+    
+    def __init__( self ):
+        
+        QC.QEvent.__init__( self, MPVFileLoadedEventType )
+        
+    
+
+MPVFileSeekedEventType = QP.registerEventType()
+
+class MPVFileSeekedEvent( QC.QEvent ):
+    
+    def __init__( self ):
+        
+        QC.QEvent.__init__( self, MPVFileSeekedEventType )
+        
+    
+
+LOCALE_IS_SET = False
+
 #Not sure how well this works with hardware acceleration. This just renders to a QWidget. In my tests it seems fine, even with vdpau video out, but I'm not 100% sure it actually uses hardware acceleration.
 #Here is an example on how to render into a QOpenGLWidget instead: https://gist.github.com/cosven/b313de2acce1b7e15afda263779c0afc
-class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
+class MPVWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
     
     launchMediaViewer = QC.Signal()
     
@@ -86,16 +113,23 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         
         self._stop_for_slideshow = False
         
-        # This is necessary since PyQT stomps over the locale settings needed by libmpv.
-        # This needs to happen after importing PyQT before creating the first mpv.MPV instance.
-        locale.setlocale( locale.LC_NUMERIC, 'C' )
+        global LOCALE_IS_SET
+        
+        if not LOCALE_IS_SET:
+            
+            # This is necessary since PyQT stomps over the locale settings needed by libmpv.
+            # This needs to happen after importing PyQT before creating the first mpv.MPV instance.
+            locale.setlocale( locale.LC_NUMERIC, 'C' )
+            
+            LOCALE_IS_SET = True
+            
         
         self.setAttribute( QC.Qt.WA_DontCreateNativeAncestors )
         self.setAttribute( QC.Qt.WA_NativeWindow )
         
+        # loglevels: fatal, error, debug
         loglevel = 'debug' if HG.mpv_report_mode else 'fatal'
         
-        # loglevels: fatal, error, debug
         self._player = mpv.MPV( wid = str( int( self.winId() ) ), log_handler = log_handler, loglevel = loglevel )
         
         # hydev notes on OSC:
@@ -103,7 +137,10 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         # difficult to get this to intercept mouse/key events naturally, so you have to pipe them to the window with 'command', but this is not excellent
         # general recommendation when using libmpv is to just implement your own stuff anyway, so let's do that for prototype
         
-        #self._player[ 'input-default-bindings' ] = True
+        # self._player[ 'osd-level' ] = 1
+        # self._player[ 'input-default-bindings' ] = True
+        
+        self._previous_conf_content_bytes = b''
         
         self.UpdateConf()
         
@@ -126,7 +163,7 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         self._file_is_loaded = False
         self._disallow_seek_on_this_file = False
         
-        self._times_to_play_gif = 0
+        self._times_to_play_animation = 0
         
         self._current_seek_to_start_count = 0
         
@@ -138,6 +175,8 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         HG.client_controller.sub( self, 'UpdateAudioVolume', 'new_audio_volume' )
         HG.client_controller.sub( self, 'UpdateConf', 'notify_new_options' )
         HG.client_controller.sub( self, 'SetLogLevel', 'set_mpv_log_level' )
+        
+        self.installEventFilter( self )
         
         self._my_shortcut_handler = ClientGUIShortcuts.ShortcutsHandler( self, [], catch_mouse = True )
         
@@ -213,26 +252,39 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
     
     def _InitialiseMPVCallbacks( self ):
         
-        def qt_file_loaded_event():
+        player = self._player
+        
+        @player.event_callback( mpv.MpvEventID.SEEK )
+        def seek_event( event ):
             
-            if not QP.isValid( self ):
-                
-                return
-                
+            QW.QApplication.instance().postEvent( self, MPVFileSeekedEvent() )
+            
+        
+        @player.event_callback( mpv.MpvEventID.FILE_LOADED )
+        def file_loaded_event( event ):
+            
+            QW.QApplication.instance().postEvent( self, MPVFileLoadedEvent() )
+            
+        
+    
+    def ClearMedia( self ):
+        
+        self.SetMedia( None )
+        
+    
+    def eventFilter( self, watched, event ):
+        
+        if event.type() == MPVFileLoadedEventType:
             
             self._file_is_loaded = True
             
-        
-        def qt_seek_event():
+            return True
             
-            if not QP.isValid( self ):
-                
-                return
-                
+        elif event.type() == MPVFileSeekedEventType:
             
             if not self._file_is_loaded:
                 
-                return
+                return True
                 
             
             current_timestamp_s = self._player.time_pos
@@ -246,32 +298,16 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
                     self.Pause()
                     
                 
-                if self._times_to_play_gif != 0 and self._current_seek_to_start_count >= self._times_to_play_gif:
+                if self._times_to_play_animation != 0 and self._current_seek_to_start_count >= self._times_to_play_animation:
                     
                     self.Pause()
                     
                 
             
+            return True
             
         
-        player = self._player
-        
-        @player.event_callback( mpv.MpvEventID.SEEK )
-        def seek_event( event ):
-            
-            QP.CallAfter( qt_seek_event )
-            
-        
-        @player.event_callback( mpv.MpvEventID.FILE_LOADED )
-        def file_loaded_event( event ):
-            
-            QP.CallAfter( qt_file_loaded_event )
-            
-        
-    
-    def ClearMedia( self ):
-        
-        self.SetMedia( None )
+        return False
         
     
     def GetAnimationBarStatus( self ):
@@ -305,12 +341,12 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
                     
                 else:
                     
-                    current_frame_index = int( round( ( current_timestamp_ms / self._media.GetDuration() ) * num_frames ) )
+                    current_frame_index = int( round( ( current_timestamp_ms / self._media.GetDurationMS() ) * num_frames ) )
                     
                     current_frame_index = min( current_frame_index, num_frames - 1 )
                     
                 
-                current_timestamp_ms = min( current_timestamp_ms, self._media.GetDuration() )
+                current_timestamp_ms = min( current_timestamp_ms, self._media.GetDurationMS() )
                 
             
             paused = self._player.pause
@@ -451,9 +487,14 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         
         current_timestamp_s = self._player.time_pos
         
+        if current_timestamp_s is None:
+            
+            return
+            
+        
         new_timestamp_ms = max( 0, ( current_timestamp_s * 1000 ) + ( direction * duration_ms ) )
         
-        if new_timestamp_ms > self._media.GetDuration():
+        if new_timestamp_ms > self._media.GetDurationMS():
             
             new_timestamp_ms = 0
             
@@ -482,7 +523,7 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         self._player.set_loglevel( level )
         
     
-    def SetMedia( self, media, start_paused = False ):
+    def SetMedia( self, media: typing.Optional[ ClientMedia.MediaSingleton ], start_paused = False ):
         
         if media == self._media:
             
@@ -494,15 +535,24 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
         
         self._media = media
         
-        self._times_to_play_gif = 0
+        self._times_to_play_animation = 0
         
-        if self._media is not None and self._media.GetMime() == HC.IMAGE_GIF and not HG.client_controller.new_options.GetBoolean( 'always_loop_gifs' ):
+        if self._media is not None and self._media.GetMime() in HC.ANIMATIONS and not HG.client_controller.new_options.GetBoolean( 'always_loop_gifs' ):
             
             hash = self._media.GetHash()
             
-            path = HG.client_controller.client_files_manager.GetFilePath( hash, HC.IMAGE_GIF )
+            mime = self._media.GetMime()
             
-            self._times_to_play_gif = HydrusImageHandling.GetTimesToPlayGIF( path )
+            path = HG.client_controller.client_files_manager.GetFilePath( hash, mime )
+            
+            if mime == HC.IMAGE_GIF:
+                
+                self._times_to_play_animation = HydrusImageHandling.GetTimesToPlayGIF( path )
+                
+            elif mime == HC.IMAGE_APNG:
+                
+                self._times_to_play_animation = HydrusVideoHandling.GetAPNGTimesToPlay( path )
+                
             
         
         self._current_seek_to_start_count = 0
@@ -528,6 +578,11 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
             hash = self._media.GetHash()
             mime = self._media.GetMime()
             
+            # some videos have an audio channel that is silent. hydrus thinks these dudes are 'no audio', but when we throw them at mpv, it may play audio for them
+            # would be fine, you think, except in one reported case this causes scratches and pops and hell whitenoise
+            # so let's see what happens here
+            mute_override = not self._media.HasAudio()
+            
             client_files_manager = HG.client_controller.client_files_manager
             
             path = client_files_manager.GetFilePath( hash, mime )
@@ -548,7 +603,7 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
                 
             
             self._player.volume = self._GetCorrectCurrentVolume()
-            self._player.mute = self._GetCorrectCurrentMute()
+            self._player.mute = mute_override or self._GetCorrectCurrentMute()
             self._player.pause = start_paused
             
         
@@ -586,6 +641,22 @@ class mpvWidget( QW.QWidget, CAC.ApplicationCommandProcessorMixin ):
                 
                 HydrusPaths.MirrorFile( default_mpv_config_path, mpv_config_path )
                 
+            
+        
+        # let's touch mpv core functions as little ans possible
+        
+        with open( mpv_config_path, 'rb' ) as f:
+            
+            conf_content_bytes = f.read()
+            
+        
+        if self._previous_conf_content_bytes == conf_content_bytes:
+            
+            return
+            
+        else:
+            
+            self._previous_conf_content_bytes = conf_content_bytes
             
         
         #To load an existing config file (by default it doesn't load the user/global config like standalone mpv does):

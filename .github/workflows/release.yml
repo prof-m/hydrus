@@ -5,209 +5,91 @@ on:
       - 'v*'
 
 jobs:
-  build-macos-Qt5:
-    runs-on: macos-11
-    steps:
-      - 
-        name: Checkout
-        uses: actions/checkout@v2
-      - 
-        name: Setup FFMPEG
-        uses: FedericoCarboni/setup-ffmpeg@v1
-        id: setup_ffmpeg
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - 
-        name: Install mkdocs-material
-        run: python3 -m pip install mkdocs-material 
-      - 
-        name: Build docs to /help
-        run: mkdocs build -d help
-      - 
-        name: Install PyOxidizer
-        run: python3 -m pip install pyoxidizer
-      - 
-        name: Build Hydrus
-        run: |
-          cd $GITHUB_WORKSPACE
-          cp ${{ steps.setup_ffmpeg.outputs.ffmpeg-path }} bin/
-          cp static/build_files/macos/pyoxidizer.bzl pyoxidizer.bzl
-          cp static/build_files/macos/requirementsQt5.txt requirements.txt
-          basename $(rustc --print sysroot) | sed -e "s/^stable-//" > triple.txt
-          pyoxidizer build --release
-          cd build/$(head -n 1 triple.txt)/release
-          mkdir -p "Hydrus Network.app/Contents/MacOS"
-          mkdir -p "Hydrus Network.app/Contents/Resources"
-          mkdir -p "Hydrus Network.app/Contents/Frameworks"
-          mv install/static/icon.icns "Hydrus Network.app/Contents/Resources/icon.icns"
-          cp install/static/build_files/macos/Info.plist "Hydrus Network.app/Contents/Info.plist"
-          cp install/static/build_files/macos/ReadMeFirst.rtf ./ReadMeFirst.rtf
-          cp install/static/build_files/macos/running_from_app "install/running_from_app"
-          ln -s /Applications ./Applications
-          mv install/* "Hydrus Network.app/Contents/MacOS/"
-          rm -rf install
-          cd $GITHUB_WORKSPACE
-          temp_dmg="$(mktemp).dmg"
-          hdiutil create "$temp_dmg" -ov -volname "HydrusNetwork" -fs HFS+ -srcfolder "$GITHUB_WORKSPACE/build/$(head -n 1 triple.txt)/release"
-          hdiutil convert "$temp_dmg" -format UDZO -o HydrusNetwork5.dmg
-      - 
-        name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2.2.1
-        with:
-          name: MacOS-DMG5
-          path: HydrusNetwork5.dmg
-          if-no-files-found: error
-          retention-days: 2
-
-  build-macos-Qt6:
+  build-macos:
     runs-on: macos-11
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       -
         name: Setup FFMPEG
-        uses: FedericoCarboni/setup-ffmpeg@v1
+        uses: FedericoCarboni/setup-ffmpeg@v1.1.0
         id: setup_ffmpeg
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       -
-        name: Install mkdocs-material
-        run: python3 -m pip install mkdocs-material
-      -
-        name: Build docs to /help
-        run: mkdocs build -d help
-      -
-        name: Install PyOxidizer
-        run: python3 -m pip install pyoxidizer
-      -
-        name: Build Hydrus
-        run: |
-          cd $GITHUB_WORKSPACE
-          cp ${{ steps.setup_ffmpeg.outputs.ffmpeg-path }} bin/
-          cp static/build_files/macos/pyoxidizer.bzl pyoxidizer.bzl
-          cp static/build_files/macos/requirementsQt6.txt requirements.txt
-          basename $(rustc --print sysroot) | sed -e "s/^stable-//" > triple.txt
-          pyoxidizer build --release
-          cd build/$(head -n 1 triple.txt)/release
-          mkdir -p "Hydrus Network.app/Contents/MacOS"
-          mkdir -p "Hydrus Network.app/Contents/Resources"
-          mkdir -p "Hydrus Network.app/Contents/Frameworks"
-          mv install/static/icon.icns "Hydrus Network.app/Contents/Resources/icon.icns"
-          cp install/static/build_files/macos/Info.plist "Hydrus Network.app/Contents/Info.plist"
-          cp install/static/build_files/macos/ReadMeFirst.rtf ./ReadMeFirst.rtf
-          cp install/static/build_files/macos/running_from_app "install/running_from_app"
-          ln -s /Applications ./Applications
-          mv install/* "Hydrus Network.app/Contents/MacOS/"
-          rm -rf install
-          cd $GITHUB_WORKSPACE
-          temp_dmg="$(mktemp).dmg"
-          hdiutil create "$temp_dmg" -ov -volname "HydrusNetwork" -fs HFS+ -srcfolder "$GITHUB_WORKSPACE/build/$(head -n 1 triple.txt)/release"
-          hdiutil convert "$temp_dmg" -format UDZO -o HydrusNetwork6.dmg
-      -
-        name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2.2.1
-        with:
-          name: MacOS-DMG6
-          path: HydrusNetwork6.dmg
-          if-no-files-found: error
-          retention-days: 2
-
-  build-ubuntu-Qt5:
-    runs-on: ubuntu-18.04
-    steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v2
-        with:
-          path: hydrus
-      - 
         name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.8
-          architecture: x64
-      - 
-        name: Install mkdocs-material
-        run: pip install mkdocs-material 
-      - 
+          python-version: 3.9
+      -
         name: Build docs to /help
-        run: mkdocs build -d help
-        working-directory: hydrus
-      #- name: Cache Qt
-      #  id: cache-qt
-      #  uses: actions/cache@v1
-      #  with:
-      #    path: Qt
-      #    key: ${{ runner.os }}-QtCache
-      #- 
-      #  name: Install Qt
-      #  uses: jurplel/install-qt-action@v2
-      #  with:
-      #    install-deps: true
-      #    setup-python: 'false'
-      #    modules: qtcharts qtwidgets qtgui qtcore
-      #    cached: ${{ steps.cache-qt.outputs.cache-hit }}
-      - 
-        name: APT Install
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libmpv1
-      - 
-        name: Pip Installer
-        uses: BSFishy/pip-action@v1
-        with:
-          packages: pyinstaller
-          requirements: hydrus/static/build_files/linux/requirementsQt5.txt
-      - 
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade wheel
+          python3 -m pip install mkdocs-material
+          mkdocs build -d help
+      -
+        name: Install PyOxidizer
+        run: python3 -m pip install pyoxidizer==0.22.0
+      -
         name: Build Hydrus
         run: |
-          cp hydrus/static/build_files/linux/client.spec client.spec
-          cp hydrus/static/build_files/linux/server.spec server.spec
-          pyinstaller server.spec
-          pyinstaller client.spec
-      - 
-        name: Remove Chonk
-        run: |
-            find dist/client/ -type f -name "*.pyc" -delete
-            while read line; do find dist/client/ -type f -name "${line}" -delete ; done < hydrus/static/build_files/linux/files_to_delete.txt
+          cd $GITHUB_WORKSPACE
+          cp ${{ steps.setup_ffmpeg.outputs.ffmpeg-path }} bin/
+          cp static/build_files/macos/pyoxidizer.bzl pyoxidizer.bzl
+          cp static/build_files/macos/requirements.txt requirements.txt
+          basename $(rustc --print sysroot) | sed -e "s/^stable-//" > triple.txt
+          pyoxidizer build --release
+          cd build/$(head -n 1 triple.txt)/release
+          mkdir -p "Hydrus Network.app/Contents/MacOS"
+          mkdir -p "Hydrus Network.app/Contents/Resources"
+          mkdir -p "Hydrus Network.app/Contents/Frameworks"
+          mv install/static/icon.icns "Hydrus Network.app/Contents/Resources/icon.icns"
+          cp install/static/build_files/macos/Info.plist "Hydrus Network.app/Contents/Info.plist"
+          cp install/static/build_files/macos/ReadMeFirst.rtf ./ReadMeFirst.rtf
+          cp install/static/build_files/macos/running_from_app "install/running_from_app"
+          ln -s /Applications ./Applications
+          mv install/* "Hydrus Network.app/Contents/MacOS/"
+          rm -rf install
       -
-        name: Set Permissions
+        name: Build DMG
         run: |
-            sudo chown --recursive 1000:1000 dist/client
-            sudo find dist/client -type d -exec chmod 0755 {} \;
-            sudo chmod +x dist/client/client dist/client/server dist/client/bin/swfrender_linux
+          cd $GITHUB_WORKSPACE
+          temp_dmg="$(mktemp).dmg"
+          hdiutil create "$temp_dmg" -ov -volname "HydrusNetwork" -fs HFS+ -format UDZO -srcfolder "$GITHUB_WORKSPACE/build/$(head -n 1 triple.txt)/release"
+          mv "$temp_dmg" HydrusNetwork.dmg
       -
-        name: Compress Client
-        run: |
-            mv dist/client "dist/Hydrus Network"
-            tar -czvf Ubuntu-Extract5.tar.gz -C dist "Hydrus Network"
-      - 
         name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: Ubuntu-Extract5
-          path: Ubuntu-Extract5.tar.gz
+          name: MacOS-DMG
+          path: HydrusNetwork.dmg
           if-no-files-found: error
           retention-days: 2
 
-  build-ubuntu-Qt6:
+  build-ubuntu:
     runs-on: ubuntu-20.04
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: hydrus
       -
         name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: 3.9
           architecture: x64
       -
-        name: Install mkdocs-material
-        run: pip install mkdocs-material
+        name: APT Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv1
+      -
+        name: Pip Install
+        run: python3 -m pip install -r hydrus/static/build_files/linux/requirements.txt
       -
         name: Build docs to /help
         run: mkdocs build -d help
@@ -226,17 +108,6 @@ jobs:
       #    setup-python: 'false'
       #    modules: qtcharts qtwidgets qtgui qtcore
       #    cached: ${{ steps.cache-qt.outputs.cache-hit }}
-      -
-        name: APT Install
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libmpv1
-      -
-        name: Pip Installer
-        uses: BSFishy/pip-action@v1
-        with:
-          packages: pyinstaller
-          requirements: hydrus/static/build_files/linux/requirementsQt6.txt
       -
         name: Build Hydrus
         run: |
@@ -263,157 +134,64 @@ jobs:
         name: Compress Client
         run: |
             mv dist/client "dist/Hydrus Network"
-            tar -czvf Ubuntu-Extract6.tar.gz -C dist "Hydrus Network"
+            tar -czvf Ubuntu-Extract.tar.gz -C dist "Hydrus Network"
       -
         name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: Ubuntu-Extract6
-          path: Ubuntu-Extract6.tar.gz
+          name: Ubuntu-Extract
+          path: Ubuntu-Extract.tar.gz
           if-no-files-found: error
           retention-days: 2
 
-  build-windows-Qt5:
-    runs-on: windows-2019
-    steps:
-      - 
-        name: Checkout
-        uses: actions/checkout@v2
-        with:
-          path: hydrus
-      - 
-        name: Setup FFMPEG
-        uses: FedericoCarboni/setup-ffmpeg@v1
-        id: setup_ffmpeg
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - 
-        name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-          architecture: x64
-      - 
-        name: Install mkdocs-material
-        run: pip install mkdocs-material 
-      - 
-        name: Build docs to /help
-        run: mkdocs build -d help
-        working-directory: hydrus
-      - 
-        name: Cache Qt
-        id: cache_qt
-        uses: actions/cache@v1
-        with:
-          path: ../Qt
-          key: ${{ runner.os }}-QtCache
-      - 
-        name: Install Qt
-        uses: jurplel/install-qt-action@v2
-        with:
-          install-deps: true
-          setup-python: 'false'
-          modules: qtcharts qtwidgets qtgui qtcore
-          cached: ${{ steps.cache_qt.outputs.cache-hit }}
-      - 
-        name: PIP Install Packages
-        uses: BSFishy/pip-action@v1
-        with:
-          packages: pyinstaller
-          requirements: hydrus\static\build_files\windows\requirementsQt5.txt
-      - 
-        name: Download mpv-dev
-        uses: carlosperate/download-file-action@v1.0.3
-        id: download_mpv
-        with:
-            file-url: 'https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-v3-20220829-git-211ce69.7z'
-            file-name: 'mpv-dev-x86_64.7z'
-            location: '.'
-      - 
-        name: Process mpv-dev
-        run: |
-          7z x ${{ steps.download_mpv.outputs.file-path }}
-          move mpv-2.dll hydrus\
-      - 
-        name: Build Hydrus
-        run: |
-          move ${{ steps.setup_ffmpeg.outputs.ffmpeg-path }} hydrus\bin\
-          move hydrus\static\build_files\windows\sqlite3.dll hydrus\
-          move hydrus\static\build_files\windows\sqlite3.exe hydrus\db
-          move hydrus\static\build_files\windows\client-winQt5.spec client-win.spec
-          move hydrus\static\build_files\windows\server-win.spec server-win.spec
-          pyinstaller server-win.spec
-          pyinstaller client-win.spec
-          dir -r
-      -
-        name: Compress Client
-        run: |
-          cd .\dist
-          7z.exe a -tzip -mm=Deflate -mx=5 ..\Windows-Extract5.zip 'Hydrus Network'
-          cd ..
-      -
-        name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: Windows-Extract5
-          path: Windows-Extract5.zip
-          if-no-files-found: error
-          retention-days: 2
-
-  build-windows-Qt6:
+  build-windows:
     runs-on: windows-2019
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: hydrus
       -
         name: Setup FFMPEG
-        uses: FedericoCarboni/setup-ffmpeg@v1
+        uses: FedericoCarboni/setup-ffmpeg@v1.1.0
         id: setup_ffmpeg
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       -
         name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: 3.9
           architecture: x64
       -
-        name: Install mkdocs-material
-        run: pip install mkdocs-material
-      -
+        name: Pip Install
+        run: python3 -m pip install -r hydrus/static/build_files/windows/requirements.txt
+      - 
         name: Build docs to /help
         run: mkdocs build -d help
         working-directory: hydrus
-      -
-        name: Cache Qt
-        id: cache_qt
-        uses: actions/cache@v1
-        with:
-          path: ../Qt
-          key: ${{ runner.os }}-QtCache
-      -
-        name: Install Qt
-        uses: jurplel/install-qt-action@v2
-        with:
-          install-deps: true
-          setup-python: 'false'
-          modules: qtcharts qtwidgets qtgui qtcore
-          cached: ${{ steps.cache_qt.outputs.cache-hit }}
-      -
-        name: PIP Install Packages
-        uses: BSFishy/pip-action@v1
-        with:
-          packages: pyinstaller
-          requirements: hydrus\static\build_files\windows\requirementsQt6.txt
+      #-
+      #  name: Cache Qt
+      #  id: cache_qt
+      #  uses: actions/cache@v1
+      #  with:
+      #    path: ../Qt
+      #    key: ${{ runner.os }}-QtCache
+      #-
+      #  name: Install Qt
+      #  uses: jurplel/install-qt-action@v2
+      #  with:
+      #    install-deps: true
+      #    setup-python: 'false'
+      #    modules: qtcharts qtwidgets qtgui qtcore
+      #    cached: ${{ steps.cache_qt.outputs.cache-hit }}
       -
         name: Download mpv-dev
-        uses: carlosperate/download-file-action@v1.0.3
+        uses: carlosperate/download-file-action@v1.1.1
         id: download_mpv
         with:
-            file-url: 'https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-v3-20220829-git-211ce69.7z'
+            file-url: 'https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20220501-git-9ffaa6b.7z'
             file-name: 'mpv-dev-x86_64.7z'
             location: '.'
       -
@@ -427,7 +205,7 @@ jobs:
           move ${{ steps.setup_ffmpeg.outputs.ffmpeg-path }} hydrus\bin\
           move hydrus\static\build_files\windows\sqlite3.dll hydrus\
           move hydrus\static\build_files\windows\sqlite3.exe hydrus\db
-          move hydrus\static\build_files\windows\client-winQt6.spec client-win.spec
+          move hydrus\static\build_files\windows\client-win.spec client-win.spec
           move hydrus\static\build_files\windows\server-win.spec server-win.spec
           pyinstaller server-win.spec
           pyinstaller client-win.spec
@@ -443,11 +221,11 @@ jobs:
         name: Compress Client
         run: |
           cd .\dist
-          7z.exe a -tzip -mm=Deflate -mx=5 ..\Windows-Extract6.zip 'Hydrus Network'
+          7z.exe a -tzip -mm=Deflate -mx=5 ..\Windows-Extract.zip 'Hydrus Network'
           cd ..
       -
         name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: Windows-Install
           path: dist\HydrusInstaller.exe
@@ -455,53 +233,45 @@ jobs:
           retention-days: 2
       -
         name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: Windows-Extract6
-          path: Windows-Extract6.zip
+          name: Windows-Extract
+          path: Windows-Extract.zip
           if-no-files-found: error
           retention-days: 2
 
   create-release:
-    name: Create Release Entry
+    name: Upload to Release
     runs-on: ubuntu-20.04
-    needs: [build-windows-Qt5, build-windows-Qt6, build-ubuntu-Qt5, build-ubuntu-Qt6, build-macos-Qt5, build-macos-Qt6]
+    needs: [build-windows, build-ubuntu, build-macos]
     steps:
       - 
-        name: Checkout code
-        uses: actions/checkout@v2
+        name: Checkout Code
+        uses: actions/checkout@v3
       - 
         name: Get All Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
       - 
-        name: Extract version metadata
+        name: Extract Version Metadata
         id: meta
         run: |
-          echo "::set-output name=version::${GITHUB_REF##*/}"
-          echo "::set-output name=version_short::${GITHUB_REF##*/v}"
+          echo "version=${GITHUB_REF##*/}" >> $GITHUB_ENV
+          echo "version_short=${GITHUB_REF##*/v}" >> $GITHUB_ENV
       - 
         name: Rename Files
         run: |
           mkdir ubuntu windows
-          mv MacOS-DMG5/HydrusNetwork5.dmg          Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.macOS.Qt5.-.App.dmg
-          mv MacOS-DMG6/HydrusNetwork6.dmg          Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.macOS.Qt6.-.App.dmg
-          mv Windows-Install/HydrusInstaller.exe  Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt6.-.Installer.exe
-          mv Windows-Extract5/Windows-Extract5.zip  Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt5.-.Extract.only.zip
-          mv Windows-Extract6/Windows-Extract6.zip  Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt6.-.Extract.only.zip
-          mv Ubuntu-Extract5/Ubuntu-Extract5.tar.gz Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Linux.Qt5.-.Executable.tar.gz
-          mv Ubuntu-Extract6/Ubuntu-Extract6.tar.gz Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Linux.Qt6.-.Executable.tar.gz
+          mv Windows-Install/HydrusInstaller.exe    Hydrus.Network.${{ env.version_short }}.-.Windows.-.Installer.exe
+          mv Windows-Extract/Windows-Extract.zip  Hydrus.Network.${{ env.version_short }}.-.Windows.-.Extract.only.zip
+          mv Ubuntu-Extract/Ubuntu-Extract.tar.gz Hydrus.Network.${{ env.version_short }}.-.Linux.-.Executable.tar.gz
+          mv MacOS-DMG/HydrusNetwork.dmg          Hydrus.Network.${{ env.version_short }}.-.macOS.-.App.dmg
       - 
-        name: Release new
+        name: Upload Files
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt6.-.Installer.exe
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt5.-.Extract.only.zip
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Windows.Qt6.-.Extract.only.zip
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Linux.Qt5.-.Executable.tar.gz
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.Linux.Qt6.-.Executable.tar.gz
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.macOS.Qt5.-.App.dmg
-            Hydrus.Network.${{ steps.meta.outputs.version_short }}.-.macOS.Qt6.-.App.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            Hydrus.Network.${{ env.version_short }}.-.Windows.-.Installer.exe
+            Hydrus.Network.${{ env.version_short }}.-.Windows.-.Extract.only.zip
+            Hydrus.Network.${{ env.version_short }}.-.Linux.-.Executable.tar.gz
+            Hydrus.Network.${{ env.version_short }}.-.macOS.-.App.dmg

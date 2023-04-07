@@ -190,6 +190,11 @@ class MigrationDestinationList( MigrationDestination ):
         self._time_started = 0
         
     
+    def DoSomeWork( self, source ):
+        
+        raise NotImplementedError()
+        
+    
     def GetDataReceived( self ):
         
         return self._data_received
@@ -244,6 +249,11 @@ class MigrationDestinationTagService( MigrationDestination ):
         
         self._tag_service_type = service.GetServiceType()
         self._content_action = content_action
+        
+    
+    def DoSomeWork( self, source ):
+        
+        raise NotImplementedError()
         
     
 class MigrationDestinationTagServiceMappings( MigrationDestinationTagService ):
@@ -343,15 +353,15 @@ class MigrationJob( object ):
         
         self._controller.pub( 'message', job_key )
         
-        job_key.SetVariable( 'popup_text_1', 'preparing source' )
+        job_key.SetStatusText( 'preparing source' )
         
         self._source.Prepare()
         
-        job_key.SetVariable( 'popup_text_1', 'preparing destination' )
+        job_key.SetStatusText( 'preparing destination' )
         
         self._destination.Prepare()
         
-        job_key.SetVariable( 'popup_text_1', 'beginning work' )
+        job_key.SetStatusText( 'beginning work' )
         
         try:
             
@@ -359,7 +369,7 @@ class MigrationJob( object ):
                 
                 progress_statement = self._destination.DoSomeWork( self._source )
                 
-                job_key.SetVariable( 'popup_text_1', progress_statement )
+                job_key.SetStatusText( progress_statement )
                 
                 job_key.WaitIfNeeded()
                 
@@ -371,15 +381,15 @@ class MigrationJob( object ):
             
         finally:
             
-            job_key.SetVariable( 'popup_text_1', 'done, cleaning up source' )
+            job_key.SetStatusText( 'done, cleaning up source' )
             
             self._source.CleanUp()
             
-            job_key.SetVariable( 'popup_text_1', 'done, cleaning up destination' )
+            job_key.SetStatusText( 'done, cleaning up destination' )
             
             self._destination.CleanUp()
             
-            job_key.SetVariable( 'popup_text_1', 'done!' )
+            job_key.SetStatusText( 'done!' )
             
             job_key.Finish()
             
@@ -449,14 +459,14 @@ class MigrationSourceHTA( MigrationSource ):
             
             for ( hash, tags ) in data:
                 
-                result = self._controller.Read( 'file_hashes', ( hash, ), source_hash_type, desired_hash_type )
+                source_to_desired = self._controller.Read( 'file_hashes', ( hash, ), source_hash_type, desired_hash_type )
                 
-                if len( result ) == 0:
+                if len( source_to_desired ) == 0:
                     
                     continue
                     
                 
-                desired_hash = result[0]
+                desired_hash = list( source_to_desired.values() )[0]
                 
                 fixed_data.append( ( desired_hash, tags ) )
                 

@@ -529,6 +529,7 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         types_to_str[ HC.CONTENT_TYPE_HASH ] = 'file hash'
         types_to_str[ HC.CONTENT_TYPE_TIMESTAMP ] = 'timestamp'
         types_to_str[ HC.CONTENT_TYPE_TITLE ] = 'watcher title'
+        types_to_str[ HC.CONTENT_TYPE_HTTP_HEADERS ] = 'http headers'
         types_to_str[ HC.CONTENT_TYPE_VETO ] = 'veto'
         types_to_str[ HC.CONTENT_TYPE_VARIABLE ] = 'temporary variable'
         
@@ -557,7 +558,9 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         
         self._mappings_panel = QW.QWidget( self._content_panel )
         
-        self._namespace = QW.QLineEdit( self._mappings_panel )
+        self._namespace = ClientGUICommon.NoneableTextCtrl( self._mappings_panel, none_phrase = 'any namespace' )
+        tt = 'The difference between "any namespace" and setting an empty input for "unnamespaced" is "unnamespaced" will force unnamespaced, even if the parsed tag includes a colon. If you are parsing hydrus content and expect to see "namespace:subtag", hit "any namespace", and if you are parsing normal boorus that might have a colon in for weird reasons, try "unnamespaced".'
+        self._namespace.setToolTip( tt )
         
         #
         
@@ -600,6 +603,14 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         
         #
         
+        self._header_panel = QW.QWidget( self._content_panel )
+        
+        self._header_name = QW.QLineEdit( self._header_panel )
+        tt = 'Any header you parse here will be passed on to subsequent jobs/objects created by this same parse. Next gallery pages, file downloads from post urls, post pages spawned from multi-file posts. And the headers will be passed on to their children. Should help with tokenised searches or weird guest-login issues.'
+        self._header_name.setToolTip( tt )
+        
+        #
+        
         self._veto_panel = QW.QWidget( self._content_panel )
         
         self._veto_if_matches_found = QW.QCheckBox( self._veto_panel )
@@ -634,7 +645,7 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
             
             namespace = additional_info
             
-            self._namespace.setText( namespace )
+            self._namespace.SetValue( namespace )
             
         elif content_type == HC.CONTENT_TYPE_NOTES:
             
@@ -660,6 +671,12 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
             priority = additional_info
             
             self._title_priority.setValue( priority )
+            
+        elif content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+            
+            header_name = additional_info
+            
+            self._header_name.setText( header_name )
             
         elif content_type == HC.CONTENT_TYPE_VETO:
             
@@ -749,6 +766,27 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         self._title_panel.setLayout( gridbox )
         
         #
+        self._urls_panel.setLayout( gridbox )
+        rows = []
+        
+        rows.append( ( 'header name: ', self._header_name ) )
+        
+        gridbox = ClientGUICommon.WrapInGrid( self._header_panel, rows )
+        
+        vbox = QP.VBoxLayout()
+        
+        label = 'The value from this content parser will be used for the specified HTTP header on all URLs derived.'
+
+        st = ClientGUICommon.BetterStaticText( self._header_panel, label = label )
+        
+        st.setWordWrap( True )
+        
+        QP.AddToLayout( vbox, st, CC.FLAGS_EXPAND_PERPENDICULAR )
+        QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+        
+        self._header_panel.setLayout( vbox )
+        
+        #
         
         vbox = QP.VBoxLayout()
         
@@ -792,6 +830,7 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         self._content_panel.Add( self._hash_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         self._content_panel.Add( self._timestamp_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         self._content_panel.Add( self._title_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+        self._content_panel.Add( self._header_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         self._content_panel.Add( self._veto_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         self._content_panel.Add( self._temp_variable_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         
@@ -840,6 +879,7 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         self._hash_panel.setVisible( False )
         self._timestamp_panel.setVisible( False )
         self._title_panel.setVisible( False )
+        self._header_panel.setVisible( False )
         self._veto_panel.setVisible( False )
         self._temp_variable_panel.setVisible( False )
         
@@ -871,6 +911,10 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
         elif content_type == HC.CONTENT_TYPE_TITLE:
             
             self._title_panel.show()
+
+        elif content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+            
+            self._header_panel.show()
             
         elif content_type == HC.CONTENT_TYPE_VETO:
             
@@ -901,7 +945,7 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
             
         elif content_type == HC.CONTENT_TYPE_MAPPINGS:
             
-            namespace = self._namespace.text()
+            namespace = self._namespace.GetValue()
             
             additional_info = namespace
             
@@ -934,6 +978,12 @@ class EditContentParserPanel( ClientGUIScrolledPanels.EditPanel ):
             priority = self._title_priority.value()
             
             additional_info = priority
+            
+        elif content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+            
+            header_name = self._header_name.text()
+            
+            additional_info = header_name
             
         elif content_type == HC.CONTENT_TYPE_VETO:
             
@@ -1220,7 +1270,7 @@ class EditPageParserPanel( ClientGUIScrolledPanels.EditPanel ):
         
         #
         
-        permitted_content_types = [ HC.CONTENT_TYPE_URLS, HC.CONTENT_TYPE_MAPPINGS, HC.CONTENT_TYPE_NOTES, HC.CONTENT_TYPE_HASH, HC.CONTENT_TYPE_TIMESTAMP, HC.CONTENT_TYPE_TITLE, HC.CONTENT_TYPE_VETO ]
+        permitted_content_types = [ HC.CONTENT_TYPE_URLS, HC.CONTENT_TYPE_MAPPINGS, HC.CONTENT_TYPE_NOTES, HC.CONTENT_TYPE_HASH, HC.CONTENT_TYPE_TIMESTAMP, HC.CONTENT_TYPE_TITLE, HC.CONTENT_TYPE_HTTP_HEADERS, HC.CONTENT_TYPE_VETO ]
         
         self._content_parsers = EditContentParsersPanel( content_parsers_panel, self._test_panel.GetTestDataForChild, permitted_content_types )
         

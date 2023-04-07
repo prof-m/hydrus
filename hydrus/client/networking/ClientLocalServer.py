@@ -46,6 +46,7 @@ class HydrusServiceClientAPI( HydrusClientService ):
         root.putChild( b'session_key', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAccountSessionKey( self._service, self._client_requests_domain ) )
         root.putChild( b'verify_access_key', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAccountVerify( self._service, self._client_requests_domain ) )
         root.putChild( b'get_services', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetServices( self._service, self._client_requests_domain ) )
+        root.putChild( b'get_service', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetService( self._service, self._client_requests_domain ) )
         
         add_files = NoResource()
         
@@ -63,7 +64,6 @@ class HydrusServiceClientAPI( HydrusClientService ):
         
         add_tags.putChild( b'add_tags', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAddTagsAddTags( self._service, self._client_requests_domain ) )
         add_tags.putChild( b'clean_tags', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAddTagsCleanTags( self._service, self._client_requests_domain ) )
-        add_tags.putChild( b'get_tag_services', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAddTagsGetTagServices( self._service, self._client_requests_domain ) )
         add_tags.putChild( b'search_tags', ClientLocalServerResources.HydrusResourceClientAPIRestrictedAddTagsSearchTags( self._service, self._client_requests_domain ) )
         
         add_urls = NoResource()
@@ -81,6 +81,7 @@ class HydrusServiceClientAPI( HydrusClientService ):
         
         get_files.putChild( b'search_files', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetFilesSearchFiles( self._service, self._client_requests_domain ) )
         get_files.putChild( b'file_metadata', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetFilesFileMetadata( self._service, self._client_requests_domain ) )
+        get_files.putChild( b'file_hashes', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetFilesFileHashes( self._service, self._client_requests_domain ) )
         get_files.putChild( b'file', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetFilesGetFile( self._service, self._client_requests_domain ) )
         get_files.putChild( b'thumbnail', ClientLocalServerResources.HydrusResourceClientAPIRestrictedGetFilesGetThumbnail( self._service, self._client_requests_domain ) )
         
@@ -98,11 +99,32 @@ class HydrusServiceClientAPI( HydrusClientService ):
         manage_cookies.putChild( b'get_cookies', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageCookiesGetCookies( self._service, self._client_requests_domain ) )
         manage_cookies.putChild( b'set_cookies', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageCookiesSetCookies( self._service, self._client_requests_domain ) )
         
+        manage_database = NoResource()
+        
+        root.putChild( b'manage_database', manage_database )
+        
+        manage_database.putChild( b'mr_bones', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseMrBones( self._service, self._client_requests_domain ) )
+        manage_database.putChild( b'lock_on', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseLockOn( self._service, self._client_requests_domain ) )
+        manage_database.putChild( b'lock_off', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseLockOff( self._service, self._client_requests_domain ) )
+        
+        manage_file_relationships = NoResource()
+        
+        root.putChild( b'manage_file_relationships', manage_file_relationships )
+        
+        manage_file_relationships.putChild( b'get_file_relationships', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsGetRelationships( self._service, self._client_requests_domain ) )
+        manage_file_relationships.putChild( b'get_potentials_count', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsGetPotentialsCount( self._service, self._client_requests_domain ) )
+        manage_file_relationships.putChild( b'get_potential_pairs', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsGetPotentialPairs( self._service, self._client_requests_domain ) )
+        manage_file_relationships.putChild( b'get_random_potentials', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsGetRandomPotentials( self._service, self._client_requests_domain ) )
+        manage_file_relationships.putChild( b'set_file_relationships', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsSetRelationships( self._service, self._client_requests_domain ) )
+        manage_file_relationships.putChild( b'set_kings', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageFileRelationshipsSetKings( self._service, self._client_requests_domain ) )
+        
         manage_headers = NoResource()
         
         root.putChild( b'manage_headers', manage_headers )
         
         manage_headers.putChild( b'set_user_agent', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageCookiesSetUserAgent( self._service, self._client_requests_domain ) )
+        manage_headers.putChild( b'get_headers', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageCookiesGetHeaders( self._service, self._client_requests_domain ) )
+        manage_headers.putChild( b'set_headers', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageCookiesSetHeaders( self._service, self._client_requests_domain ) )
         
         manage_pages = NoResource()
         
@@ -112,14 +134,7 @@ class HydrusServiceClientAPI( HydrusClientService ):
         manage_pages.putChild( b'focus_page', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManagePagesFocusPage( self._service, self._client_requests_domain ) )
         manage_pages.putChild( b'get_pages', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManagePagesGetPages( self._service, self._client_requests_domain ) )
         manage_pages.putChild( b'get_page_info', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManagePagesGetPageInfo( self._service, self._client_requests_domain ) )
-        
-        manage_database = NoResource()
-        
-        root.putChild( b'manage_database', manage_database )
-        
-        manage_database.putChild( b'mr_bones', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseMrBones( self._service, self._client_requests_domain ) )
-        manage_database.putChild( b'lock_on', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseLockOn( self._service, self._client_requests_domain ) )
-        manage_database.putChild( b'lock_off', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManageDatabaseLockOff( self._service, self._client_requests_domain ) )
+        manage_pages.putChild( b'refresh_page', ClientLocalServerResources.HydrusResourceClientAPIRestrictedManagePagesRefreshPage( self._service, self._client_requests_domain ) )
         
         return root
         

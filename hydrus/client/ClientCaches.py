@@ -6,6 +6,7 @@ import time
 
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusExceptions
+from hydrus.core import HydrusFileHandling
 from hydrus.core import HydrusImageHandling
 from hydrus.core import HydrusThreading
 from hydrus.core import HydrusData
@@ -16,6 +17,7 @@ from hydrus.client import ClientFiles
 from hydrus.client import ClientImageHandling
 from hydrus.client import ClientParsing
 from hydrus.client import ClientRendering
+from hydrus.client import ClientThreading
 
 class DataCache( object ):
     
@@ -41,15 +43,17 @@ class DataCache( object ):
         if key not in self._keys_to_data:
             
             return
-            
+
+
+        ( data, size_estimate ) = self._keys_to_data[ key ]
         
         del self._keys_to_data[ key ]
         
-        self._RecalcMemoryUsage()
+        self._total_estimated_memory_footprint -= size_estimate
         
         if HG.cache_report_mode:
             
-            HydrusData.ShowText( 'Cache "{}" removing "{}". Current size {}.'.format( self._name, key, HydrusData.ConvertValueRangeToBytes( self._total_estimated_memory_footprint, self._cache_size ) ) )
+            HydrusData.ShowText( 'Cache "{}" removing "{}", size "{}". Current size {}.'.format( self._name, key, HydrusData.ToHumanBytes( size_estimate ), HydrusData.ConvertValueRangeToBytes( self._total_estimated_memory_footprint, self._cache_size ) ) )
             
         
     
@@ -60,9 +64,27 @@ class DataCache( object ):
         self._Delete( deletee_key )
         
     
-    def _RecalcMemoryUsage( self ):
+    def _GetData( self, key ):
         
-        self._total_estimated_memory_footprint = sum( ( data.GetEstimatedMemoryFootprint() for data in self._keys_to_data.values() ) )
+        if key not in self._keys_to_data:
+            
+            raise Exception( 'Cache error! Looking for {}, but it was missing.'.format( key ) )
+            
+        
+        self._TouchKey( key )
+
+        ( data, size_estimate ) = self._keys_to_data[ key ]
+        
+        new_estimate = data.GetEstimatedMemoryFootprint()
+        
+        if new_estimate != size_estimate:
+            
+            self._total_estimated_memory_footprint += new_estimate - size_estimate
+            
+            self._keys_to_data[ key ] = ( data, new_estimate )
+            
+        
+        return data
         
     
     def _TouchKey( self, key ):
@@ -98,11 +120,13 @@ class DataCache( object ):
                     self._DeleteItem()
                     
                 
-                self._keys_to_data[ key ] = data
+                size_estimate = data.GetEstimatedMemoryFootprint()
+                
+                self._keys_to_data[ key ] = ( data, size_estimate )
+                
+                self._total_estimated_memory_footprint += size_estimate
                 
                 self._TouchKey( key )
-                
-                self._RecalcMemoryUsage()
                 
                 if HG.cache_report_mode:
                     
@@ -110,7 +134,7 @@ class DataCache( object ):
                         'Cache "{}" adding "{}" ({}). Current size {}.'.format(
                             self._name,
                             key,
-                            HydrusData.ToHumanBytes( data.GetEstimatedMemoryFootprint() ),
+                            HydrusData.ToHumanBytes( size_estimate ),
                             HydrusData.ConvertValueRangeToBytes( self._total_estimated_memory_footprint, self._cache_size )
                         )
                     )
@@ -131,14 +155,7 @@ class DataCache( object ):
         
         with self._lock:
             
-            if key not in self._keys_to_data:
-                
-                raise Exception( 'Cache error! Looking for {}, but it was missing.'.format( key ) )
-                
-            
-            self._TouchKey( key )
-            
-            return self._keys_to_data[ key ]
+            return self._GetData( key )
             
         
     
@@ -148,9 +165,7 @@ class DataCache( object ):
             
             if key in self._keys_to_data:
                 
-                self._TouchKey( key )
-                
-                return self._keys_to_data[ key ]
+                return self._GetData( key )
                 
             else:
                 
@@ -178,6 +193,11 @@ class DataCache( object ):
     def MaintainCache( self ):
         
         with self._lock:
+            
+            while self._total_estimated_memory_footprint > self._cache_size:
+                
+                self._DeleteItem()
+                
             
             while True:
                 
@@ -559,6 +579,7 @@ class ImageTileCache( object ):
         self._data_cache = DataCache( self._controller, 'image tile cache', cache_size, timeout = cache_timeout )
         
         self._controller.sub( self, 'NotifyNewOptions', 'notify_new_options' )
+        self._controller.sub( self, 'Clear', 'clear_image_tile_cache' )
         
     
     def Clear( self ):
@@ -651,16 +672,6 @@ class ThumbnailCache( object ):
         hash = display_media.GetHash()
         mime = display_media.GetMime()
         
-        thumbnail_mime = HC.IMAGE_JPEG
-        
-        # we don't actually know this, it comes down to detailed stuff, but since this is png vs jpeg it isn't a huge deal down in the guts of image loading
-        # only really matters with transparency, so anything that can be transparent we'll prime with a png thing
-        # ain't like I am encoding EXIF rotation in my jpeg thumbs
-        if mime in ( HC.IMAGE_APNG, HC.IMAGE_PNG, HC.IMAGE_GIF, HC.IMAGE_ICON, HC.IMAGE_WEBP ):
-            
-            thumbnail_mime = HC.IMAGE_PNG
-            
-        
         locations_manager = display_media.GetLocationsManager()
         
         try:
@@ -673,13 +684,17 @@ class ThumbnailCache( object ):
                 
                 summary = 'Unable to get thumbnail for file {}.'.format( hash.hex() )
                 
-                self._HandleThumbnailException( e, summary )
+                self._HandleThumbnailException( hash, e, summary )
                 
             
             return self._special_thumbs[ 'hydrus' ]
             
         
+        thumbnail_mime = HC.IMAGE_JPEG
+        
         try:
+            
+            thumbnail_mime = HydrusFileHandling.GetThumbnailMime( path )
             
             numpy_image = ClientImageHandling.GenerateNumPyImage( path, thumbnail_mime )
             
@@ -694,7 +709,7 @@ class ThumbnailCache( object ):
                 
                 summary = 'The thumbnail for file {} was not loadable. An attempt to regenerate it failed.'.format( hash.hex() )
                 
-                self._HandleThumbnailException( e, summary )
+                self._HandleThumbnailException( hash, e, summary )
                 
                 return self._special_thumbs[ 'hydrus' ]
                 
@@ -707,7 +722,7 @@ class ThumbnailCache( object ):
                 
                 summary = 'The thumbnail for file {} was not loadable. It was regenerated, but that file would not render either. Your image libraries or hard drive connection are unreliable. Please inform the hydrus developer what has happened.'.format( hash.hex() )
                 
-                self._HandleThumbnailException( e, summary )
+                self._HandleThumbnailException( hash, e, summary )
                 
                 return self._special_thumbs[ 'hydrus' ]
                 
@@ -718,10 +733,10 @@ class ThumbnailCache( object ):
         ( media_width, media_height ) = display_media.GetResolution()
         
         bounding_dimensions = self._controller.options[ 'thumbnail_dimensions' ]
-        
         thumbnail_scale_type = self._controller.new_options.GetInteger( 'thumbnail_scale_type' )
+        thumbnail_dpr_percent = HG.client_controller.new_options.GetInteger( 'thumbnail_dpr_percent' )
         
-        ( clip_rect, ( expected_width, expected_height ) ) = HydrusImageHandling.GetThumbnailResolutionAndClipRegion( ( media_width, media_height ), bounding_dimensions, thumbnail_scale_type )
+        ( clip_rect, ( expected_width, expected_height ) ) = HydrusImageHandling.GetThumbnailResolutionAndClipRegion( ( media_width, media_height ), bounding_dimensions, thumbnail_scale_type, thumbnail_dpr_percent )
         
         exactly_as_expected = current_width == expected_width and current_height == expected_height
         
@@ -739,7 +754,7 @@ class ThumbnailCache( object ):
                 
                 if HG.file_report_mode:
                     
-                    HydrusData.ShowText( 'Thumbnail {} too small, scheduling regeneration from source.'.format( hash.hex() ) )
+                    HydrusData.ShowText( 'Thumbnail {} wrong size ({}x{} instead of {}x{}), scheduling regeneration from source.'.format( hash.hex(), current_width, current_height, expected_width, expected_height ) )
                     
                 
                 delayed_item = display_media.GetMediaResult()
@@ -760,7 +775,7 @@ class ThumbnailCache( object ):
                 
                 if HG.file_report_mode:
                     
-                    HydrusData.ShowText( 'Stored thumbnail {} was the wrong size, only scaling due to no local source.'.format( hash.hex() ) )
+                    HydrusData.ShowText( 'Thumbnail {} wrong size ({}x{} instead of {}x{}), only scaling due to no local source.'.format( hash.hex(), current_width, current_height, expected_width, expected_height ) )
                     
                 
             
@@ -770,7 +785,7 @@ class ThumbnailCache( object ):
         return hydrus_bitmap
         
     
-    def _HandleThumbnailException( self, e, summary ):
+    def _HandleThumbnailException( self, hash, e, summary ):
         
         if self._thumbnail_error_occurred:
             
@@ -786,7 +801,12 @@ class ThumbnailCache( object ):
             message += os.linesep * 2
             message += summary
             
-            HydrusData.ShowText( message )
+            job_key = ClientThreading.JobKey()
+            
+            job_key.SetStatusText( message )
+            job_key.SetFiles( { hash }, 'broken thumbnail' )
+            
+            HG.client_controller.pub( 'message', job_key )
             
         
     
@@ -939,6 +959,7 @@ class ThumbnailCache( object ):
             
             bounding_dimensions = self._controller.options[ 'thumbnail_dimensions' ]
             thumbnail_scale_type = self._controller.new_options.GetInteger( 'thumbnail_scale_type' )
+            thumbnail_dpr_percent = HG.client_controller.new_options.GetInteger( 'thumbnail_dpr_percent' )
             
             # it would be ideal to replace this with mimes_to_default_thumbnail_paths at a convenient point
             
@@ -950,7 +971,7 @@ class ThumbnailCache( object ):
                 
                 numpy_image_resolution = HydrusImageHandling.GetResolutionNumPy( numpy_image )
                 
-                ( clip_rect, target_resolution ) = HydrusImageHandling.GetThumbnailResolutionAndClipRegion( numpy_image_resolution, bounding_dimensions, thumbnail_scale_type )
+                ( clip_rect, target_resolution ) = HydrusImageHandling.GetThumbnailResolutionAndClipRegion( numpy_image_resolution, bounding_dimensions, thumbnail_scale_type, thumbnail_dpr_percent )
                 
                 if clip_rect is not None:
                     
@@ -1213,7 +1234,7 @@ class ThumbnailCache( object ):
                 
                 summary = 'The thumbnail for file {} was incorrect, but a later attempt to regenerate it or load the new file back failed.'.format( hash.hex() )
                 
-                self._HandleThumbnailException( e, summary )
+                self._HandleThumbnailException( hash, e, summary )
                 
             
         

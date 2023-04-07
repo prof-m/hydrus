@@ -2,8 +2,6 @@ import os
 import time
 import unittest
 
-from mock import patch
-
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
 from hydrus.core import HydrusGlobals as HG
@@ -18,7 +16,6 @@ from hydrus.client import ClientServices
 from hydrus.client.db import ClientDB
 from hydrus.client.exporting import ClientExportingFiles
 from hydrus.client.gui.pages import ClientGUIManagement
-from hydrus.client.gui.pages import ClientGUIPages
 from hydrus.client.gui.pages import ClientGUISession
 from hydrus.client.importing import ClientImportLocal
 from hydrus.client.importing import ClientImportFiles
@@ -131,20 +128,7 @@ class TestClientDB( unittest.TestCase ):
         
         # cars
         
-        result = self._read( 'autocomplete_predicates', ClientTags.TAG_DISPLAY_STORAGE, file_search_context, search_text = 'c*', add_namespaceless = True )
-        
-        preds = set()
-        
-        preds.add( ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'car', count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1 ) ) )
-        preds.add( ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'series:cars', count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1 ) ) )
-        
-        for p in result: self.assertEqual( p.GetCount().GetMinCount( HC.CONTENT_STATUS_CURRENT ), 1 )
-        
-        self.assertEqual( set( result ), preds )
-        
-        # cars
-        
-        result = self._read( 'autocomplete_predicates', ClientTags.TAG_DISPLAY_STORAGE, file_search_context, search_text = 'c*', add_namespaceless = False )
+        result = self._read( 'autocomplete_predicates', ClientTags.TAG_DISPLAY_STORAGE, file_search_context, search_text = 'c*' )
         
         preds = set()
         
@@ -422,6 +406,12 @@ class TestClientDB( unittest.TestCase ):
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, True, 0 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, False, 1 ) )
         
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, True, 0 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, False, 1 ) )
+        
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, True, 1 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, False, 0 ) )
+        
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, True, 0 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, False, 1 ) )
         
@@ -603,9 +593,9 @@ class TestClientDB( unittest.TestCase ):
         tests = []
         
         tests.append( ( True, 'maker:ford', 1 ) )
-        tests.append( ( True, 'ford', 1 ) )
+        tests.append( ( True, 'ford', 0 ) )
         tests.append( ( False, 'maker:ford', 0 ) )
-        tests.append( ( False, 'ford', 0 ) )
+        tests.append( ( False, 'ford', 1 ) )
         
         run_tag_predicate_tests( tests )
         
@@ -684,6 +674,7 @@ class TestClientDB( unittest.TestCase ):
         
         services.append( ClientServices.GenerateService( TestController.LOCAL_RATING_LIKE_SERVICE_KEY, HC.LOCAL_RATING_LIKE, 'test like rating service' ) )
         services.append( ClientServices.GenerateService( TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY, HC.LOCAL_RATING_NUMERICAL, 'test numerical rating service' ) )
+        services.append( ClientServices.GenerateService( TestController.LOCAL_RATING_INCDEC_SERVICE_KEY, HC.LOCAL_RATING_INCDEC, 'test inc/dec rating service' ) )
         
         self._write( 'update_services', services )
         
@@ -707,6 +698,16 @@ class TestClientDB( unittest.TestCase ):
         
         self._write( 'content_updates', service_keys_to_content_updates )
         
+        service_keys_to_content_updates = {}
+        
+        content_updates = []
+        
+        content_updates.append( HydrusData.ContentUpdate( HC.CONTENT_TYPE_RATINGS, HC.CONTENT_UPDATE_ADD, ( 3, ( hash, ) ) ) )
+        
+        service_keys_to_content_updates[ TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ] = content_updates
+        
+        self._write( 'content_updates', service_keys_to_content_updates )
+        
         tests = []
         
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 1.0, TestController.LOCAL_RATING_LIKE_SERVICE_KEY ), 1 ) )
@@ -718,8 +719,17 @@ class TestClientDB( unittest.TestCase ):
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 1.0, TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 0 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '>', 0.6, TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 0 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '>', 0.4, TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 1 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '<', 0.7, TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 1 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '<', 0.6, TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 0 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 'rated', TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 1 ) )
         tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 'not rated', TestController.LOCAL_RATING_NUMERICAL_SERVICE_KEY ), 0 ) )
+        
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 3, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 1 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', 1, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 0 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '>', 3, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 0 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '>', 2, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 1 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '<', 3, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 0 ) )
+        tests.append( ( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '<', 4, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ), 1 ) )
         
         run_system_predicate_tests( tests )
         
@@ -778,7 +788,7 @@ class TestClientDB( unittest.TestCase ):
         predicates.append( ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1 ) ) )
         predicates.append( ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_INBOX, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1 ) ) )
         predicates.append( ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_ARCHIVE, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 0 ) ) )
-        predicates.extend( [ ClientSearch.Predicate( predicate_type ) for predicate_type in [ ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ClientSearch.PREDICATE_TYPE_SYSTEM_LIMIT, ClientSearch.PREDICATE_TYPE_SYSTEM_SIZE, ClientSearch.PREDICATE_TYPE_SYSTEM_TIME, ClientSearch.PREDICATE_TYPE_SYSTEM_KNOWN_URLS, ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, ClientSearch.PREDICATE_TYPE_SYSTEM_HASH, ClientSearch.PREDICATE_TYPE_SYSTEM_DIMENSIONS, ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ClientSearch.PREDICATE_TYPE_SYSTEM_NOTES, ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_WORDS, ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ClientSearch.PREDICATE_TYPE_SYSTEM_SIMILAR_TO, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ClientSearch.PREDICATE_TYPE_SYSTEM_TAG_AS_NUMBER, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_RELATIONSHIPS, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_VIEWING_STATS ] ] )
+        predicates.extend( [ ClientSearch.Predicate( predicate_type ) for predicate_type in [ ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ClientSearch.PREDICATE_TYPE_SYSTEM_LIMIT, ClientSearch.PREDICATE_TYPE_SYSTEM_SIZE, ClientSearch.PREDICATE_TYPE_SYSTEM_TIME, ClientSearch.PREDICATE_TYPE_SYSTEM_KNOWN_URLS, ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, ClientSearch.PREDICATE_TYPE_SYSTEM_EMBEDDED_METADATA, ClientSearch.PREDICATE_TYPE_SYSTEM_HASH, ClientSearch.PREDICATE_TYPE_SYSTEM_DIMENSIONS, ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ClientSearch.PREDICATE_TYPE_SYSTEM_NOTES, ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_WORDS, ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ClientSearch.PREDICATE_TYPE_SYSTEM_SIMILAR_TO, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ClientSearch.PREDICATE_TYPE_SYSTEM_TAG_AS_NUMBER, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_RELATIONSHIPS, ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_VIEWING_STATS ] ] )
         
         self.assertEqual( set( result ), set( predicates ) )
         
@@ -1055,7 +1065,7 @@ class TestClientDB( unittest.TestCase ):
         
         service_keys_to_tags = ClientTags.ServiceKeysToTags( { HydrusData.GenerateKey() : [ 'some', 'tags' ] } )
         
-        management_controller = ClientGUIManagement.CreateManagementControllerImportHDD( [ 'some', 'paths' ], FileImportOptions.FileImportOptions(), { 'paths' : service_keys_to_tags }, True )
+        management_controller = ClientGUIManagement.CreateManagementControllerImportHDD( [ 'some', 'paths' ], FileImportOptions.FileImportOptions(), [], { 'paths' : service_keys_to_tags }, True )
         
         management_controller.GetVariable( 'hdd_import' ).PausePlay() # to stop trying to import 'some' 'paths'
         

@@ -18,7 +18,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_CLIENT_OPTIONS
     SERIALISABLE_NAME = 'Client Options'
-    SERIALISABLE_VERSION = 4
+    SERIALISABLE_VERSION = 5
     
     def __init__( self ):
         
@@ -133,11 +133,9 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'activate_window_on_tag_search_page_activation' ] = False
         
-        self._dictionary[ 'booleans' ][ 'show_related_tags' ] = False
+        self._dictionary[ 'booleans' ][ 'show_related_tags' ] = True
         self._dictionary[ 'booleans' ][ 'show_file_lookup_script_tags' ] = False
         
-        self._dictionary[ 'booleans' ][ 'hide_message_manager_on_gui_iconise' ] = HC.PLATFORM_MACOS
-        self._dictionary[ 'booleans' ][ 'hide_message_manager_on_gui_deactive' ] = False
         self._dictionary[ 'booleans' ][ 'freeze_message_manager_when_mouse_on_other_monitor' ] = False
         self._dictionary[ 'booleans' ][ 'freeze_message_manager_when_main_gui_minimised' ] = False
         
@@ -155,7 +153,11 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'verify_regular_https' ] = True
         
-        self._dictionary[ 'booleans' ][ 'reverse_page_shift_drag_behaviour' ] = False
+        self._dictionary[ 'booleans' ][ 'page_drop_chase_normally' ] = True
+        self._dictionary[ 'booleans' ][ 'page_drop_chase_with_shift' ] = False
+        self._dictionary[ 'booleans' ][ 'page_drag_change_tab_normally' ] = True
+        self._dictionary[ 'booleans' ][ 'page_drag_change_tab_with_shift' ] = True
+        self._dictionary[ 'booleans' ][ 'wheel_scrolls_tab_bar' ] = False
         
         self._dictionary[ 'booleans' ][ 'anchor_and_hide_canvas_drags' ] = HC.PLATFORM_WINDOWS
         self._dictionary[ 'booleans' ][ 'touchscreen_canvas_drags_unanchor' ] = False
@@ -210,6 +212,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'booleans' ][ 'delete_files_after_export' ] = False
         
         self._dictionary[ 'booleans' ][ 'file_viewing_statistics_active' ] = True
+        self._dictionary[ 'booleans' ][ 'file_viewing_statistics_active_on_archive_delete_filter' ] = True
         self._dictionary[ 'booleans' ][ 'file_viewing_statistics_active_on_dupe_filter' ] = False
         
         self._dictionary[ 'booleans' ][ 'prefix_hash_when_copying' ] = False
@@ -222,7 +225,6 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'default_search_synchronised' ] = True
         self._dictionary[ 'booleans' ][ 'autocomplete_float_main_gui' ] = True
-        self._dictionary[ 'booleans' ][ 'autocomplete_float_frames' ] = False
         
         self._dictionary[ 'booleans' ][ 'global_audio_mute' ] = False
         self._dictionary[ 'booleans' ][ 'media_viewer_audio_mute' ] = False
@@ -267,10 +269,22 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'booleans' ][ 'start_note_editing_at_end' ] = True
         
+        self._dictionary[ 'booleans' ][ 'draw_transparency_checkerboard_media_canvas' ] = False
+        self._dictionary[ 'booleans' ][ 'draw_transparency_checkerboard_media_canvas_duplicates' ] = True
+        
+        self._dictionary[ 'booleans' ][ 'menu_choice_buttons_can_mouse_scroll' ] = True
+        
         self._dictionary[ 'booleans' ][ 'focus_preview_on_ctrl_click' ] = False
         self._dictionary[ 'booleans' ][ 'focus_preview_on_ctrl_click_only_static' ] = False
         self._dictionary[ 'booleans' ][ 'focus_preview_on_shift_click' ] = False
         self._dictionary[ 'booleans' ][ 'focus_preview_on_shift_click_only_static' ] = False
+        
+        self._dictionary[ 'booleans' ][ 'fade_sibling_connector' ] = True
+        self._dictionary[ 'booleans' ][ 'use_custom_sibling_connector_colour' ] = False
+        
+        from hydrus.client.gui.canvas import ClientGUIMPV
+        
+        self._dictionary[ 'booleans' ][ 'mpv_available_at_start' ] = ClientGUIMPV.MPV_IS_AVAILABLE
         
         #
         
@@ -312,21 +326,49 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'duplicate_action_options' ] = HydrusSerialisable.SerialisableDictionary()
         
-        from hydrus.client.metadata import ClientTags
+        duplicate_content_merge_options = ClientDuplicates.DuplicateContentMergeOptions()
         
-        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_BETTER ] = ClientDuplicates.DuplicateActionOptions(
-            tag_service_actions = [ ( CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE, HydrusTags.TagFilter() ), ( CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE, HydrusTags.TagFilter() ) ],
-            rating_service_actions = [ ( CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE ) ],
-            sync_archive_action = ClientDuplicates.SYNC_ARCHIVE_DO_BOTH_REGARDLESS,
-            sync_urls_action = HC.CONTENT_MERGE_ACTION_COPY
-        )
-        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_SAME_QUALITY ] = ClientDuplicates.DuplicateActionOptions(
-            tag_service_actions = [ ( CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE, HydrusTags.TagFilter() ), ( CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE, HydrusTags.TagFilter() ) ],
-            rating_service_actions = [ ( CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ) ],
-            sync_archive_action = ClientDuplicates.SYNC_ARCHIVE_DO_BOTH_REGARDLESS,
-            sync_urls_action = HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE
-        )
-        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_ALTERNATE ] = ClientDuplicates.DuplicateActionOptions()
+        duplicate_content_merge_options.SetTagServiceActions( [ ( CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE, HydrusTags.TagFilter() ), ( CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE, HydrusTags.TagFilter() ) ] )
+        duplicate_content_merge_options.SetRatingServiceActions( [ ( CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_MOVE ) ] )
+        duplicate_content_merge_options.SetSyncArchiveAction( ClientDuplicates.SYNC_ARCHIVE_DO_BOTH_REGARDLESS )
+        duplicate_content_merge_options.SetSyncURLsAction( HC.CONTENT_MERGE_ACTION_COPY )
+        duplicate_content_merge_options.SetSyncNotesAction( HC.CONTENT_MERGE_ACTION_COPY )
+        
+        from hydrus.client.importing.options import NoteImportOptions
+        
+        note_import_options = NoteImportOptions.NoteImportOptions()
+        
+        note_import_options.SetIsDefault( False )
+        note_import_options.SetGetNotes( True )
+        note_import_options.SetExtendExistingNoteIfPossible( True )
+        note_import_options.SetConflictResolution( NoteImportOptions.NOTE_IMPORT_CONFLICT_RENAME )
+        
+        duplicate_content_merge_options.SetSyncNoteImportOptions( note_import_options )
+        
+        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_BETTER ] = duplicate_content_merge_options
+        
+        duplicate_content_merge_options = ClientDuplicates.DuplicateContentMergeOptions()
+        
+        duplicate_content_merge_options.SetTagServiceActions( [ ( CC.DEFAULT_LOCAL_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE, HydrusTags.TagFilter() ), ( CC.DEFAULT_LOCAL_DOWNLOADER_TAG_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE, HydrusTags.TagFilter() ) ] )
+        duplicate_content_merge_options.SetRatingServiceActions( [ ( CC.DEFAULT_FAVOURITES_RATING_SERVICE_KEY, HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE ) ] )
+        duplicate_content_merge_options.SetSyncArchiveAction( ClientDuplicates.SYNC_ARCHIVE_DO_BOTH_REGARDLESS )
+        duplicate_content_merge_options.SetSyncURLsAction( HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE )
+        duplicate_content_merge_options.SetSyncNotesAction( HC.CONTENT_MERGE_ACTION_TWO_WAY_MERGE )
+        
+        note_import_options = NoteImportOptions.NoteImportOptions()
+        
+        note_import_options.SetIsDefault( False )
+        note_import_options.SetGetNotes( True )
+        note_import_options.SetExtendExistingNoteIfPossible( True )
+        note_import_options.SetConflictResolution( NoteImportOptions.NOTE_IMPORT_CONFLICT_RENAME )
+        
+        duplicate_content_merge_options.SetSyncNoteImportOptions( note_import_options )
+        
+        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_SAME_QUALITY ] = duplicate_content_merge_options
+        
+        duplicate_content_merge_options = ClientDuplicates.DuplicateContentMergeOptions()
+        
+        self._dictionary[ 'duplicate_action_options' ][ HC.DUPLICATE_ALTERNATE ] = duplicate_content_merge_options
         
         #
         
@@ -339,6 +381,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'integers' ][ 'related_tags_search_1_duration_ms' ] = 250
         self._dictionary[ 'integers' ][ 'related_tags_search_2_duration_ms' ] = 2000
         self._dictionary[ 'integers' ][ 'related_tags_search_3_duration_ms' ] = 6000
+        self._dictionary[ 'integers' ][ 'related_tags_concurrence_threshold_percent' ] = 6
         
         self._dictionary[ 'integers' ][ 'suggested_tags_width' ] = 300
         
@@ -422,6 +465,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'integers' ][ 'thumbnail_border' ] = 1
         self._dictionary[ 'integers' ][ 'thumbnail_margin' ] = 2
         
+        self._dictionary[ 'integers' ][ 'thumbnail_dpr_percent' ] = 100
+        
         self._dictionary[ 'integers' ][ 'file_maintenance_idle_throttle_files' ] = 1
         self._dictionary[ 'integers' ][ 'file_maintenance_idle_throttle_time_delta' ] = 2
         
@@ -449,6 +494,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'integers' ][ 'human_bytes_sig_figs' ] = 3
         
+        self._dictionary[ 'integers' ][ 'ms_to_wait_between_physical_file_deletes' ] = 250
+        
         #
         
         self._dictionary[ 'keys' ] = {}
@@ -459,8 +506,6 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'key_list' ] = {}
         
-        self._dictionary[ 'key_list' ][ 'default_neighbouring_txt_tag_service_keys' ] = []
-        
         #
         
         self._dictionary[ 'noneable_integers' ] = {}
@@ -469,7 +514,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'noneable_integers' ][ 'num_recent_tags' ] = 20
         
-        self._dictionary[ 'noneable_integers' ][ 'duplicate_background_switch_intensity' ] = 3
+        self._dictionary[ 'noneable_integers' ][ 'duplicate_background_switch_intensity_a' ] = 0
+        self._dictionary[ 'noneable_integers' ][ 'duplicate_background_switch_intensity_b' ] = 3
         
         self._dictionary[ 'noneable_integers' ][ 'last_review_bandwidth_search_distance' ] = 7 * 86400
         
@@ -487,6 +533,8 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'noneable_integers' ][ 'system_busy_cpu_count' ] = 1
         
         self._dictionary[ 'noneable_integers' ][ 'animated_scanbar_hide_height' ] = 5
+        
+        self._dictionary[ 'noneable_integers' ][ 'last_backup_time' ] = None
         
         #
         
@@ -509,11 +557,15 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'noneable_strings' ][ 'qt_stylesheet_name' ] = None
         self._dictionary[ 'noneable_strings' ][ 'last_advanced_file_deletion_reason' ] = None
         self._dictionary[ 'noneable_strings' ][ 'last_advanced_file_deletion_special_action' ] = None
+        self._dictionary[ 'noneable_strings' ][ 'sibling_connector_custom_namespace_colour' ] = 'system'
+        self._dictionary[ 'noneable_strings' ][ 'or_connector_custom_namespace_colour' ] = 'system'
         
         self._dictionary[ 'strings' ] = {}
         
         self._dictionary[ 'strings' ][ 'app_display_name' ] = 'hydrus client'
         self._dictionary[ 'strings' ][ 'namespace_connector' ] = ':'
+        self._dictionary[ 'strings' ][ 'sibling_connector' ] = ' \u2192 '
+        self._dictionary[ 'strings' ][ 'or_connector' ] = ' OR '
         self._dictionary[ 'strings' ][ 'export_phrase' ] = '{hash}'
         self._dictionary[ 'strings' ][ 'current_colourset' ] = 'default'
         self._dictionary[ 'strings' ][ 'favourite_simple_downloader_formula' ] = 'all files linked by images in page'
@@ -524,6 +576,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         self._dictionary[ 'strings' ][ 'has_audio_label' ] = '\U0001F50A'
         self._dictionary[ 'strings' ][ 'has_duration_label' ] = ' \u23F5 '
         self._dictionary[ 'strings' ][ 'discord_dnd_filename_pattern' ] = '{hash}'
+        self._dictionary[ 'strings' ][ 'default_suggested_tags_notebook_page' ] = 'related'
         
         self._dictionary[ 'string_list' ] = {}
         
@@ -560,6 +613,34 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         default_namespace_sorts.append( ClientMedia.MediaSort( sort_type = ( 'namespaces', ( ( 'creator', 'series', 'title', 'volume', 'chapter', 'page' ), ClientTags.TAG_DISPLAY_ACTUAL ) ) ) )
         
         self._dictionary[ 'default_namespace_sorts' ] = default_namespace_sorts
+        
+        #
+        
+        self._dictionary[ 'related_tags_search_tag_slices_weight_percent' ] = HydrusSerialisable.SerialisableList( [
+            [ '', 10 ],
+            [ ':', 100 ],
+            [ 'character:', 300 ],
+            [ 'creator:', 300 ],
+            [ 'series:', 300 ],
+            [ 'filename:', 0 ],
+            [ 'page:', 0 ],
+            [ 'chapter:', 0 ],
+            [ 'volume:', 0 ],
+            [ 'title:', 0 ]
+        ] )
+        
+        self._dictionary[ 'related_tags_result_tag_slices_weight_percent' ] = HydrusSerialisable.SerialisableList( [
+            [ '', 50 ],
+            [ ':', 100 ],
+            [ 'character:', 400 ],
+            [ 'creator:', 200 ],
+            [ 'series:', 200 ],
+            [ 'filename:', 0 ],
+            [ 'page:', 0 ],
+            [ 'chapter:', 0 ],
+            [ 'volume:', 0 ],
+            [ 'title:', 0 ]
+        ] )
         
         #
         
@@ -618,9 +699,12 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         self._dictionary[ 'default_file_import_options' ] = HydrusSerialisable.SerialisableDictionary()
         
+        from hydrus.client.importing.options import FileImportOptions
+        
         exclude_deleted = True
-        do_not_check_known_urls_before_importing = False
-        do_not_check_hashes_before_importing = False
+        preimport_hash_check_type = FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE
+        preimport_url_check_type = FileImportOptions.DO_CHECK
+        preimport_url_check_looks_for_neighbours = True
         allow_decompression_bombs = True
         min_size = None
         max_size = None
@@ -638,20 +722,22 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         
         presentation_import_options.SetPresentationStatus( PresentationImportOptions.PRESENTATION_STATUS_NEW_ONLY )
         
-        from hydrus.client.importing.options import FileImportOptions
-        
         quiet_file_import_options = FileImportOptions.FileImportOptions()
         
-        quiet_file_import_options.SetPreImportOptions( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+        quiet_file_import_options.SetPreImportOptions( exclude_deleted, preimport_hash_check_type, preimport_url_check_type, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+        quiet_file_import_options.SetPreImportURLCheckLooksForNeighbours( preimport_url_check_looks_for_neighbours )
         quiet_file_import_options.SetPostImportOptions( automatic_archive, associate_primary_urls, associate_source_urls )
         quiet_file_import_options.SetPresentationImportOptions( presentation_import_options )
+        quiet_file_import_options.SetDestinationLocationContext( ClientLocation.LocationContext.STATICCreateSimple( CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self._dictionary[ 'default_file_import_options' ][ 'quiet' ] = quiet_file_import_options
         
         loud_file_import_options = FileImportOptions.FileImportOptions()
         
-        loud_file_import_options.SetPreImportOptions( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+        loud_file_import_options.SetPreImportOptions( exclude_deleted, preimport_hash_check_type, preimport_url_check_type, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+        loud_file_import_options.SetPreImportURLCheckLooksForNeighbours( preimport_url_check_looks_for_neighbours )
         loud_file_import_options.SetPostImportOptions( automatic_archive, associate_primary_urls, associate_source_urls )
+        loud_file_import_options.SetDestinationLocationContext( ClientLocation.LocationContext.STATICCreateSimple( CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self._dictionary[ 'default_file_import_options' ][ 'loud' ] = loud_file_import_options
         
@@ -718,6 +804,10 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         from hydrus.client.metadata import ClientTagSorting
         
         self._dictionary[ 'default_tag_sort' ] = ClientTagSorting.TagSort.STATICGetTextASCDefault()
+        
+        #
+        
+        self._dictionary[ 'default_export_files_metadata_routers' ] = HydrusSerialisable.SerialisableList()
         
     
     def _InitialiseFromSerialisableInfo( self, serialisable_info ):
@@ -886,6 +976,39 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             return ( 4, new_serialisable_info )
             
         
+        if version == 4:
+            
+            serialisable_dictionary = old_serialisable_info
+            
+            loaded_dictionary = HydrusSerialisable.CreateFromSerialisableTuple( serialisable_dictionary )
+            
+            if 'key_list' in loaded_dictionary and 'default_neighbouring_txt_tag_service_keys' in loaded_dictionary[ 'key_list' ]:
+                
+                encoded_default_neighbouring_txt_tag_service_keys = loaded_dictionary[ 'key_list' ][ 'default_neighbouring_txt_tag_service_keys' ]
+                
+                default_neighbouring_txt_tag_service_keys = [ bytes.fromhex( hex_key ) for hex_key in encoded_default_neighbouring_txt_tag_service_keys ]
+                
+                from hydrus.client.metadata import ClientMetadataMigration
+                from hydrus.client.metadata import ClientMetadataMigrationExporters
+                from hydrus.client.metadata import ClientMetadataMigrationImporters
+                
+                importers = [ ClientMetadataMigrationImporters.SingleFileMetadataImporterMediaTags( service_key = service_key ) for service_key in default_neighbouring_txt_tag_service_keys ]
+                exporter = ClientMetadataMigrationExporters.SingleFileMetadataExporterTXT()
+                
+                metadata_router = ClientMetadataMigration.SingleFileMetadataRouter( importers = importers, exporter = exporter )
+                
+                metadata_routers = [ metadata_router ]
+                
+                loaded_dictionary[ 'default_export_files_metadata_routers' ] = HydrusSerialisable.SerialisableList( metadata_routers )
+                
+                del loaded_dictionary[ 'key_list' ][ 'default_neighbouring_txt_tag_service_keys' ]
+                
+            
+            new_serialisable_info = loaded_dictionary.GetSerialisableTuple()
+            
+            return ( 5, new_serialisable_info )
+            
+        
     
     def ClearCustomDefaultSystemPredicates( self, predicate_type = None, comparable_predicate = None ):
         
@@ -969,6 +1092,14 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
                 
             
             return []
+            
+        
+    
+    def GetDefaultExportFilesMetadataRouters( self ):
+        
+        with self._lock:
+            
+            return list( self._dictionary[ 'default_export_files_metadata_routers' ] )
             
         
     
@@ -1064,7 +1195,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
-    def GetDuplicateActionOptions( self, duplicate_type ):
+    def GetDuplicateContentMergeOptions( self, duplicate_type ):
         
         with self._lock:
             
@@ -1074,7 +1205,7 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
                 
             else:
                 
-                return ClientDuplicates.DuplicateActionOptions()
+                return ClientDuplicates.DuplicateContentMergeOptions()
                 
             
         
@@ -1263,6 +1394,17 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
+    def GetRelatedTagsTagSliceWeights( self ):
+        
+        with self._lock:
+            
+            return (
+                [ tuple( row ) for row in self._dictionary[ 'related_tags_search_tag_slices_weight_percent' ] ],
+                [ tuple( row ) for row in self._dictionary[ 'related_tags_result_tag_slices_weight_percent' ] ]
+            )
+            
+        
+    
     def GetSimpleDownloaderFormulae( self ):
         
         with self._lock:
@@ -1354,6 +1496,24 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
+    def RemoveRecentPredicate( self, predicate ):
+        
+        with self._lock:
+            
+            predicate_types_to_recent_predicates = self._dictionary[ 'predicate_types_to_recent_predicates' ]
+            
+            for recent_predicates in predicate_types_to_recent_predicates.values():
+                
+                if predicate in recent_predicates:
+                    
+                    recent_predicates.remove( predicate )
+                    
+                    return
+                    
+                
+            
+        
+    
     def SetBoolean( self, name, value ):
         
         with self._lock:
@@ -1424,6 +1584,14 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
                 
                 return
                 
+            
+        
+    
+    def SetDefaultExportFilesMetadataRouters( self, metadata_routers ):
+        
+        with self._lock:
+            
+            self._dictionary[ 'default_export_files_metadata_routers' ] = HydrusSerialisable.SerialisableList( metadata_routers )
             
         
     
@@ -1499,11 +1667,11 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
             
         
     
-    def SetDuplicateActionOptions( self, duplicate_type, duplicate_action_options ):
+    def SetDuplicateContentMergeOptions( self, duplicate_type, duplicate_content_merge_options ):
         
         with self._lock:
             
-            self._dictionary[ 'duplicate_action_options' ][ duplicate_type ] = duplicate_action_options
+            self._dictionary[ 'duplicate_action_options' ][ duplicate_type ] = duplicate_content_merge_options
             
         
     
@@ -1600,6 +1768,15 @@ class ClientOptions( HydrusSerialisable.SerialisableBase ):
         with self._lock:
             
             self._dictionary[ name ] = value
+            
+        
+    
+    def SetRelatedTagsTagSliceWeights( self, related_tags_search_tag_slices_weight_percent, related_tags_result_tag_slices_weight_percent ):
+        
+        with self._lock:
+            
+            self._dictionary[ 'related_tags_search_tag_slices_weight_percent' ] = HydrusSerialisable.SerialisableList( related_tags_search_tag_slices_weight_percent )
+            self._dictionary[ 'related_tags_result_tag_slices_weight_percent' ] = HydrusSerialisable.SerialisableList( related_tags_result_tag_slices_weight_percent )
             
         
     

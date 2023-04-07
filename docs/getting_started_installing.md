@@ -2,17 +2,17 @@
 title: Installing and Updating  
 ---
 
-# installing and updating
+# Installing and Updating
 
 If any of this is confusing, a simpler guide is [here](https://github.com/Zweibach/text/blob/master/Hydrus/Hydrus%20Help%20Docs/00_tableOfContents.md), and some video guides are [here](https://github.com/CuddleBear92/Hydrus-guides)!
 
-## downloading
+## Downloading
 
-You can get the latest release at [my github releases page](https://github.com/hydrusnetwork/hydrus/releases).
+You can get the latest release at [the github releases page](https://github.com/hydrusnetwork/hydrus/releases).
 
 I try to release a new version every Wednesday by 8pm EST and write an accompanying post on [my tumblr](http://hydrus.tumblr.com/) and a Hydrus Network General thread on [8chan.moe /t/](https://8chan.moe/t/catalog.html).
 
-## installing
+## Installing
 
 !!! warning ""
     The hydrus releases are 64-bit only. If you are a python expert, there is the slimmest chance you'll be able to get it running from source on a 32-bit machine, but it would be easier just to find a newer computer to run it on.
@@ -21,34 +21,40 @@ I try to release a new version every Wednesday by 8pm EST and write an accompany
 
     *   If you want the easy solution, download the .exe installer. Run it, hit ok several times.
     *   If you know what you are doing and want a little more control, get the .zip. Don't extract it to Program Files unless you are willing to run it as administrator every time (it stores all its user data inside its own folder). You probably want something like D:\\hydrus.
-    *   _Note if you run <Win10, you may need [Visual C++ Redistributable for Visual Studio 2015](https://www.microsoft.com/en-us/download/details.aspx?id=48145), if you don't already have it for vidya. If you run Win7, you will need some/all core OS updates released before 2017._
-    *   If you use Windows 10 N (a version of Windows without some media playback features), you will likely need the 'Media Feature Pack'. There have been several versions of this, so it may best found by searching for the latest version or hitting Windows Update, but otherwise check [here](https://support.microsoft.com/en-us/help/3145500/media-feature-pack-list-for-windows-n-editions).  
+    *   _If you run <Win10, you need [Visual C++ Redistributable for Visual Studio 2015](https://www.microsoft.com/en-us/download/details.aspx?id=48145) if you don't already have it for vidya._
+    *   _If you use Windows 10 N (a version of Windows without some media playback features), you will likely need the 'Media Feature Pack'. There have been several versions of this, so it may best found by searching for the latest version or hitting Windows Update, but otherwise check [here](https://support.microsoft.com/en-us/help/3145500/media-feature-pack-list-for-windows-n-editions)._  
+    *   _If you run Win7, you cannot run Qt6 programs, so you cannot run the official executable release. You have options by [running from source](running_from_source.md)._
     *   **Third parties (not maintained by Hydrus Developer)**:  
         * [Chocolatey](https://community.chocolatey.org/packages/hydrus-network)
         * [Scoop](https://github.com/ScoopInstaller/Scoop) (`hydrus-network` in the 'Extras' bucket)    
         * Winget. The command is `winget install --id=HydrusNetwork.HydrusNetwork  -e --location "\PATH\TO\INSTALL\HERE"`, which can, if you know what you are doing, be `winget install --id=HydrusNetwork.HydrusNetwork  -e --location ".\"`, maybe rolled into a batch file.
+        * [User guide for Anaconda](https://gist.github.com/jufogu/b78509695c6c65cdb2866a56fb14a820)
 
 === "macOS"
 
     *   Get the .dmg App. Open it, drag it to Applications, and check the readme inside.
+    *   macOS users have no mpv support for now, so no audio, and video may be laggy.
+    *   _This release has always been a little buggy. Many macOS users are having better success [running from source](running_from_source.md)._
 
 === "Linux"
 
     *   Get the .tag.gz. Extract it somewhere useful and create shortcuts to 'client' and 'server' as you like. The build is made on Ubuntu, so if you run something else, compatibility is hit and miss.
     *   If you have problems running the Ubuntu build, users with some python experience generally find running from source works well.
-    *   You might need to get 'libmpv1' to get mpv working and playing video/audio. This is the mpv _library_, not the necessarily the player. Check _help->about_ to see if it is available--if not, see if you can get it with `apt`.  
-    If the about window provides you an error popup like this:  
+    *   You might need to get 'libmpv1' to get mpv working and playing video/audio. This is the mpv _library_, not the necessarily the player. Check _help->about_ to see if it is available--if not, see if you can get it like so:
+        * `apt-get install libmpv1`
+        * Use _options->media_ to set your audio/video/animations to 'show using mpv' once you have it installed.
+        * If the about window provides you an mpv error popup like this:  
     ```
     OSError: /lib/x86_64-linux-gnu/libgio-2.0.so.0: undefined symbol: g_module_open_full
     (traceback)
     pyimod04_ctypes.install.<locals>.PyInstallerImportError: Failed to load dynlib/dll 'libmpv.so.1'. Most likely this dynlib/dll was not found when the application was frozen.
     ```  
     Then please do this:  
-        1. Search your /usr/ dir for `libgmodule*`. You are looking for something like `libgmodule-2.0.so`. Users report finding it in `/usr/lib64/` and `/usr/lib/x86_64-linux-gnu`.
-        2. Copy that .so file to the hydrus install base directory.
-        3. Boot the client and hit _help->about_ to see if it reports a version.
-        4. If it all seems good, hit _options->media_ to set up mpv as your player for video/audio and try to view some things.
-        5. If it still doesn't work, see if you can do the same for libmpv.so and libcdio.so--or consider [running from source](running_from_source.md)
+            1. Search your /usr/ dir for `libgmodule*`. You are looking for something like `libgmodule-2.0.so`. Users report finding it in `/usr/lib64/` and `/usr/lib/x86_64-linux-gnu`.
+            2. Copy that .so file to the hydrus install base directory.
+            3. Boot the client and hit _help->about_ to see if it reports a version.
+            4. If it all seems good, hit _options->media_ to set up mpv as your player for video/audio and try to view some things.
+            5. If it still doesn't work, see if you can do the same for libmpv.so and libcdio.so--or consider [running from source](running_from_source.md)
     *   You can also try [running the Windows version in wine](wine.md).
     *   **Third parties (not maintained by Hydrus Developer)**:  
         * (These both run from source, so if you have trouble with the built release, they may work better for you!)
@@ -56,9 +62,13 @@ I try to release a new version every Wednesday by 8pm EST and write an accompany
         * [flatpak](https://flathub.org/apps/details/io.github.hydrusnetwork.hydrus) 
     
 
+=== "Docker"
+
+    * A rudimentary documentation for the [container](https://github.com/hydrusnetwork/hydrus/pkgs/container/hydrus) setup can be found [here](docker.md).
+
 === "From Source"
 
-    *   If you have some python experience, you can [run from source](running_from_source.md).
+    *   You can also [run from source](running_from_source.md). This is often the best way to fix compatibility problems.
 
 By default, hydrus stores all its data—options, files, subscriptions, _everything_—entirely inside its own directory. You can extract it to a usb stick, move it from one place to another, have multiple installs for multiple purposes, wrap it all up inside a truecrypt volume, whatever you like. The .exe installer writes some unavoidable uninstall registry stuff to Windows, but the 'installed' client itself will run fine if you manually move it.
 
@@ -68,7 +78,7 @@ By default, hydrus stores all its data—options, files, subscriptions, _everyth
 !!! info "For macOS users"
     The Hydrus App is **non-portable** and puts your database in `~/Library/Hydrus` (i.e. `/Users/[You]/Library/Hydrus`). You can update simply by replacing the old App with the new, but if you wish to backup, you should be looking at `~/Library/Hydrus`, not the App itself.
 
-## anti-virus { id="anti_virus" }
+## Anti-virus { id="anti_virus" }
 
 Hydrus is made by an Anon out of duct tape and string. It combines file parsing tech with lots of network and database code in unusual and powerful ways, and all through a hacked-together executable that isn't signed by any big official company.
 
@@ -86,7 +96,7 @@ If you are still concerned, please feel free to run from source, as above. You a
 
 In 2022 I am going to explore a different build process to see if that reduces the false positives. We currently make the executable with PyInstaller, which has some odd environment set-up the anti-virus testbeds don't seem to like, and perhaps PyOxidizer will be better. We'll see.
 
-## running
+## Running
 
 To run the client:
 
@@ -101,17 +111,17 @@ To run the client:
 
 === "Linux"
 
-    *   Run the 'client' executable in the base directory. You may be able to double-click it, otherwise you are run `./client` from the terminal.
+    *   Run the 'client' executable in the base directory. You may be able to double-click it, otherwise you are running `./client` from the terminal.
     *   If you experience virtual memory crashes, please review [this thorough guide](Fixing_Hydrus_Random_Crashes_Under_Linux.md) by a user.
 
-## updating
+## Updating
 
 !!! warning
     Hydrus is imageboard-tier software, wild and fun but unprofessional. It is written by one Anon spinning a lot of plates. Mistakes happen from time to time, usually in the update process. There are also no training wheels to stop you from accidentally overwriting your whole db if you screw around. Be careful when updating. Make backups beforehand!
 
 **Hydrus does not auto-update. It will stay the same version unless you download and install a new one.**
 
-Although I put out an new version every week, you can update far less often if you want. The client keeps to itself, so if it does exactly what you want and a new version does nothing you care about, you can just leave it. Other users enjoy updating every week, simply because it makes for a nice schedule. Others like to stay a week or two behind what is current, just in case I mess up and cause a temporary bug in something they like.
+Although I put out a new version every week, you can update far less often if you prefer. The client keeps to itself, so if it does exactly what you want and a new version does nothing you care about, you can just leave it. Other users enjoy updating every week, simply because it makes for a nice schedule. Others like to stay a week or two behind what is current, just in case I mess up and cause a temporary bug in something they like.
 
 A user has written a longer and more formal guide to updating, and information on the 334->335 step [here](update_guide.rtf).
 
@@ -129,9 +139,9 @@ Releases typically need to update your database to their version. New releases c
 
 Clients and servers of different versions can usually connect to one another, but from time to time, I make a change to the network protocol, and you will get polite error messages if you try to connect to a newer server with an older client or _vice versa_. There is still no _need_ to update the client--it'll still do local stuff like searching for files completely fine. Read my release posts and judge for yourself what you want to do.
 
-## clean installs
+## Clean installs
 
-**This is only relevant if you update and cannot boot at all.**
+**This is usually only relevant if you know you have a dll conflict or otherwise update and cannot boot at all.**
 
 Very rarely, hydrus needs a clean install. This can be due to a special update like when we moved from 32-bit to 64-bit or needing to otherwise 'reset' a custom install situation. The problem is usually that a library file has been renamed in a new version and hydrus has trouble figuring out whether to use the older one (from a previous version) or the newer.
 
@@ -146,7 +156,7 @@ However, you need to be careful not to delete your database! It sounds silly, bu
 
 After that, you'll have a 'clean' version of hydrus that only has the latest version's dlls. If hydrus still will not boot, I recommend you roll back to your last working backup and let me, hydrus dev, know what your error is.
 
-## big updates
+## Big updates
 
 If you have not updated in some time--say twenty versions or more--doing it all in one jump, like v250->v290, is likely not going to work. I am doing a lot of unusual stuff with hydrus, change my code at a fast pace, and do not have a ton of testing in place. Hydrus update code often falls to [bitrot](https://en.wikipedia.org/wiki/Software_rot), and so some underlying truth I assumed for the v255->v256 code may not still apply six months later. If you try to update more than 50 versions at once (i.e. trying to perform more than a year of updates in one go), the client will give you a polite error rather than even try.
 
@@ -154,9 +164,9 @@ As a result, if you get a failure on trying to do a big update, try cutting the 
 
 If you narrow the gap down to just one version and still get an error, please let me know. I am very interested in these sorts of problems and will be happy to help figure out a fix with you (and everyone else who might be affected).
 
-_All that said, and while updating is complex and every client is different, one user recently did a giant multi-year update and found this route worked and was efficient: 204 > 238 > 246 > 291 > 328 > 335 > 376 > 421 > 466 > 474_ 
+_All that said, and while updating is complex and every client is different, various user reports over the years suggest this route works and is efficient: 204 > 238 > 246 > 291 > 328 > 335 > 376 > 421 > 466 > 474 ? 494 > 509_ 
 
-## backing up
+## Backing up
 
 !!! danger "I am not joking around: if you end up liking hydrus, you should back up your database"
 
@@ -172,6 +182,7 @@ Hydrus's database engine, SQLite, is excellent at keeping data safe, but it cann
 * Accidental overwrite (usually during a borked update)
 * Encrypted partition auto-dismount/other borked settings
 * Cloud backup interfering with ongoing writes
+* An automatic OS backup routine misfiring and causing a rollback, wiping out more than a year of progress
 * A laptop that incorrectly and roughly disconnected an external USB drive on every sleep
 * Network drive location not guaranteeing accurate file locks
 * Windows NVMe driver bugs necessitating a different SQLite journalling method
@@ -179,7 +190,7 @@ Hydrus's database engine, SQLite, is excellent at keeping data safe, but it cann
 Some of those you can mitigate (don't run the database over a network!) and some will always be a problem, but if you have a backup, none of them can kill you.
 
 !!! note "This mostly means your database, not your files"
-    Note that nearly all the serious and difficult-to-fix problems occur to the _database_, which is four large .db files, not your media. All your images and movies are read-only in hydrus, and there's less worry if they are on a network share with bad locks or a machine that suddenly loses power. The database, however, maintains a live connection, with regular complex writes, and here a hardware failure can lead to corruption (Basically the failure scrambles the data that is written, so when you try to boot back up, a small section of the database is incomprehensible garbage).
+    Note that nearly all the serious and difficult-to-fix problems occur to the _database_, which is four large .db files, not your media. All your images and movies are read-only in hydrus, and there's less worry if they are on a network share with bad locks or a machine that suddenly loses power. The database, however, maintains a live connection, with regular complex writes, and here a hardware failure can lead to corruption (basically the failure scrambles the data that is written, so when you try to boot back up, a small section of the database is incomprehensible garbage).
 
 If you do not already have a backup routine for your files, this is a great time to start. I now run a backup every week of all my data so that if my computer blows up or anything else awful happens, I'll at worst have lost a few days' work. Before I did this, I once lost an entire drive with tens of thousands of files, and it felt awful. If you are new to saving a lot of media, I hope you can avoid what I felt. ;\_;
 
@@ -187,7 +198,7 @@ I use [ToDoList](http://abstractspoon.com/) to remind me of my jobs for the day,
 
 By default, hydrus stores all your user data in one location, so backing up is simple:
 
-#### the simple way - inside the client
+#### The simple way - inside the client
 :   
     Go _database->set up a database backup location_ in the client. This will tell the client where you want your backup to be stored. A fresh, empty directory on a different drive is ideal.
 
@@ -195,7 +206,7 @@ By default, hydrus stores all your user data in one location, so backing up is s
 
     Advanced users who have migrated their database and files across multiple locations will not have this option--use an external program in this case.
     
-#### the powerful (and best) way - using an external program
+#### The powerful (and best) way - using an external program
 :   
     Doing it yourself is best. If you are an advanced user with a complicated hydrus install migrated across multiple drives, then you will have to do it this way--the simple backup will be disabled.
 
@@ -234,7 +245,7 @@ There is significantly more information about the database structure [here](data
 
 I recommend you always backup before you update, just in case there is a problem with my update code that breaks your database. If that happens, please [contact me](contact.md), describing the problem, and revert to the functioning older version. I'll get on any problems like that immediately.
 
-## backing up with not much space { id="backing_up_small" }
+## Backing up with not much space { id="backing_up_small" }
 
 If you decide not to maintain a backup because you cannot afford drive space for all your files, please please at least back up your actual database files. Use FreeFileSync or a similar program to back up the four 'client*.db' files in install_dir/db when the client is not running. Just make sure you have a copy of those files, and then if your main install becomes damaged, we will have a reference to either roll back to or manually restore data from. Even if you lose a bunch of media files in this case, with an intact database we'll be able to schedule recovery of anything with a URL.
 

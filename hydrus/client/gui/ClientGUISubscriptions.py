@@ -4,9 +4,7 @@ import threading
 import time
 import typing
 
-from qtpy import QtCore as QC
 from qtpy import QtWidgets as QW
-from qtpy import QtGui as QG
 
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
@@ -25,7 +23,6 @@ from hydrus.client.gui import ClientGUIFunctions
 from hydrus.client.gui import ClientGUIScrolledPanels
 from hydrus.client.gui import ClientGUIFileSeedCache
 from hydrus.client.gui import ClientGUIGallerySeedLog
-from hydrus.client.gui import ClientGUIScrolledPanelsEdit
 from hydrus.client.gui import ClientGUITime
 from hydrus.client.gui import ClientGUITopLevelWindowsPanels
 from hydrus.client.gui import QtPorting as QP
@@ -192,7 +189,7 @@ class EditSubscriptionPanel( ClientGUIScrolledPanels.EditPanel ):
         
         if HG.client_controller.new_options.GetBoolean( 'advanced_mode' ):
             
-            limits_max = 10000
+            limits_max = 50000
             
         else:
             
@@ -1369,7 +1366,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         self._subscriptions_panel.NewButtonRow()
         
         self._subscriptions_panel.AddButton( 'select subscriptions', self.SelectSubscriptions )
-        self._subscriptions_panel.AddButton( 'overwrite checker timings', self.SetCheckerOptions, enabled_only_on_selection = True )
+        self._subscriptions_panel.AddButton( 'overwrite checker options', self.SetCheckerOptions, enabled_only_on_selection = True )
         self._subscriptions_panel.AddButton( 'overwrite file import options', self.SetFileImportOptions, enabled_only_on_selection = True )
         self._subscriptions_panel.AddButton( 'overwrite tag import options', self.SetTagImportOptions, enabled_only_on_selection = True )
         self._subscriptions_panel.AddButton( 'overwrite note import options', self.SetNoteImportOptions, enabled_only_on_selection = True )
@@ -2820,7 +2817,7 @@ class EditSubscriptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         checker_options = subscriptions[0].GetCheckerOptions()
         
-        with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit check timings' ) as dlg:
+        with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit checker options' ) as dlg:
             
             panel = ClientGUITime.EditCheckerOptions( dlg, checker_options )
             

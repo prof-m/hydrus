@@ -1,5 +1,6 @@
 import base64
 import calendar
+import hashlib
 import html
 import re
 import typing
@@ -9,7 +10,6 @@ import urllib.parse
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
 from hydrus.core import HydrusExceptions
-from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusSerialisable
 from hydrus.core import HydrusTags
 
@@ -26,6 +26,7 @@ STRING_CONVERSION_REGEX_SUB = 9
 STRING_CONVERSION_DATE_DECODE = 10
 STRING_CONVERSION_INTEGER_ADDITION = 11
 STRING_CONVERSION_DATE_ENCODE = 12
+STRING_CONVERSION_HASH_FUNCTION = 13
 
 conversion_type_str_lookup = {}
 
@@ -42,8 +43,19 @@ conversion_type_str_lookup[ STRING_CONVERSION_REGEX_SUB ] = 'regex substitution'
 conversion_type_str_lookup[ STRING_CONVERSION_DATE_DECODE ] = 'datestring to timestamp'
 conversion_type_str_lookup[ STRING_CONVERSION_INTEGER_ADDITION ] = 'integer addition'
 conversion_type_str_lookup[ STRING_CONVERSION_DATE_ENCODE ] = 'timestamp to datestring'
+conversion_type_str_lookup[ STRING_CONVERSION_HASH_FUNCTION ] = 'get hash of string'
 
 class StringProcessingStep( HydrusSerialisable.SerialisableBase ):
+    
+    def _GetSerialisableInfo( self ):
+        
+        raise NotImplementedError()
+        
+    
+    def _InitialiseFromSerialisableInfo( self, serialisable_info ):
+        
+        raise NotImplementedError()
+        
     
     def MakesChanges( self ) -> bool:
         
@@ -298,10 +310,35 @@ class StringConverter( StringProcessingStep ):
                     
                     s = str( int( s ) + int( delta ) )
                     
+                elif conversion_type == STRING_CONVERSION_HASH_FUNCTION:
+                    
+                    hash_function = data
+                    
+                    if hash_function == 'md5':
+                        
+                        s = hashlib.md5( s.encode( 'utf-8' ) ).hexdigest()
+                        
+                    elif hash_function == 'sha1':
+                        
+                        s = hashlib.sha1( s.encode( 'utf-8' ) ).hexdigest()
+                        
+                    elif hash_function == 'sha256':
+                        
+                        s = hashlib.sha256( s.encode( 'utf-8' ) ).hexdigest()
+                        
+                    elif hash_function == 'sha512':
+                        
+                        s = hashlib.sha512( s.encode( 'utf-8' ) ).hexdigest()
+                        
+                    else:
+                        
+                        raise Exception( f'Unknown hash function "{hash_function}"!' )
+                        
+                    
                 
             except Exception as e:
                 
-                raise HydrusExceptions.StringConvertException( 'ERROR: Could not apply "' + self.ConversionToString( conversion ) + '" to string "' + repr( s ) + '":' + str( e ) )
+                raise HydrusExceptions.StringConvertException( 'ERROR: Could not apply "{}" to string "{}": {}'.format( self.ConversionToString( conversion ), s, e ) )
                 
             
         
@@ -419,6 +456,10 @@ class StringConverter( StringProcessingStep ):
         elif conversion_type == STRING_CONVERSION_INTEGER_ADDITION:
             
             return 'integer addition: add ' + str( data )
+            
+        elif conversion_type == STRING_CONVERSION_HASH_FUNCTION:
+            
+            return 'hash string by ' + str( data )
             
         else:
             
@@ -1240,6 +1281,11 @@ class StringProcessor( StringProcessingStep ):
             
         
         return proc_strings
+        
+    
+    def MakesChanges( self ) -> bool:
+        
+        return True in ( step.MakesChanges() for step in self._processing_steps )
         
     
     def ProcessStrings( self, starting_strings: typing.Iterable[ str ], max_steps_allowed = None, no_slicing = False ) -> typing.List[ str ]:

@@ -46,6 +46,7 @@ except:
     CLOUDSCRAPER_OK = False
     PYPARSING_OK = False
     
+
 def ConvertStatusCodeAndDataIntoExceptionInfo( status_code, data, is_hydrus_service = False ):
     
     ( error_text, encoding ) = HydrusText.NonFailingUnicodeDecode( data, 'utf-8' )
@@ -100,7 +101,7 @@ def ConvertStatusCodeAndDataIntoExceptionInfo( status_code, data, is_hydrus_serv
         
         eclass = HydrusExceptions.BandwidthException
         
-    elif status_code == 509:
+    elif status_code in ( 509, 529 ):
         
         eclass = HydrusExceptions.BandwidthException
         
@@ -234,8 +235,10 @@ class NetworkJob( object ):
         
         self._status_text = 'initialising\u2026'
         self._num_bytes_read = 0
-        self._num_bytes_to_read = 1
+        self._num_bytes_to_read = None
         self._num_bytes_read_is_accurate = True
+        self._num_bytes_read_in_this_response = 0
+        self._num_bytes_expected_in_this_range_chunk = None
         self._number_of_concurrent_empty_chunks = 0
         
         self._file_import_options = None
@@ -434,9 +437,9 @@ class NetworkJob( object ):
                 self._response_mime = None
                 
             
-            if 'content-length' in response.headers:
+            if 'Content-Length' in response.headers:
                 
-                self._num_bytes_to_read = int( response.headers[ 'content-length' ] )
+                self._num_bytes_to_read = int( response.headers[ 'Content-Length' ] )
                 
             else:
                 
@@ -450,7 +453,7 @@ class NetworkJob( object ):
             
             if response.ok: # i.e. we got what we expected, not some error
                 
-                if 'content-length' in response.headers:
+                if self._num_bytes_to_read is not None:
                     
                     if self._max_allowed_bytes is not None and self._num_bytes_to_read > self._max_allowed_bytes:
                         
@@ -470,9 +473,12 @@ class NetworkJob( object ):
     
     def _ReadResponse( self, response: requests.Response, stream_dest ):
         
-        if 'content-range' in response.headers:
+        self._num_bytes_read_in_this_response = 0
+        self._num_bytes_expected_in_this_range_chunk = None
+        
+        if 'Content-Range' in response.headers:
             
-            content_range = response.headers[ 'content-range' ]
+            content_range = response.headers[ 'Content-Range' ]
             
             # Content-Range: <unit> <range-start>-<range-end>/<size>
             # range and size can be *
@@ -497,7 +503,18 @@ class NetworkJob( object ):
                                 # this server be crazy
                                 # I guess in some cases we might be able to fast forward a < byte_start, but we don't have that raw byte access tech yet
                                 # and if byte_start > num_bytes_read, then lmao
-                                raise HydrusExceptions.NetworkException( 'This server delivered an undesired Range response! We asked for Range "{}" and got Content-Range "{}" back!'.format( response.request.headers[ 'range' ], response.headers[ 'content-range' ] ) )
+                                raise HydrusExceptions.NetworkException( 'This server delivered an undesired Range response! We asked for Range "{}" and got Content-Range "{}" back!'.format( response.request.headers[ 'range' ], response.headers[ 'Content-Range' ] ) )
+                                
+                            
+                            try:
+                                
+                                byte_end = int( byte_end )
+                                
+                                self._num_bytes_expected_in_this_range_chunk = ( byte_end - byte_start ) + 1
+                                
+                            except:
+                                
+                                pass
                                 
                             
                         except:
@@ -526,7 +543,7 @@ class NetworkJob( object ):
                 
             
         
-        starting_num_bytes_read = self._num_bytes_read
+        num_bytes_read_before_this_response = self._num_bytes_read
         
         for chunk in response.iter_content( chunk_size = 65536 ):
             
@@ -550,22 +567,41 @@ class NetworkJob( object ):
                 
                 chunk_num_bytes = len( chunk )
                 
-                self._num_bytes_read += chunk_num_bytes
-                
             else:
                 
-                previous_num_bytes_read = self._num_bytes_read
+                num_bytes_read_at_last_chunk = self._num_bytes_read
                 
-                self._num_bytes_read = starting_num_bytes_read + total_bytes_read_in_this_response
+                if total_bytes_read_in_this_response >= num_bytes_read_at_last_chunk:
+                    
+                    chunk_num_bytes = total_bytes_read_in_this_response - num_bytes_read_at_last_chunk
+                    
+                else:
+                    
+                    self._num_bytes_read_is_accurate = False
+                    
+                    chunk_num_bytes = 1
+                    
                 
-                chunk_num_bytes = self._num_bytes_read - previous_num_bytes_read
-                
+            
+            self._num_bytes_read += chunk_num_bytes
+            self._num_bytes_read_in_this_response += chunk_num_bytes
             
             with self._lock:
                 
-                if self._num_bytes_to_read is not None and self._num_bytes_read_is_accurate and self._num_bytes_read > self._num_bytes_to_read:
+                if self._num_bytes_read_is_accurate:
                     
-                    raise HydrusExceptions.NetworkException( 'Too much data: Was expecting {} but server continued responding!'.format( HydrusData.ToHumanBytes( self._num_bytes_to_read ) ) )
+                    if self._num_bytes_to_read is not None and self._num_bytes_read > self._num_bytes_to_read:
+                        
+                        raise HydrusExceptions.NetworkException( 'Too much data: Was expecting {}, but the server continued responding!'.format( HydrusData.ToHumanBytes( self._num_bytes_to_read ) ) )
+                        
+                    
+                    if self._num_bytes_expected_in_this_range_chunk is not None:
+                        
+                        if self._num_bytes_read_in_this_response > self._num_bytes_expected_in_this_range_chunk:
+                            
+                            raise HydrusExceptions.NetworkException( 'Too much data: Was expecting {} in this range chunk, but the server continued responding!'.format( HydrusData.ToHumanBytes( self._num_bytes_expected_in_this_range_chunk ) ) )
+                            
+                        
                     
                 
                 if self._max_allowed_bytes is not None and self._num_bytes_read > self._max_allowed_bytes:
@@ -590,29 +626,46 @@ class NetworkJob( object ):
                 
             
         
-        # stick with GET for now. if there is a complex way to range-chunk a POST, we'll deal with it then, but I don't want to spam file uploads to IQDB by accident etc...
-        download_is_definitely_incomplete = self._method == 'GET' and self._num_bytes_to_read is not None and self._num_bytes_read_is_accurate and self._num_bytes_read < self._num_bytes_to_read
-        we_read_some_data = self._num_bytes_read > starting_num_bytes_read
-        
-        if download_is_definitely_incomplete and not we_read_some_data:
+        with self._lock:
             
-            self._number_of_concurrent_empty_chunks += 1
+            # stick with GET for now. if there is a complex way to range-chunk a POST, we'll deal with it then, but I don't want to spam file uploads to IQDB by accident etc...
+            we_know_there_is_more_to_download = self._method == 'GET' and self._num_bytes_to_read is not None and self._num_bytes_read_is_accurate and self._num_bytes_read < self._num_bytes_to_read
+            we_read_some_data = self._num_bytes_read > num_bytes_read_before_this_response
             
-            if self._number_of_concurrent_empty_chunks > 2:
+            if we_know_there_is_more_to_download:
                 
-                raise HydrusExceptions.NetworkException( 'The server appeared to want to send this URL in ranged chunks, but this chunk was empty!' )
+                if we_read_some_data:
+                    
+                    self._number_of_concurrent_empty_chunks = 0
+                    
+                    # this range chunk is complete, so this should add up correct
+                    if self._num_bytes_read_is_accurate:
+                        
+                        if self._num_bytes_expected_in_this_range_chunk is not None:
+                            
+                            if self._num_bytes_read_in_this_response < self._num_bytes_expected_in_this_range_chunk:
+                                
+                                # ok this situation is actually ok(?)
+                                # turns out at least one decent server does this regularly, says 'here's 0-22MB' and gives you 128KB instead
+                                
+                                HydrusData.Print( 'Not enough data for URL {}: Was expecting {} in this range chunk, but the server only delivered {}!'.format( self._url, HydrusData.ToHumanBytes( self._num_bytes_expected_in_this_range_chunk ), HydrusData.ToHumanBytes( self._num_bytes_read_in_this_response ) ) )
+                                
+                            
+                        
+                    
+                else:
+                    
+                    self._number_of_concurrent_empty_chunks += 1
+                    
+                    if self._number_of_concurrent_empty_chunks > 2:
+                        
+                        raise HydrusExceptions.NetworkException( 'The server appeared to want to send this URL in ranged chunks, but we got several empty chunks in a row!' )
+                        
+                    
                 
             
-            more_to_download = True
-            
-        else:
-            
-            self._number_of_concurrent_empty_chunks = 0
-            
-            more_to_download = we_read_some_data and download_is_definitely_incomplete
-            
         
-        if not more_to_download:
+        if not we_know_there_is_more_to_download:
             
             if self._file_import_options is not None:
                 
@@ -622,7 +675,7 @@ class NetworkJob( object ):
                 
             
         
-        return more_to_download
+        return we_know_there_is_more_to_download
         
     
     def _ReportDataUsed( self, num_bytes ):
@@ -645,7 +698,9 @@ class NetworkJob( object ):
         self._stream_io = io.BytesIO()
         
         self._num_bytes_read = 0
-        self._num_bytes_to_read = 1
+        self._num_bytes_to_read = None
+        self._num_bytes_read_in_this_response = 0
+        self._num_bytes_expected_in_this_range_chunk = None
         self._num_bytes_read_is_accurate = True
         self._number_of_concurrent_empty_chunks = 0
         
@@ -1000,7 +1055,7 @@ class NetworkJob( object ):
     
     def _WaitOnServersideBandwidth( self, status_text: str ):
         
-        # 429 or 509 response from server. basically means 'I'm under big load mate'
+        # 429/509/529 response from server. basically means 'I'm under big load mate'
         # a future version of this could def talk to domain manager and add a temp delay so other network jobs can be informed
         
         serverside_bandwidth_wait_time = HG.client_controller.new_options.GetInteger( 'serverside_bandwidth_wait_time' )

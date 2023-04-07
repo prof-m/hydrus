@@ -119,7 +119,7 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
         
         while len( process_queue ) > 0:
             
-            job_key.SetVariable( 'popup_text_2', 'generating new branch -- ' + HydrusData.ConvertValueRangeToPrettyString( num_done, num_to_do ) )
+            job_key.SetStatusText( 'generating new branch -- ' + HydrusData.ConvertValueRangeToPrettyString( num_done, num_to_do ), 2 )
             
             ( parent_id, perceptual_hash_id, perceptual_hash, children ) = process_queue.popleft()
             
@@ -188,7 +188,7 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
             num_done += 1
             
         
-        job_key.SetVariable( 'popup_text_2', 'branch constructed, now committing' )
+        job_key.SetStatusText( 'branch constructed, now committing', 2 )
         
         self._ExecuteMany( 'INSERT OR REPLACE INTO shape_vptree ( phash_id, parent_id, radius, inner_id, inner_population, outer_id, outer_population ) VALUES ( ?, ?, ?, ?, ?, ?, ? );', insert_rows )
         
@@ -334,23 +334,34 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
     
     def _RegenerateBranch( self, job_key, perceptual_hash_id ):
         
-        job_key.SetVariable( 'popup_text_2', 'reviewing existing branch' )
+        job_key.SetStatusText( 'reviewing existing branch', 2 )
         
         # grab everything in the branch
         
         ( parent_id, ) = self._Execute( 'SELECT parent_id FROM shape_vptree WHERE phash_id = ?;', ( perceptual_hash_id, ) ).fetchone()
         
+        if parent_id is None:
+            
+            # this is the root node! we can't rebalance since there is no parent to spread across!
+            
+            self._Execute( 'DELETE FROM shape_maintenance_branch_regen WHERE phash_id = ?;', ( perceptual_hash_id, ) )
+            
+            return
+            
+        
         cte_table_name = 'branch ( branch_phash_id )'
         initial_select = 'SELECT ?'
         recursive_select = 'SELECT phash_id FROM shape_vptree, branch ON parent_id = branch_phash_id'
+        query_on_cte_table_name = 'SELECT branch_phash_id, phash FROM branch, shape_perceptual_hashes ON phash_id = branch_phash_id'
         
-        with_clause = 'WITH RECURSIVE ' + cte_table_name + ' AS ( ' + initial_select + ' UNION ALL ' +  recursive_select +  ')'
+        # use UNION (large memory, set), not UNION ALL (small memory, inifinite loop on damaged cyclic graph causing 200GB journal file and disk full error, jesus)
+        query = 'WITH RECURSIVE {} AS ( {} UNION {} ) {};'.format( cte_table_name, initial_select, recursive_select, query_on_cte_table_name )
         
-        unbalanced_nodes = self._Execute( with_clause + ' SELECT branch_phash_id, phash FROM branch, shape_perceptual_hashes ON phash_id = branch_phash_id;', ( perceptual_hash_id, ) ).fetchall()
+        unbalanced_nodes = self._Execute( query, ( perceptual_hash_id, ) ).fetchall()
         
         # removal of old branch, maintenance schedule, and orphan phashes
         
-        job_key.SetVariable( 'popup_text_2', HydrusData.ToHumanInt( len( unbalanced_nodes ) ) + ' leaves found--now clearing out old branch' )
+        job_key.SetStatusText( HydrusData.ToHumanInt( len( unbalanced_nodes ) ) + ' leaves found--now clearing out old branch', 2 )
         
         unbalanced_perceptual_hash_ids = { p_id for ( p_id, p_h ) in unbalanced_nodes }
         
@@ -375,28 +386,40 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
         
         if useful_population > 0:
             
-            ( new_perceptual_hash_id, new_perceptual_hash ) = self._PopBestRootNode( useful_nodes ) #HydrusData.RandomPop( useful_nodes )
+            ( new_perceptual_hash_id, new_perceptual_hash ) = self._PopBestRootNode( useful_nodes )
             
         else:
             
             new_perceptual_hash_id = None
+            new_perceptual_hash = None
             
         
-        if parent_id is not None:
+        result = self._Execute( 'SELECT inner_id FROM shape_vptree WHERE phash_id = ?;', ( parent_id, ) ).fetchone()
+        
+        if result is None:
             
-            ( parent_inner_id, ) = self._Execute( 'SELECT inner_id FROM shape_vptree WHERE phash_id = ?;', ( parent_id, ) ).fetchone()
+            # expected parent is not in the tree!
+            # somehow some stuff got borked
             
-            if parent_inner_id == perceptual_hash_id:
-                
-                query = 'UPDATE shape_vptree SET inner_id = ?, inner_population = ? WHERE phash_id = ?;'
-                
-            else:
-                
-                query = 'UPDATE shape_vptree SET outer_id = ?, outer_population = ? WHERE phash_id = ?;'
-                
+            self._Execute( 'DELETE FROM shape_maintenance_branch_regen;' )
             
-            self._Execute( query, ( new_perceptual_hash_id, useful_population, parent_id ) )
+            HydrusData.ShowText( 'Your similar files search tree seemed to be damaged. Please regenerate it under the _database_ menu!' )
             
+            return
+            
+        
+        ( parent_inner_id, ) = result
+        
+        if parent_inner_id == perceptual_hash_id:
+            
+            query = 'UPDATE shape_vptree SET inner_id = ?, inner_population = ? WHERE phash_id = ?;'
+            
+        else:
+            
+            query = 'UPDATE shape_vptree SET outer_id = ?, outer_population = ? WHERE phash_id = ?;'
+            
+        
+        self._Execute( query, ( new_perceptual_hash_id, useful_population, parent_id ) )
         
         if useful_population > 0:
             
@@ -522,7 +545,7 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
                 text = 'rebalancing similar file metadata - ' + HydrusData.ConvertValueRangeToPrettyString( num_done, num_to_do )
                 
                 HG.client_controller.frame_splash_status.SetSubtext( text )
-                job_key.SetVariable( 'popup_text_1', text )
+                job_key.SetStatusText( text )
                 job_key.SetVariable( 'popup_gauge_1', ( num_done, num_to_do ) )
                 
                 with self._MakeTemporaryIntegerTable( rebalance_perceptual_hash_ids, 'phash_id' ) as temp_table_name:
@@ -549,9 +572,9 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
             
         finally:
             
-            job_key.SetVariable( 'popup_text_1', 'done!' )
+            job_key.SetStatusText( 'done!' )
             job_key.DeleteVariable( 'popup_gauge_1' )
-            job_key.DeleteVariable( 'popup_text_2' ) # used in the regenbranch call
+            job_key.DeleteStatusText( 2 ) # used in the regenbranch call
             
             job_key.Finish()
             
@@ -588,28 +611,30 @@ class ClientDBSimilarFiles( ClientDBModule.ClientDBModule ):
             
             HG.client_controller.pub( 'modal_message', job_key )
             
-            job_key.SetVariable( 'popup_text_1', 'purging search info of orphans' )
+            job_key.SetStatusText( 'purging search info of orphans' )
             
             ( current_files_table_name, deleted_files_table_name, pending_files_table_name, petitioned_files_table_name ) = ClientDBFilesStorage.GenerateFilesTableNames( self.modules_services.combined_local_file_service_id )
             
             self._Execute( 'DELETE FROM shape_perceptual_hash_map WHERE hash_id NOT IN ( SELECT hash_id FROM {} );'.format( current_files_table_name ) )
             
-            job_key.SetVariable( 'popup_text_1', 'gathering all leaves' )
+            job_key.SetStatusText( 'gathering all leaves' )
             
             self._Execute( 'DELETE FROM shape_vptree;' )
             
             all_nodes = self._Execute( 'SELECT phash_id, phash FROM shape_perceptual_hashes;' ).fetchall()
             
-            job_key.SetVariable( 'popup_text_1', HydrusData.ToHumanInt( len( all_nodes ) ) + ' leaves found, now regenerating' )
+            job_key.SetStatusText( HydrusData.ToHumanInt( len( all_nodes ) ) + ' leaves found, now regenerating' )
             
             ( root_id, root_perceptual_hash ) = self._PopBestRootNode( all_nodes ) #HydrusData.RandomPop( all_nodes )
             
             self._GenerateBranch( job_key, None, root_id, root_perceptual_hash, all_nodes )
             
+            self._Execute( 'DELETE FROM shape_maintenance_branch_regen;' )
+            
         finally:
             
-            job_key.SetVariable( 'popup_text_1', 'done!' )
-            job_key.DeleteVariable( 'popup_text_2' )
+            job_key.SetStatusText( 'done!' )
+            job_key.DeleteStatusText( 2 )
             
             job_key.Finish()
             

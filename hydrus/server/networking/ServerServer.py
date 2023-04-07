@@ -24,11 +24,14 @@ class HydrusServiceRestricted( HydrusServer.HydrusService ):
         
         root.putChild( b'modify_account_account_type', ServerServerResources.HydrusResourceRestrictedAccountModifyAccountType( self._service, HydrusServer.REMOTE_DOMAIN ) )
         root.putChild( b'modify_account_ban', ServerServerResources.HydrusResourceRestrictedAccountModifyBan( self._service, HydrusServer.REMOTE_DOMAIN ) )
+        root.putChild( b'modify_account_delete_all_content', ServerServerResources.HydrusResourceRestrictedAccountModifyDeleteAllContent( self._service, HydrusServer.REMOTE_DOMAIN ) )
         root.putChild( b'modify_account_expires', ServerServerResources.HydrusResourceRestrictedAccountModifyExpires( self._service, HydrusServer.REMOTE_DOMAIN ) )
         root.putChild( b'modify_account_set_message', ServerServerResources.HydrusResourceRestrictedAccountModifySetMessage( self._service, HydrusServer.REMOTE_DOMAIN ) )
         root.putChild( b'modify_account_unban', ServerServerResources.HydrusResourceRestrictedAccountModifyUnban( self._service, HydrusServer.REMOTE_DOMAIN ) )
         
         root.putChild( b'account_info', ServerServerResources.HydrusResourceRestrictedAccountInfo( self._service, HydrusServer.REMOTE_DOMAIN ) )
+        
+        root.putChild( b'account_key_from_content', ServerServerResources.HydrusResourceRestrictedAccountKeyFromContent( self._service, HydrusServer.REMOTE_DOMAIN ) )
         
         root.putChild( b'account_types', ServerServerResources.HydrusResourceRestrictedAccountTypes( self._service, HydrusServer.REMOTE_DOMAIN ) )
         
@@ -90,5 +93,12 @@ class HydrusServiceRepositoryFile( HydrusServiceRepository ):
     
 class HydrusServiceRepositoryTag( HydrusServiceRepository ):
     
-    pass
+    def _InitRoot( self ):
+        
+        root = HydrusServiceRepository._InitRoot( self )
+        
+        root.putChild( b'tag_filter', ServerServerResources.HydrusResourceRestrictedTagFilter( self._service, HydrusServer.REMOTE_DOMAIN ) )
+        
+        return root
+        
     

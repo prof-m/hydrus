@@ -1,17 +1,10 @@
 import collections
 import typing
 
-from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
-from hydrus.core import HydrusExceptions
-from hydrus.core import HydrusGlobals as HG
-from hydrus.core import HydrusSerialisable
 from hydrus.core import HydrusTags
 
-from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientSearch
-from hydrus.client.gui.search import ClientGUISearch
-from hydrus.client.media import ClientMedia
 from hydrus.client.metadata import ClientTags
 
 class ListBoxItem( object ):
@@ -46,6 +39,11 @@ class ListBoxItem( object ):
         return NotImplemented
         
     
+    def CanFadeColours( self ):
+        
+        return False
+        
+    
     def GetCopyableText( self, with_counts: bool = False ) -> str:
         
         raise NotImplementedError()
@@ -56,7 +54,7 @@ class ListBoxItem( object ):
         raise NotImplementedError()
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str ] ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
         raise NotImplementedError()
         
@@ -95,7 +93,7 @@ class ListBoxItemTagSlice( ListBoxItem ):
         return []
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.Tuple[ str, str ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
         presentation_text = self.GetCopyableText()
         
@@ -108,7 +106,7 @@ class ListBoxItemTagSlice( ListBoxItem ):
             ( namespace, subtag ) = HydrusTags.SplitTag( self._tag_slice )
             
         
-        return [ [ ( presentation_text, namespace ) ] ]
+        return [ [ ( presentation_text, 'namespace', namespace ) ] ]
         
     
     def GetTags( self ) -> typing.Set[ str ]:
@@ -167,9 +165,9 @@ class ListBoxItemNamespaceColour( ListBoxItem ):
         return []
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str ] ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
-        return [ [ ( self.GetCopyableText(), self._namespace ) ] ]
+        return [ [ ( self.GetCopyableText(), 'namespace', self._namespace ) ] ]
         
     
     def GetTags( self ) -> typing.Set[ str ]:
@@ -193,13 +191,27 @@ class ListBoxItemTextTag( ListBoxItem ):
         return self._tag.__hash__()
         
     
-    def _AppendIdealTagTextWithNamespace( self, texts_with_namespaces, render_for_user ):
+    def __lt__( self, other ):
+        
+        if isinstance( other, ListBoxItemTextTag ):
+            
+            return HydrusTags.ConvertTagToSortable( self.GetCopyableText() ) < HydrusTags.ConvertTagToSortable( other.GetCopyableText() )
+            
+        
+        return NotImplemented
+        
+    
+    def _AppendIdealTagTextWithNamespace( self, texts_with_namespaces, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], render_for_user ):
         
         ( namespace, subtag ) = HydrusTags.SplitTag( self._ideal_tag )
         
-        ideal_text = ' (displays as {})'.format( ClientTags.RenderTag( self._ideal_tag, render_for_user ) )
+        if sibling_connector_namespace is None:
+            
+            sibling_connector_namespace = namespace
+            
         
-        texts_with_namespaces.append( ( ideal_text, namespace ) )
+        texts_with_namespaces.append( ( sibling_connector_string, 'sibling_connector', sibling_connector_namespace ) )
+        texts_with_namespaces.append( ( ClientTags.RenderTag( self._ideal_tag, render_for_user ), 'namespace', namespace ) )
         
     
     def _AppendParentsTextWithNamespaces( self, rows_of_texts_with_namespaces, render_for_user ):
@@ -212,7 +224,7 @@ class ListBoxItemTextTag( ListBoxItem ):
             
             tag_text = ClientTags.RenderTag( parent, render_for_user )
             
-            texts_with_namespaces = [ ( indent + tag_text, namespace ) ]
+            texts_with_namespaces = [ ( indent + tag_text, 'namespace', namespace ) ]
             
             rows_of_texts_with_namespaces.append( texts_with_namespaces )
             
@@ -222,7 +234,7 @@ class ListBoxItemTextTag( ListBoxItem ):
         
         parents_text = ' ({} parents)'.format( HydrusData.ToHumanInt( len( self._parent_tags ) ) )
         
-        texts_with_namespaces.append( ( parents_text, '' ) )
+        texts_with_namespaces.append( ( parents_text, 'namespace', '' ) )
         
     
     def GetBestTag( self ) -> str:
@@ -257,7 +269,7 @@ class ListBoxItemTextTag( ListBoxItem ):
             
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str ] ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
         # this should be with counts or whatever, but we need to think about this more lad
         
@@ -265,11 +277,11 @@ class ListBoxItemTextTag( ListBoxItem ):
         
         tag_text = ClientTags.RenderTag( self._tag, render_for_user )
         
-        first_row_of_texts_with_namespaces = [ ( tag_text, namespace ) ]
+        first_row_of_texts_with_namespaces = [ ( tag_text, 'namespace', namespace ) ]
         
         if sibling_decoration_allowed and self._ideal_tag is not None:
             
-            self._AppendIdealTagTextWithNamespace( first_row_of_texts_with_namespaces, render_for_user )
+            self._AppendIdealTagTextWithNamespace( first_row_of_texts_with_namespaces, sibling_connector_string, sibling_connector_namespace, render_for_user )
             
         
         rows_of_texts_with_namespaces = [ first_row_of_texts_with_namespaces ]
@@ -334,11 +346,24 @@ class ListBoxItemTextTagWithCounts( ListBoxItemTextTag ):
         return self._tag.__hash__()
         
     
+    def __lt__( self, other ):
+        
+        if isinstance( other, ListBoxItemTextTagWithCounts ):
+            
+            return HydrusTags.ConvertTagToSortable( self.GetCopyableText( with_counts = False ) ) < HydrusTags.ConvertTagToSortable( other.GetCopyableText( with_counts = False ) )
+            
+        
+        return NotImplemented
+        
+    
     def GetCopyableText( self, with_counts: bool = False ) -> str:
         
         if with_counts:
             
-            return ''.join( ( text for ( text, namespace ) in self.GetRowsOfPresentationTextsWithNamespaces( False, False, False, False )[0] ) )
+            sibling_connector_string = ''
+            sibling_connector_namespace = ''
+            
+            return ''.join( ( text for ( text, colour_type, data ) in self.GetRowsOfPresentationTextsWithNamespaces( False, False, sibling_connector_string, sibling_connector_namespace, False, False )[0] ) )
             
         else:
             
@@ -353,7 +378,7 @@ class ListBoxItemTextTagWithCounts( ListBoxItemTextTag ):
         return [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, value = self._tag ) ]
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str ] ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
         # this should be with counts or whatever, but we need to think about this more lad
         
@@ -401,11 +426,11 @@ class ListBoxItemTextTagWithCounts( ListBoxItemTextTag ):
                 
             
         
-        first_row_of_texts_with_namespaces = [ ( tag_text, namespace ) ]
+        first_row_of_texts_with_namespaces = [ ( tag_text, 'namespace', namespace ) ]
         
         if sibling_decoration_allowed and self._ideal_tag is not None:
             
-            self._AppendIdealTagTextWithNamespace( first_row_of_texts_with_namespaces, render_for_user )
+            self._AppendIdealTagTextWithNamespace( first_row_of_texts_with_namespaces, sibling_connector_string, sibling_connector_namespace, render_for_user )
             
         
         rows_of_texts_with_namespaces = [ first_row_of_texts_with_namespaces ]
@@ -440,6 +465,21 @@ class ListBoxItemPredicate( ListBoxItem ):
         return self._predicate.__hash__()
         
     
+    def __lt__( self, other ):
+        
+        if isinstance( other, ListBoxItem ):
+            
+            return HydrusTags.ConvertTagToSortable( self.GetCopyableText() ) < HydrusTags.ConvertTagToSortable( other.GetCopyableText() )
+            
+        
+        return NotImplemented
+        
+    
+    def CanFadeColours( self ):
+        
+        return not self._predicate.IsORPredicate()
+        
+    
     def GetCopyableText( self, with_counts: bool = False ) -> str:
         
         if self._predicate.GetType() == ClientSearch.PREDICATE_TYPE_NAMESPACE:
@@ -453,6 +493,12 @@ class ListBoxItemPredicate( ListBoxItem ):
             
             text = HydrusTags.CleanTag( self._predicate.GetValue() )
             
+        elif self._predicate.GetType() == ClientSearch.PREDICATE_TYPE_WILDCARD:
+            
+            wildcard = self._predicate.GetValue()
+            
+            text = wildcard
+            
         else:
             
             text = self._predicate.ToString( with_count = with_counts )
@@ -461,16 +507,9 @@ class ListBoxItemPredicate( ListBoxItem ):
         return text
         
     
-    def GetSearchPredicates( self ) -> typing.List[ ClientSearch.Predicate ]:
+    def GetPredicate( self ) -> ClientSearch.Predicate:
         
-        if self._predicate.GetType() in ( ClientSearch.PREDICATE_TYPE_LABEL, ClientSearch.PREDICATE_TYPE_PARENT ):
-            
-            return []
-            
-        else:
-            
-            return [ self._predicate ]
-            
+        return self._predicate
         
     
     def GetRowCount( self, show_parent_rows: bool ):
@@ -485,7 +524,7 @@ class ListBoxItemPredicate( ListBoxItem ):
             
         
     
-    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str ] ] ]:
+    def GetRowsOfPresentationTextsWithNamespaces( self, render_for_user: bool, sibling_decoration_allowed: bool, sibling_connector_string: str, sibling_connector_namespace: typing.Optional[ str ], parent_decoration_allowed: bool, show_parent_rows: bool ) -> typing.List[ typing.List[ typing.Tuple[ str, str, str ] ] ]:
         
         rows_of_texts_and_namespaces = []
         
@@ -497,9 +536,13 @@ class ListBoxItemPredicate( ListBoxItem ):
             
             ( ideal_namespace, ideal_subtag ) = HydrusTags.SplitTag( ideal_sibling )
             
-            ideal_text = ' (displays as {})'.format( ClientTags.RenderTag( ideal_sibling, render_for_user ) )
+            if sibling_connector_namespace is None:
+                
+                sibling_connector_namespace = ideal_namespace
+                
             
-            first_row_of_texts_and_namespaces.append( ( ideal_text, ideal_namespace ) )
+            first_row_of_texts_and_namespaces.append( ( sibling_connector_string, 'sibling_connector', sibling_connector_namespace ) )
+            first_row_of_texts_and_namespaces.append( ( ClientTags.RenderTag( ideal_sibling, render_for_user ), 'namespace', ideal_namespace ) )
             
         
         rows_of_texts_and_namespaces.append( first_row_of_texts_and_namespaces )
@@ -519,11 +562,23 @@ class ListBoxItemPredicate( ListBoxItem ):
                 
                 parents_text = ' ({} parents)'.format( HydrusData.ToHumanInt( len( parent_preds ) ) )
                 
-                first_row_of_texts_and_namespaces.append( ( parents_text, '' ) )
+                first_row_of_texts_and_namespaces.append( ( parents_text, 'namespace', '' ) )
                 
             
         
         return rows_of_texts_and_namespaces
+        
+    
+    def GetSearchPredicates( self ) -> typing.List[ ClientSearch.Predicate ]:
+        
+        if self._predicate.GetType() in ( ClientSearch.PREDICATE_TYPE_LABEL, ClientSearch.PREDICATE_TYPE_PARENT ):
+            
+            return []
+            
+        else:
+            
+            return [ self._predicate ]
+            
         
     
     def GetTags( self ) -> typing.Set[ str ]:
@@ -544,3 +599,4 @@ class ListBoxItemPredicate( ListBoxItem ):
         
         self._i_am_an_or_under_construction = value
         
+    

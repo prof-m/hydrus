@@ -14,11 +14,14 @@ import re
 
 from hydrus.core import HydrusExceptions
 
-re_newlines = re.compile( '[\r\n]+' )
-re_multiple_spaces = re.compile( r'\s+' )
+re_one_or_more_whitespace = re.compile( r'\s+' ) # this does \t and friends too
 # want to keep the 'leading space' part here, despite tag.strip() elsewhere, in case of some crazy '- test' tag
-re_leading_space_or_garbage = re.compile( r'^(\s|-|system:)+' )
+re_leading_garbage = re.compile( r'^(-|system:)+' )
 re_leading_single_colon = re.compile( '^:(?!:)' )
+re_leading_single_colon_and_no_more_colons = re.compile( '^:(?=[^:]+$)' )
+re_leading_single_colon_and_later_colon = re.compile( '^:(?=[^:]+:[^:]+$)' )
+re_leading_double_colon = re.compile( '^::(?!:)' )
+re_leading_colons = re.compile( '^:+' )
 re_leading_byte_order_mark = re.compile( '^\ufeff' ) # unicode .txt files prepend with this, wew
 
 HYDRUS_NOTE_NEWLINE = '\n'
@@ -254,9 +257,9 @@ def NonFailingUnicodeDecode( data, encoding ):
     
     return ( text, encoding )
     
-def RemoveNewlines( text ):
+def RemoveNewlines( text: str ) -> str:
     
-    text = re.sub( r'\r|\n', '', text )
+    text = ''.join( text.splitlines() )
     
     return text
     

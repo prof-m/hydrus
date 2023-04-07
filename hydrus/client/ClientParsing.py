@@ -71,11 +71,29 @@ def ConvertParseResultToPrettyString( result ):
         
         try:
             
-            tag = HydrusTags.CleanTag( HydrusTags.CombineTag( additional_info, parsed_text ) )
+            if additional_info is None:
+                
+                combined_tag = parsed_text
+                
+            else:
+                
+                combined_tag = HydrusTags.CombineTag( additional_info, parsed_text )
+                
+            
+            tag = HydrusTags.CleanTag( combined_tag )
             
         except:
             
             tag = 'unparsable tag, will likely be discarded'
+            
+        
+        try:
+            
+            HydrusTags.CheckTagNotEmpty( tag )
+            
+        except HydrusExceptions.TagSizeException:
+            
+            tag = 'empty tag, will be discarded'
             
         
         return 'tag: ' + tag
@@ -121,13 +139,19 @@ def ConvertParseResultToPrettyString( result ):
         if timestamp_type == HC.TIMESTAMP_TYPE_SOURCE:
             
             return 'source time: ' + timestamp_string
-            
+        
         
     elif content_type == HC.CONTENT_TYPE_TITLE:
         
         priority = additional_info
         
         return 'watcher page title (priority ' + str( priority ) + '): ' + parsed_text
+        
+    elif content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+        
+        header_name = additional_info
+        
+        return 'http header "{}": "{}"'.format( header_name, parsed_text )
         
     elif content_type == HC.CONTENT_TYPE_VETO:
         
@@ -179,11 +203,16 @@ def ConvertParsableContentToPrettyString( parsable_content, include_veto = False
                 
             elif content_type == HC.CONTENT_TYPE_MAPPINGS:
                 
-                namespaces = [ namespace for namespace in additional_infos if namespace != '' ]
+                namespaces = [ namespace for namespace in additional_infos if namespace not in ( '', None ) ]
                 
                 if '' in additional_infos:
                     
                     namespaces.append( 'unnamespaced' )
+                    
+                
+                if None in additional_infos:
+                    
+                    namespaces.append( 'any namespace' )
                     
                 
                 pretty_strings.append( 'tags: ' + ', '.join( namespaces ) )
@@ -215,6 +244,12 @@ def ConvertParsableContentToPrettyString( parsable_content, include_veto = False
             elif content_type == HC.CONTENT_TYPE_TITLE:
                 
                 pretty_strings.append( 'watcher page title' )
+                
+            elif content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+                
+                headers = sorted( [ header for header in additional_infos if header not in ( '', None ) ] )
+
+                pretty_strings.append( 'http headers: ' + ', '.join( headers ) )
                 
             elif content_type == HC.CONTENT_TYPE_VETO:
                 
@@ -381,7 +416,16 @@ def GetNamespacesFromParsableContent( parsable_content ):
     
     content_type_to_additional_infos = HydrusData.BuildKeyToSetDict( ( ( content_type, additional_infos ) for ( name, content_type, additional_infos ) in parsable_content ) )
     
-    namespaces = content_type_to_additional_infos[ HC.CONTENT_TYPE_MAPPINGS ] # additional_infos is a set of namespaces
+    namespaces = set( content_type_to_additional_infos[ HC.CONTENT_TYPE_MAPPINGS ] ) # additional_infos is a set of namespaces
+    
+    if None in namespaces:
+        
+        namespaces.discard( None )
+        
+        namespaces.add( '' )
+        
+    
+    namespaces = sorted( namespaces )
     
     return namespaces
     
@@ -445,7 +489,20 @@ def GetTagsFromParseResults( results ):
         
         if content_type == HC.CONTENT_TYPE_MAPPINGS:
             
-            tag_results.append( HydrusTags.CombineTag( additional_info, parsed_text ) )
+            namespace = additional_info
+            
+            make_no_namespace_changes = namespace is None
+            
+            if make_no_namespace_changes:
+                
+                combined_tag = parsed_text
+                
+            else:
+                
+                combined_tag = HydrusTags.CombineTag( namespace, parsed_text )
+                
+            
+            tag_results.append( combined_tag )
             
         
     
@@ -524,6 +581,23 @@ def GetTitleFromAllParseResults( all_parse_results ):
         
         return None
         
+    
+
+def GetHTTPHeadersFromParseResults( parse_results ):
+    
+    headers = {}
+        
+    for ( ( name, content_type, additional_info ), parsed_text ) in parse_results:
+        
+        if content_type == HC.CONTENT_TYPE_HTTP_HEADERS:
+            
+            header_name = additional_info
+            
+            headers[ header_name ] = parsed_text
+            
+        
+    
+    return headers
     
 
 def GetURLsFromParseResults( results, desired_url_types, only_get_top_priority = False ):
@@ -677,6 +751,16 @@ class ParseFormula( HydrusSerialisable.SerialisableBase ):
         self._string_processor = string_processor
         
     
+    def _GetSerialisableInfo( self ):
+        
+        raise NotImplementedError()
+        
+    
+    def _InitialiseFromSerialisableInfo( self, serialisable_info ):
+        
+        raise NotImplementedError()
+        
+    
     def _GetParsePrettySeparator( self ):
         
         return os.linesep
@@ -698,6 +782,7 @@ class ParseFormula( HydrusSerialisable.SerialisableBase ):
         
         if collapse_newlines:
             
+            # maybe should use HydrusText.DeserialiseNewlinedTexts, but that might change/break some existing parsers with the strip() trim
             raw_texts = [ HydrusText.RemoveNewlines( raw_text ) for raw_text in raw_texts ]
             
         
@@ -1954,7 +2039,7 @@ class ContentParser( HydrusSerialisable.SerialisableBase ):
     
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_CONTENT_PARSER
     SERIALISABLE_NAME = 'Content Parser'
-    SERIALISABLE_VERSION = 6
+    SERIALISABLE_VERSION = 7
     
     def __init__( self, name = None, content_type = None, formula = None, additional_info = None ):
         
@@ -1971,14 +2056,6 @@ class ContentParser( HydrusSerialisable.SerialisableBase ):
         if formula is None:
             
             formula = ParseFormulaHTML()
-            
-        
-        if additional_info is None:
-            
-            if content_type == HC.CONTENT_TYPE_MAPPINGS:
-                
-                additional_info = ''
-                
             
         
         self._name = name
@@ -2160,6 +2237,27 @@ class ContentParser( HydrusSerialisable.SerialisableBase ):
             new_serialisable_info = ( name, content_type, serialisable_formula, additional_info )
             
             return ( 6, new_serialisable_info )
+            
+        
+        if version == 6:
+            
+            ( name, content_type, serialisable_formula, additional_info ) = old_serialisable_info
+            
+            if content_type == HC.CONTENT_TYPE_MAPPINGS:
+                
+                namespace = additional_info
+                
+                if namespace == '':
+                    
+                    namespace = None
+                    
+                
+                additional_info = namespace
+                
+            
+            new_serialisable_info = ( name, content_type, serialisable_formula, additional_info )
+            
+            return ( 7, new_serialisable_info )
             
         
     
@@ -2939,7 +3037,9 @@ class ParseRootFileLookup( HydrusSerialisable.SerialisableBaseNamed ):
             
             try:
                 
-                ( other_hash, ) = HG.client_controller.Read( 'file_hashes', ( sha256_hash, ), 'sha256', hash_type )
+                source_to_desired = HG.client_controller.Read( 'file_hashes', ( sha256_hash, ), 'sha256', hash_type )
+                
+                other_hash = list( source_to_desired.values() )[0]
                 
                 return other_hash
                 

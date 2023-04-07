@@ -145,6 +145,10 @@ SIMPLE_OPEN_COMMAND_PALETTE = 137
 SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_MAX_ZOOM = 138
 SIMPLE_SWITCH_BETWEEN_CANVAS_AND_MAX_ZOOM = 139
 SIMPLE_ZOOM_MAX = 140
+SIMPLE_ZOOM_CANVAS = 141
+SIMPLE_ZOOM_100 = 142
+SIMPLE_ZOOM_DEFAULT = 143
+SIMPLE_SHOW_DUPLICATES = 144
 
 simple_enum_to_str_lookup = {
     SIMPLE_ARCHIVE_DELETE_FILTER_BACK : 'archive/delete filter: back',
@@ -247,6 +251,9 @@ simple_enum_to_str_lookup = {
     SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_CANVAS_ZOOM : 'zoom: switch between 100% and canvas fit',
     SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_MAX_ZOOM : 'zoom: switch between 100% and max zoom',
     SIMPLE_SWITCH_BETWEEN_CANVAS_AND_MAX_ZOOM : 'zoom: switch between canvas fit and max zoom',
+    SIMPLE_ZOOM_100 : 'zoom: 100%',
+    SIMPLE_ZOOM_CANVAS : 'zoom: canvas fit',
+    SIMPLE_ZOOM_DEFAULT : 'zoom: default',
     SIMPLE_ZOOM_MAX : 'zoom: max',
     SIMPLE_SWITCH_BETWEEN_FULLSCREEN_BORDERLESS_AND_REGULAR_FRAMED_WINDOW : 'switch between fullscreen borderless and regular framed window',
     SIMPLE_SYNCHRONISED_WAIT_SWITCH : 'switch between searching a page immediately on new tags and waiting',
@@ -263,6 +270,7 @@ simple_enum_to_str_lookup = {
     SIMPLE_ZOOM_IN_VIEWER_CENTER : 'zoom: in with forced media viewer center',
     SIMPLE_ZOOM_OUT_VIEWER_CENTER : 'zoom: out with forced media viewer center',
     SIMPLE_SWITCH_BETWEEN_100_PERCENT_AND_CANVAS_ZOOM_VIEWER_CENTER : 'zoom: switch 100% and canvas fit with forced media viewer center',
+    SIMPLE_SHOW_DUPLICATES : 'file relationships: show',
     SIMPLE_DUPLICATE_MEDIA_DISSOLVE_FOCUSED_ALTERNATE_GROUP : 'file relationships: dissolve focused file alternate group',
     SIMPLE_DUPLICATE_MEDIA_DISSOLVE_ALTERNATE_GROUP : 'file relationships: dissolve alternate groups',
     SIMPLE_DUPLICATE_MEDIA_DISSOLVE_FOCUSED_DUPLICATE_GROUP : 'file relationships: dissolve focused file duplicate group',
@@ -458,6 +466,10 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
             
             serialisable_data = ( service_key.hex(), content_type, action, value )
             
+        else:
+            
+            raise NotImplementedError( 'Unknown command type!' )
+            
         
         return ( self._command_type, serialisable_data )
         
@@ -639,9 +651,17 @@ class ApplicationCommand( HydrusSerialisable.SerialisableBase ):
             
             s = simple_enum_to_str_lookup[ action ]
             
-            if action == SIMPLE_MEDIA_SEEK_DELTA:
+            if action == SIMPLE_SHOW_DUPLICATES:
                 
-                ( direction, ms ) = self.GetSimpleData()
+                duplicate_type = self.GetSimpleData()
+                
+                s = '{} {}'.format( s, HC.duplicate_type_string_lookup[ duplicate_type ] )
+                
+            elif action == SIMPLE_MEDIA_SEEK_DELTA:
+                
+                data = self.GetSimpleData()
+                
+                ( direction, ms ) = data
                 
                 direction_s = 'back' if direction == -1 else 'forwards'
                 

@@ -2,6 +2,7 @@ import os
 import time
 import traceback
 
+import twisted.internet.error
 from twisted.internet import reactor, defer
 from twisted.internet.threads import deferToThread
 from twisted.web.server import NOT_DONE_YET
@@ -768,9 +769,21 @@ class HydrusResource( Resource ):
         return False
         
     
-    def _errbackDisconnected( self, failure, request_deferred ):
+    def _errbackDisconnected( self, failure, request: HydrusServerRequest.HydrusRequest, request_deferred: defer.Deferred ):
         
         request_deferred.cancel()
+        
+        for c in request.disconnect_callables:
+            
+            try:
+                
+                c()
+                
+            except:
+                
+                pass
+                
+            
         
     
     def _errbackHandleProcessingError( self, failure, request: HydrusServerRequest.HydrusRequest ):
@@ -778,6 +791,13 @@ class HydrusResource( Resource ):
         try:
             
             e = failure.value
+            
+            if isinstance( e, twisted.internet.defer.CancelledError ):
+                
+                # the connection disconnected and further deferred processing was cancelled
+                
+                return request
+                
             
             if isinstance( e, HydrusExceptions.DBException ):
                 
@@ -1045,6 +1065,7 @@ class HydrusResource( Resource ):
                 request.setHeader( 'Access-Control-Allow-Headers', '*' )
                 request.setHeader( 'Access-Control-Allow-Origin', '*' )
                 request.setHeader( 'Access-Control-Allow-Methods', allowed_methods_string )
+                request.setHeader( 'Access-Control-Max-Age', "86400" )
                 
             else:
                 
@@ -1102,7 +1123,7 @@ class HydrusResource( Resource ):
         
         d.addErrback( self._errbackHandleProcessingError, request )
         
-        request.notifyFinish().addErrback( self._errbackDisconnected, d )
+        request.notifyFinish().addErrback( self._errbackDisconnected, request, d )
         
         reactor.callLater( 0, d.callback, request )
         
@@ -1121,7 +1142,7 @@ class HydrusResource( Resource ):
         
         d.addErrback( self._errbackHandleProcessingError, request )
         
-        request.notifyFinish().addErrback( self._errbackDisconnected, d )
+        request.notifyFinish().addErrback( self._errbackDisconnected, request, d )
         
         reactor.callLater( 0, d.callback, request )
         
@@ -1148,7 +1169,7 @@ class HydrusResource( Resource ):
         
         d.addErrback( self._errbackHandleProcessingError, request )
         
-        request.notifyFinish().addErrback( self._errbackDisconnected, d )
+        request.notifyFinish().addErrback( self._errbackDisconnected, request, d )
         
         reactor.callLater( 0, d.callback, request )
         
@@ -1202,7 +1223,6 @@ class ResponseContext( object ):
             
             raise Exception( 'Was given an incompatible object to respond with: ' + repr( body ) )
             
-        
         
         if cookies is None:
             

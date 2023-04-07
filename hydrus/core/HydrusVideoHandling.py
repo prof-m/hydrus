@@ -5,7 +5,6 @@ import os
 import re
 import struct
 import subprocess
-from typing import Optional
 
 from hydrus.core import HydrusAudioHandling
 from hydrus.core import HydrusConstants as HC
@@ -75,7 +74,7 @@ def GetAPNGChunks( file_header_bytes: bytes ) ->list:
     
     return chunks
     
-def GetAPNGACTLChunkData( file_header_bytes: bytes ) -> Optional[bytes]:
+def GetAPNGACTLChunkData( file_header_bytes: bytes ) -> typing.Optional[ bytes ]:
     
     # the acTL chunk can be in different places, but it has to be near the top
     # although it is almost always in fixed position (I think byte 29), we have seen both pHYs and sRGB chunks appear before it
@@ -103,20 +102,23 @@ def GetAPNGDuration( apng_bytes: bytes ) -> float:
     
     total_duration = 0
     
+    CRAZY_FRAME_TIME = 0.1
+    MIN_FRAME_TIME = 0.001
+    
     for ( chunk_name, chunk_data ) in chunks:
         
         if chunk_name == frame_control_chunk_name and len( chunk_data ) >= 24:
-    
+            
             ( delay_numerator, ) = struct.unpack( '>H', chunk_data[20:22] )
             ( delay_denominator, ) = struct.unpack( '>H', chunk_data[22:24] )
             
             if delay_denominator == 0:
                 
-                duration = 0.1
+                duration = CRAZY_FRAME_TIME
                 
             else:
                 
-                duration = delay_numerator / delay_denominator
+                duration = max( delay_numerator / delay_denominator, MIN_FRAME_TIME )
                 
             
             total_duration += duration
@@ -125,12 +127,33 @@ def GetAPNGDuration( apng_bytes: bytes ) -> float:
     
     return total_duration
     
+
 def GetAPNGNumFrames( apng_actl_bytes: bytes ) -> int:
     
     ( num_frames, ) = struct.unpack( '>I', apng_actl_bytes[ : 4 ] )
     
     return num_frames
     
+
+def GetAPNGTimesToPlay( path: str ) -> int:
+    
+    with open( path, 'rb' ) as f:
+        
+        file_header_bytes = f.read( 256 )
+        
+    
+    apng_actl_bytes = GetAPNGACTLChunkData( file_header_bytes )
+    
+    if apng_actl_bytes is None:
+        
+        return 0
+        
+    
+    ( num_plays, ) = struct.unpack( '>I', apng_actl_bytes[ 4 : 8 ] )
+    
+    return num_plays
+    
+
 def GetFFMPEGVersion():
     
     cmd = [ FFMPEG_PATH, '-version' ]
@@ -333,7 +356,14 @@ def GetFFMPEGAPNGProperties( path ):
     
     resolution = ParseFFMPEGVideoResolution( lines, png_ok = True )
     
+    duration_in_ms_float = duration * 1000
+    
     duration_in_ms = int( duration * 1000 )
+    
+    if duration_in_ms == 0 and duration_in_ms_float > 0:
+        
+        duration_in_ms = 1
+        
     
     has_audio = False
     
@@ -582,10 +612,19 @@ def HasVideoStream( path ) -> bool:
     
     return ParseFFMPEGHasVideo( lines )
     
-def RenderImageToPNGPath( path, temp_png_path ):
+def RenderImageToImagePath( path, temp_image_path ):
     
     # -y to overwrite the temp path
-    cmd = [ FFMPEG_PATH, '-y', "-i", path, temp_png_path ]
+    
+    if temp_image_path.endswith( '.jpg' ):
+        
+        # '-q:v 1' does high quality
+        cmd = [ FFMPEG_PATH, '-y', "-i", path, "-q:v", "1", temp_image_path ]
+        
+    else:
+        
+        cmd = [ FFMPEG_PATH, '-y', "-i", path, temp_image_path ]
+        
     
     sbp_kwargs = HydrusData.GetSubprocessKWArgs()
     
@@ -1104,7 +1143,7 @@ def VideoHasAudio( path, info_lines ) -> bool:
 # This was built from moviepy's FFMPEG_VideoReader
 class VideoRendererFFMPEG( object ):
     
-    def __init__( self, path, mime, duration, num_frames, target_resolution, pix_fmt = "rgb24", clip_rect = None ):
+    def __init__( self, path, mime, duration, num_frames, target_resolution, pix_fmt = "rgb24", clip_rect = None, start_pos = None ):
         
         self._path = path
         self._mime = mime
@@ -1135,7 +1174,12 @@ class VideoRendererFFMPEG( object ):
         
         self.bufsize = bufsize
         
-        self.initialize()
+        if start_pos is None:
+            
+            start_pos = 0
+            
+        
+        self.initialize( start_index = start_pos )
         
     
     def close( self ) -> None:

@@ -5,12 +5,8 @@ from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusData
 from hydrus.core import HydrusGlobals as HG
 from hydrus.core import HydrusTags
-from hydrus.core import HydrusText
-
-from hydrus.external import SystemPredicateParser
 
 from hydrus.client import ClientConstants as CC
-from hydrus.client import ClientManagers
 from hydrus.client import ClientSearch
 from hydrus.client import ClientSearchParseSystemPredicates
 from hydrus.client.media import ClientMediaManagers
@@ -461,9 +457,9 @@ class TestTagObjects( unittest.TestCase ):
             self.assertEqual( pat.IsAcceptableForFileSearches(), values[0] )
             self.assertEqual( pat.IsAcceptableForTagSearches(), values[1] )
             self.assertEqual( pat.IsEmpty(), values[2] )
-            self.assertEqual( pat.IsExplicitWildcard(), values[3] )
+            self.assertEqual( pat.IsExplicitWildcard( True ), values[3] )
             self.assertEqual( pat.IsNamespaceSearch(), values[4] )
-            self.assertEqual( pat.IsTagSearch(), values[5] )
+            self.assertEqual( pat.IsTagSearch( True ), values[5] )
             self.assertEqual( pat.inclusive, values[6] )
             
         
@@ -475,8 +471,8 @@ class TestTagObjects( unittest.TestCase ):
         
         def read_predicate_tests( pat: ClientSearch.ParsedAutocompleteText, values ):
             
-            self.assertEqual( pat.GetImmediateFileSearchPredicate(), values[0] )
-            self.assertEqual( pat.GetNonTagFileSearchPredicates(), values[1] )
+            self.assertEqual( pat.GetImmediateFileSearchPredicate( True ), values[0] )
+            self.assertEqual( pat.GetNonTagFileSearchPredicates( True ), values[1] )
             
         
         def write_predicate_tests( pat: ClientSearch.ParsedAutocompleteText, values ):
@@ -521,7 +517,7 @@ class TestTagObjects( unittest.TestCase ):
         
         bool_tests( parsed_autocomplete_text, [ True, True, False, True, False, False, True ] )
         search_text_tests( parsed_autocomplete_text, [ 'samus*', 'samus*' ] )
-        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 'samus*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 'samus*' ) ] ] )
+        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 'samus*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 'samus*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:samus*' ) ] ] )
         
         #
         
@@ -546,7 +542,7 @@ class TestTagObjects( unittest.TestCase ):
         
         bool_tests( parsed_autocomplete_text, [ True, True, False, True, False, False, True ] )
         search_text_tests( parsed_autocomplete_text, [ 's*s', 's*s*' ] )
-        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s' ) ] ] )
+        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s' ) ] ] )
         
         #
         
@@ -554,7 +550,7 @@ class TestTagObjects( unittest.TestCase ):
         
         bool_tests( parsed_autocomplete_text, [ True, True, False, True, False, False, False ] )
         search_text_tests( parsed_autocomplete_text, [ 's*s', 's*s*' ] )
-        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*', inclusive = False ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*', inclusive = False ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s', inclusive = False ) ] ] )
+        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*', inclusive = False ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s*', inclusive = False ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s', inclusive = False ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s*', inclusive = False ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s', inclusive = False ) ] ] )
         
         #
         
@@ -576,7 +572,7 @@ class TestTagObjects( unittest.TestCase ):
         
         bool_tests( parsed_autocomplete_text, [ True, True, False, True, False, False, True ] )
         search_text_tests( parsed_autocomplete_text, [ 's*s a*n', 's*s a*n*' ] )
-        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n' ) ] ] )
+        read_predicate_tests( parsed_autocomplete_text, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n*' ), [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 's*s a*n' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s a*n*' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, '*:s*s a*n' ) ] ] )
         
         #
         
@@ -1687,27 +1683,27 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( p.ToString(), 'tag' )
         self.assertEqual( p.GetNamespace(), '' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'tag', True, count = ClientSearch.PredicateCount.STATICCreateStaticCount( 1, 2 ) )
         
         self.assertEqual( p.ToString( with_count = False ), 'tag' )
         self.assertEqual( p.ToString( with_count = True ), 'tag (1) (+2)' )
         self.assertEqual( p.GetNamespace(), '' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'tag', False )
         
         self.assertEqual( p.ToString(), '-tag' )
         self.assertEqual( p.GetNamespace(), '' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'tag', False, count = ClientSearch.PredicateCount.STATICCreateStaticCount( 1, 2 ) )
         
         self.assertEqual( p.ToString( with_count = False ), '-tag' )
         self.assertEqual( p.ToString( with_count = True ), '-tag (1) (+2)' )
         self.assertEqual( p.GetNamespace(), '' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         #
         
@@ -1715,163 +1711,187 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( p.ToString(), 'system:import time: since 1 year 2 months ago' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_AGE, ( CC.UNICODE_ALMOST_EQUAL_TO, 'delta', ( 1, 2, 3, 4 ) ) )
         
         self.assertEqual( p.ToString(), 'system:import time: around 1 year 2 months ago' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_AGE, ( '>', 'delta', ( 1, 2, 3, 4 ) ) )
         
         self.assertEqual( p.ToString(), 'system:import time: before 1 year 2 months ago' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_ARCHIVE, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1000 ) )
         
         self.assertEqual( p.ToString(), 'system:archive (1,000)' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_DURATION, ( '<', 200 ) )
         
         self.assertEqual( p.ToString(), 'system:duration < 200 milliseconds' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_EVERYTHING, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 2000 ) )
         
         self.assertEqual( p.ToString(), 'system:everything (2,000)' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ( True, HC.CONTENT_STATUS_CURRENT, CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self.assertEqual( p.ToString(), 'system:is currently in my files' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ( True, HC.CONTENT_STATUS_DELETED, CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self.assertEqual( p.ToString(), 'system:is deleted from my files' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ( False, HC.CONTENT_STATUS_PENDING, CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self.assertEqual( p.ToString(), 'system:is not pending to my files' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_FILE_SERVICE, ( False, HC.CONTENT_STATUS_PETITIONED, CC.LOCAL_FILE_SERVICE_KEY ) )
         
         self.assertEqual( p.ToString(), 'system:is not petitioned from my files' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, True )
         
         self.assertEqual( p.ToString(), 'system:has audio' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_AUDIO, False )
         
         self.assertEqual( p.ToString(), 'system:no audio' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
+        
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, True )
+        
+        self.assertEqual( p.ToString(), 'system:image has exif' )
+        self.assertEqual( p.GetNamespace(), 'system' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
+        
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_EXIF, False )
+        
+        self.assertEqual( p.ToString(), 'system:no exif' )
+        self.assertEqual( p.GetNamespace(), 'system' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
+        
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, True )
+        
+        self.assertEqual( p.ToString(), 'system:image has human-readable embedded metadata' )
+        self.assertEqual( p.GetNamespace(), 'system' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
+        
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_HUMAN_READABLE_EMBEDDED_METADATA, False )
+        
+        self.assertEqual( p.ToString(), 'system:no human-readable embedded metadata' )
+        self.assertEqual( p.GetNamespace(), 'system' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, True )
         
-        self.assertEqual( p.ToString(), 'system:has icc profile' )
+        self.assertEqual( p.ToString(), 'system:image has icc profile' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HAS_ICC_PROFILE, False )
         
         self.assertEqual( p.ToString(), 'system:no icc profile' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HASH, ( ( bytes.fromhex( 'abcd' ), ), 'sha256' ) )
         
         self.assertEqual( p.ToString(), 'system:sha256 hash is abcd' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HEIGHT, ( '<', 2000 ) )
         
         self.assertEqual( p.ToString(), 'system:height < 2,000' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_INBOX, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 1000 ) )
         
         self.assertEqual( p.ToString(), 'system:inbox (1,000)' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_LIMIT, 2000 )
         
         self.assertEqual( p.ToString(), 'system:limit is 2,000' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_LOCAL, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 100 ) )
         
         self.assertEqual( p.ToString(), 'system:local (100)' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, set( HC.IMAGES ).intersection( HC.SEARCHABLE_MIMES ) )
         
         self.assertEqual( p.ToString(), 'system:filetype is image' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, ( HC.VIDEO_WEBM, ) )
         
         self.assertEqual( p.ToString(), 'system:filetype is webm' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, ( HC.VIDEO_WEBM, HC.IMAGE_GIF ) )
         
         self.assertEqual( p.ToString(), 'system:filetype is gif, webm' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_MIME, ( HC.GENERAL_AUDIO, HC.GENERAL_VIDEO ) )
         
         self.assertEqual( p.ToString(), 'system:filetype is audio, video' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NOT_LOCAL, count = ClientSearch.PredicateCount.STATICCreateCurrentCount( 100 ) )
         
         self.assertEqual( p.ToString(), 'system:not local (100)' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
-        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( None, '<', 2 ) )
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( '*', '<', 2 ) )
         
         self.assertEqual( p.ToString(), 'system:number of tags < 2' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_TAGS, ( 'character', '<', 2 ) )
         
         self.assertEqual( p.ToString(), 'system:number of character tags < 2' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_NUM_WORDS, ( '<', 5000 ) )
         
         self.assertEqual( p.ToString(), 'system:number of words < 5,000' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         from hydrus.test import TestController
         
@@ -1879,31 +1899,37 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( p.ToString(), 'system:rating for example local rating numerical service > 1/5' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
+        
+        p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '>', 3, TestController.LOCAL_RATING_INCDEC_SERVICE_KEY ) )
+        
+        self.assertEqual( p.ToString(), 'system:rating for example local rating inc/dec service > 3' )
+        self.assertEqual( p.GetNamespace(), 'system' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATIO, ( '=', 16, 9 ) )
         
         self.assertEqual( p.ToString(), 'system:ratio = 16:9' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_SIMILAR_TO, ( ( bytes.fromhex( 'abcd' ), ), 5 ) )
         
         self.assertEqual( p.ToString(), 'system:similar to 1 files using max hamming of 5' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_SIZE, ( '>', 5, 1048576 ) )
         
         self.assertEqual( p.ToString(), 'system:filesize > 5MB' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_WIDTH, ( '=', 1920 ) )
         
         self.assertEqual( p.ToString(), 'system:width = 1,920' )
         self.assertEqual( p.GetNamespace(), 'system' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         #
         
@@ -1911,27 +1937,27 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( p.ToString(), 'series:*anything*' )
         self.assertEqual( p.GetNamespace(), 'series' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'series', False )
         
         self.assertEqual( p.ToString(), '-series' )
         self.assertEqual( p.GetNamespace(), '' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         #
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_WILDCARD, 'a*i:o*' )
         
         self.assertEqual( p.ToString(), 'a*i:o* (wildcard search)' )
-        self.assertEqual( p.GetNamespace(), 'a*i' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetNamespace(), '*' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'a*i:o*', False )
         
         self.assertEqual( p.ToString(), '-a*i:o*' )
-        self.assertEqual( p.GetNamespace(), 'a*i' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetNamespace(), '*' )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         #
         
@@ -1939,22 +1965,22 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( p.ToString(), '    series:game of thrones' )
         self.assertEqual( p.GetNamespace(), 'series' )
-        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), p.GetNamespace() ) ] )
+        self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), [ ( p.ToString(), 'namespace', p.GetNamespace() ) ] )
         
         #
         
         p = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_OR_CONTAINER, [ ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_HEIGHT, ( '<', 2000 ) ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'blue eyes' ), ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_TAG, 'character:samus aran' ) ] )
         
-        self.assertEqual( p.ToString(), 'system:height < 2,000 OR blue eyes OR character:samus aran' )
+        self.assertEqual( p.ToString(), 'blue eyes OR character:samus aran OR system:height < 2,000' )
         self.assertEqual( p.GetNamespace(), '' )
         
         or_texts_and_namespaces = []
         
-        or_texts_and_namespaces.append( ( 'system:height < 2,000', 'system' ) )
-        or_texts_and_namespaces.append( ( ' OR ', 'system' ) )
-        or_texts_and_namespaces.append( ( 'blue eyes', '' ) )
-        or_texts_and_namespaces.append( ( ' OR ', 'system' ) )
-        or_texts_and_namespaces.append( ( 'character:samus aran', 'character' ) )
+        or_texts_and_namespaces.append( ( 'blue eyes', 'namespace', '' ) )
+        or_texts_and_namespaces.append( ( ' OR ', 'or', 'system' ) )
+        or_texts_and_namespaces.append( ( 'character:samus aran', 'namespace', 'character' ) )
+        or_texts_and_namespaces.append( ( ' OR ', 'or', 'system' ) )
+        or_texts_and_namespaces.append( ( 'system:height < 2,000', 'namespace', 'system' ) )
         
         
         self.assertEqual( p.GetTextsAndNamespaces( render_for_user ), or_texts_and_namespaces )
@@ -1978,6 +2004,12 @@ class TestTagObjects( unittest.TestCase ):
             ( 'system:has tags', "system:has tags" ),
             ( 'system:untagged', "system:no tags" ),
             ( 'system:untagged', "system:untagged" ),
+            ( 'system:image has human-readable embedded metadata', "system:has human readable embedded metadata" ),
+            ( 'system:no human-readable embedded metadata', "system:no human readable embedded metadata" ),
+            ( 'system:image has human-readable embedded metadata', "system:has embedded metadata" ),
+            ( 'system:no human-readable embedded metadata', "system:no embedded metadata" ),
+            ( 'system:image has icc profile', "system:has icc profile" ),
+            ( 'system:no icc profile', "system:no icc profile" ),
             ( 'system:number of tags > 5', "system:number of tags > 5" ),
             ( 'system:number of tags \u2248 10', "system:number of tags ~= 10" ),
             ( 'system:has tags', "system:number of tags > 0  " ),
@@ -2022,6 +2054,7 @@ class TestTagObjects( unittest.TestCase ):
             ( 'system:import time: since 2011-06-04', "system:import time > 2011-06-04" ),
             ( 'system:import time: before 7 years 2 months ago', "system:import time > 7 years 2 months" ),
             ( 'system:import time: since 1 day ago', "system:import time < 1 day" ),
+            ( 'system:import time: around 1 day ago', "system:import time = 1 day" ),
             ( 'system:import time: since 1 month 1 day ago', "system:import time < 0 years 1 month 1 day 1 hour" ),
             ( 'system:import time: a month either side of 2011-01-03', " system:import time ~= 2011-1-3 " ),
             ( 'system:import time: a month either side of 1996-05-02', "system:import time ~= 1996-05-2" ),
@@ -2088,3 +2121,27 @@ class TestTagObjects( unittest.TestCase ):
         
         self.assertEqual( tag_autocomplete_options.GetExactMatchCharacterThreshold(), 2 )
         
+    
+
+class TestTagRendering( unittest.TestCase ):
+    
+    def test_rendering( self ):
+        
+        self.assertEqual( ClientTags.RenderTag( 'tag', True ), 'tag' )
+        self.assertEqual( ClientTags.RenderTag( 'test_tag', True ), 'test_tag' )
+        
+        HG.test_controller.new_options.SetBoolean( 'replace_tag_underscores_with_spaces', True )
+        
+        self.assertEqual( ClientTags.RenderTag( 'test_tag', True ), 'test tag' )
+        
+        HG.test_controller.new_options.SetBoolean( 'replace_tag_underscores_with_spaces', False )
+        
+        self.assertEqual( ClientTags.RenderTag( 'character:lara', True ), 'character:lara' )
+        
+        HG.test_controller.new_options.SetBoolean( 'show_namespaces', False )
+        
+        self.assertEqual( ClientTags.RenderTag( 'character:lara', True ), 'lara' )
+        
+        HG.test_controller.new_options.SetBoolean( 'show_namespaces', True )
+        
+    

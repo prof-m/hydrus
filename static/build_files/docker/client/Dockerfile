@@ -1,4 +1,4 @@
-FROM ghcr.io/suika/opencv-video-minimal:4.5.2-py3.9
+FROM alpine:3.16
 
 ARG UID
 ARG GID
@@ -9,9 +9,9 @@ LABEL git="https://github.com/hydrusnetwork/hydrus"
 
 RUN apk --no-cache add fvwm x11vnc xvfb supervisor opencv mpv mpv-libs ffmpeg jq \
  openssl nodejs patch font-noto font-noto-emoji font-noto-cjk \
- py3-pyside2 py3-beautifulsoup4 py3-pillow py3-numpy py3-openssl py3-pip \
- py3-psutil py3-pysocks py3-requests py3-twisted py3-yaml py3-lz4 py3-html5lib 
-RUN pip install qtpy Send2Trash python-mpv cloudscraper pyparsing
+ py3-pyside6 py3-beautifulsoup4 py3-pillow py3-numpy py3-openssl py3-cryptography py3-pip py3-opencv py3-lxml py3-chardet \
+ py3-psutil py3-pysocks py3-requests py3-twisted py3-yaml py3-lz4 py3-html5lib py3-dateutil
+RUN pip install qtpy Send2Trash python-mpv cloudscraper pyparsing cbor2
 
 RUN set -xe \
     && mkdir -p /opt/hydrus \
@@ -28,8 +28,7 @@ COPY --chown=hydrus . /opt/hydrus
 COPY --chown=hydrus --from=suika/swftools:2013-04-09-1007 /swftools/swfrender /opt/hydrus/bin/swfrender_linux
 
 RUN mv /opt/hydrus/static/build_files/docker/client/supervisord.conf /etc/supervisord.conf && \
-    mv /opt/hydrus/static/build_files/docker/client/novnc/index.html /opt/noVNC/index.html && \
-    mv /opt/hydrus/static/build_files/docker/client/novnc/icon.png /opt/noVNC/app/images/icons/icon.png
+    cp /opt/noVNC/vnc.html /opt/noVNC/index.html
 
 RUN ln -fs /usr/bin/python3 /usr/bin/python && ln -fs /usr/bin/pip3 /usr/bin/pip
 

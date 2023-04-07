@@ -1,5 +1,3 @@
-import typing
-
 from qtpy import QtCore as QC
 from qtpy import QtWidgets as QW
 
@@ -121,13 +119,15 @@ class EditMultipleLocationContextPanel( ClientGUIScrolledPanels.EditPanel ):
         self._location_list.checkBoxListChanged.emit()
         
     
+
 class LocationSearchContextButton( ClientGUICommon.BetterButton ):
     
     locationChanged = QC.Signal( ClientLocation.LocationContext )
     
-    def __init__( self, parent: QW.QWidget, location_context: ClientLocation.LocationContext ):
+    def __init__( self, parent: QW.QWidget, location_context: ClientLocation.LocationContext, is_paired_with_tag_domain = False ):
         
         self._location_context = ClientLocation.LocationContext()
+        self._is_paired_with_tag_domain = is_paired_with_tag_domain
         
         ClientGUICommon.BetterButton.__init__( self, parent, 'initialising', self._EditLocation )
         
@@ -135,7 +135,7 @@ class LocationSearchContextButton( ClientGUICommon.BetterButton ):
         self._all_known_files_allowed_only_in_advanced_mode = False
         self._only_importable_domains_allowed = False
         
-        self.SetValue( location_context )
+        self.SetValue( location_context, force_label = True )
         
     
     def _EditLocation( self ):
@@ -144,16 +144,43 @@ class LocationSearchContextButton( ClientGUICommon.BetterButton ):
         
         menu = QW.QMenu()
         
+        last_seen_service_type = None
+        
         for service in services:
+            
+            if last_seen_service_type is not None and last_seen_service_type != service.GetServiceType():
+                
+                ClientGUIMenus.AppendSeparator( menu )
+                
             
             location_context = ClientLocation.LocationContext.STATICCreateSimple( service.GetServiceKey() )
             
-            ClientGUIMenus.AppendMenuItem( menu, service.GetName(), 'Change the current file domain to {}.'.format( service.GetName() ), self.SetValue, location_context )
+            if service.GetServiceType() == HC.COMBINED_FILE and self._is_paired_with_tag_domain:
+                
+                name = 'all known files with tags'
+                
+            else:
+                
+                name = service.GetName()
+                
+            
+            ClientGUIMenus.AppendMenuItem( menu, name, 'Change the current file domain to {}.'.format( service.GetName() ), self.SetValue, location_context )
+            
+            last_seen_service_type = service.GetServiceType()
+            
+            if service.GetServiceType() == HC.LOCAL_FILE_TRASH_DOMAIN:
+                
+                ClientGUIMenus.AppendSeparator( menu )
+                
+                location_context = ClientLocation.LocationContext( current_service_keys = ( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, ), deleted_service_keys = ( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, ) )
+                
+                ClientGUIMenus.AppendMenuItem( menu, 'all files ever imported/deleted', 'Change the current file domain to all current and deleted files your client has seen.', self.SetValue, location_context )
+                
             
         
         ClientGUIMenus.AppendSeparator( menu )
         
-        ClientGUIMenus.AppendMenuItem( menu, 'multiple locations', 'Change the current file domain to something with multiple locations.', self._EditMultipleLocationContext )
+        ClientGUIMenus.AppendMenuItem( menu, 'multiple/deleted locations', 'Change the current file domain to something with multiple locations.', self._EditMultipleLocationContext )
         
         CGC.core().PopupMenu( self, menu )
         
@@ -210,20 +237,32 @@ class LocationSearchContextButton( ClientGUICommon.BetterButton ):
         self._all_known_files_allowed_only_in_advanced_mode = all_known_files_allowed_only_in_advanced_mode
         
     
-    def SetValue( self, location_context: ClientLocation.LocationContext ):
+    def SetValue( self, location_context: ClientLocation.LocationContext, force_label = False ):
         
         location_context = location_context.Duplicate()
         
         location_context.FixMissingServices( HG.client_controller.services_manager.FilterValidServiceKeys )
         
-        if location_context == self._location_context:
+        if not force_label:
             
-            return
+            if location_context == self._location_context:
+                
+                return
+                
             
         
         self._location_context = location_context
         
-        self.setText( self._location_context.ToString( HG.client_controller.services_manager.GetName ) )
+        if self._location_context.IsAllKnownFiles():
+            
+            text = 'all known files with tags'
+            
+        else:
+            
+            text = self._location_context.ToString( HG.client_controller.services_manager.GetName )
+            
+        
+        self.setText( text )
         
         self.locationChanged.emit( self._location_context )
         

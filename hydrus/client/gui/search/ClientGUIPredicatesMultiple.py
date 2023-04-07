@@ -14,6 +14,94 @@ from hydrus.client.gui.search import ClientGUIPredicatesSingle
 from hydrus.client.gui.widgets import ClientGUICommon
 from hydrus.client.metadata import ClientRatings
 
+class PredicateSystemRatingIncDecControl( QW.QWidget ):
+    
+    def __init__( self, parent: QW.QWidget, service_key: bytes, predicate: typing.Optional[ ClientSearch.Predicate ] ):
+        
+        QW.QWidget.__init__( self, parent )
+        
+        self._service_key = service_key
+        
+        service = HG.client_controller.services_manager.GetService( self._service_key )
+        
+        name = service.GetName()
+        
+        name_st = ClientGUICommon.BetterStaticText( self, name )
+        
+        name_st.setAlignment( QC.Qt.AlignLeft | QC.Qt.AlignVCenter )
+        
+        choices = [
+            ( 'more than', '>' ),
+            ( 'less than', '<' ),
+            ( 'is', '=' ),
+            ( 'is about', CC.UNICODE_ALMOST_EQUAL_TO ),
+            ( 'do not search', '' )
+        ]
+        
+        self._choice = QP.DataRadioBox( self, choices, vertical = True )
+        
+        self._rating_value = ClientGUICommon.BetterSpinBox( self, initial = 0, min = 0, max = 1000000 )
+        
+        self._choice.SetValue( '' )
+        
+        #
+        
+        if predicate is not None:
+            
+            value = predicate.GetValue()
+            
+            if value is not None:
+                
+                ( operator, rating, service_key ) = value
+                
+                self._choice.SetValue( operator )
+                
+                self._rating_value.setValue( rating )
+                
+            
+        
+        #
+        
+        hbox = QP.HBoxLayout()
+        
+        QP.AddToLayout( hbox, name_st, CC.FLAGS_EXPAND_BOTH_WAYS )
+        QP.AddToLayout( hbox, self._choice, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( hbox, self._rating_value, CC.FLAGS_CENTER_PERPENDICULAR )
+        
+        self.setLayout( hbox )
+        
+        self._choice.radioBoxChanged.connect( self._UpdateControls )
+        
+        self._UpdateControls()
+        
+    
+    def _UpdateControls( self ):
+        
+        choice = self._choice.GetValue()
+        
+        spinctrl_matters = choice != ''
+        
+        self._rating_value.setEnabled( spinctrl_matters )
+        
+    
+    def GetPredicates( self ):
+        
+        choice = self._choice.GetValue()
+        
+        if choice == '':
+            
+            return []
+            
+        
+        operator = choice
+        
+        rating = self._rating_value.value()
+        
+        predicate = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( operator, rating, self._service_key ) )
+        
+        return [ predicate ]
+        
+    
 class PredicateSystemRatingLikeControl( QW.QWidget ):
     
     def __init__( self, parent: QW.QWidget, service_key: bytes, predicate: typing.Optional[ ClientSearch.Predicate ] ):
@@ -30,11 +118,19 @@ class PredicateSystemRatingLikeControl( QW.QWidget ):
         
         name_st.setAlignment( QC.Qt.AlignLeft | QC.Qt.AlignVCenter )
         
-        self._rated_checkbox = QW.QCheckBox( 'rated', self )
-        self._not_rated_checkbox = QW.QCheckBox( 'not rated', self )
+        choices = [
+            ( 'has rating', 'rated' ),
+            ( 'is', '=' ),
+            ( 'do not search', '' )
+        ]
+        
+        self._choice = QP.DataRadioBox( self, choices, vertical = True )
+        
         self._rating_control = ClientGUIRatings.RatingLikeDialog( self, service_key )
         
         #
+        
+        self._choice.SetValue( '' )
         
         if predicate is not None:
             
@@ -46,15 +142,17 @@ class PredicateSystemRatingLikeControl( QW.QWidget ):
                 
                 if rating == 'rated':
                     
-                    self._rated_checkbox.setChecked( True )
-                    
-                elif rating == 'not rated':
-                    
-                    self._not_rated_checkbox.setChecked( True )
+                    self._choice.SetValue( 'rated' )
                     
                 else:
                     
-                    if rating == 0:
+                    self._choice.SetValue( '=' )
+                    
+                    if rating == 'not rated':
+                        
+                        self._rating_control.SetRatingState( ClientRatings.NULL )
+                        
+                    elif rating == 0:
                         
                         self._rating_control.SetRatingState( ClientRatings.DISLIKE )
                         
@@ -71,24 +169,49 @@ class PredicateSystemRatingLikeControl( QW.QWidget ):
         hbox = QP.HBoxLayout()
         
         QP.AddToLayout( hbox, name_st, CC.FLAGS_EXPAND_BOTH_WAYS )
-        QP.AddToLayout( hbox, self._rated_checkbox, CC.FLAGS_CENTER_PERPENDICULAR )
-        QP.AddToLayout( hbox, self._not_rated_checkbox, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( hbox, self._choice, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._rating_control, CC.FLAGS_CENTER_PERPENDICULAR )
         
         self.setLayout( hbox )
         
+        self._choice.radioBoxChanged.connect( self._UpdateControls )
+        self._rating_control.valueChanged.connect( self._RatingChanged )
+        
+        self._UpdateControls()
+        
+    
+    def _RatingChanged( self ):
+        
+        if self._choice.GetValue() in ( 'rated', '' ):
+            
+            self._choice.SetValue( '=' )
+            
+        
+    
+    def _UpdateControls( self ):
+        
+        choice = self._choice.GetValue()
+        
+        if choice in ( 'rated', '' ):
+            
+            self._rating_control.blockSignals( True )
+            self._rating_control.SetRatingState( ClientRatings.NULL )
+            self._rating_control.blockSignals( False )
+            
+        
     
     def GetPredicates( self ):
         
-        rating = None
+        choice = self._choice.GetValue()
         
-        if self._rated_checkbox.isChecked():
+        if choice == '':
+            
+            return []
+            
+        
+        if choice == 'rated':
             
             rating = 'rated'
-            
-        elif self._not_rated_checkbox.isChecked():
-            
-            rating = 'not rated'
             
         else:
             
@@ -102,18 +225,15 @@ class PredicateSystemRatingLikeControl( QW.QWidget ):
                 
                 rating = 0
                 
+            else:
+                
+                rating = 'not rated'
+                
             
         
-        if rating is None:
-            
-            return []
-            
-        else:
-            
-            predicate = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', rating, self._service_key ) )
-            
-            return [ predicate ]
-            
+        predicate = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( '=', rating, self._service_key ) )
+        
+        return [ predicate ]
         
     
 class PredicateSystemRatingNumericalControl( QW.QWidget ):
@@ -132,12 +252,20 @@ class PredicateSystemRatingNumericalControl( QW.QWidget ):
         
         name_st.setAlignment( QC.Qt.AlignLeft | QC.Qt.AlignVCenter )
         
-        self._rated_checkbox = QW.QCheckBox( 'rated', self )
-        self._not_rated_checkbox = QW.QCheckBox( 'not rated', self )
-        self._operator = QP.RadioBox( self, choices = [ '>', '<', '=', CC.UNICODE_ALMOST_EQUAL_TO ] )
+        choices = [
+            ( 'has rating', 'rated' ),
+            ( 'more than', '>' ),
+            ( 'less than', '<' ),
+            ( 'is', '=' ),
+            ( 'is about', CC.UNICODE_ALMOST_EQUAL_TO ),
+            ( 'do not search', '' )
+        ]
+        
+        self._choice = QP.DataRadioBox( self, choices, vertical = True )
+        
         self._rating_control = ClientGUIRatings.RatingNumericalDialog( self, service_key )
         
-        self._operator.Select( 2 )
+        self._choice.SetValue( '' )
         
         #
         
@@ -151,15 +279,17 @@ class PredicateSystemRatingNumericalControl( QW.QWidget ):
                 
                 if rating == 'rated':
                     
-                    self._rated_checkbox.setChecked( True )
+                    self._choice.SetValue( 'rated' )
                     
                 elif rating == 'not rated':
                     
-                    self._not_rated_checkbox.setChecked( True )
+                    self._choice.SetValue( '=' )
+                    
+                    self._rating_control.SetRating( None )
                     
                 else:
                     
-                    self._operator.SetStringSelection( operator )
+                    self._choice.SetValue( operator )
                     
                     self._rating_control.SetRating( rating )
                     
@@ -171,45 +301,76 @@ class PredicateSystemRatingNumericalControl( QW.QWidget ):
         hbox = QP.HBoxLayout()
         
         QP.AddToLayout( hbox, name_st, CC.FLAGS_EXPAND_BOTH_WAYS )
-        QP.AddToLayout( hbox, self._rated_checkbox, CC.FLAGS_CENTER_PERPENDICULAR )
-        QP.AddToLayout( hbox, self._not_rated_checkbox, CC.FLAGS_CENTER_PERPENDICULAR )
-        QP.AddToLayout( hbox, self._operator, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( hbox, self._choice, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( hbox, self._rating_control, CC.FLAGS_CENTER_PERPENDICULAR )
         
         self.setLayout( hbox )
         
+        self._choice.radioBoxChanged.connect( self._UpdateControls )
+        self._rating_control.valueChanged.connect( self._RatingChanged )
+        
+        self._UpdateControls()
+        
+    
+    def _RatingChanged( self ):
+        
+        if self._choice.GetValue() in ( 'rated', '' ):
+            
+            self._choice.SetValue( '=' )
+            
+        
+    
+    def _UpdateControls( self ):
+        
+        choice = self._choice.GetValue()
+        
+        if choice in ( 'rated', '' ):
+            
+            self._rating_control.blockSignals( True )
+            self._rating_control.SetRating( None )
+            self._rating_control.blockSignals( False )
+            
+        
     
     def GetPredicates( self ):
         
+        choice = self._choice.GetValue()
+        
+        if choice == '':
+            
+            return []
+            
+        
+        operator = '='
         rating = None
         
-        if self._rated_checkbox.isChecked():
+        if choice == 'rated':
             
             operator = '='
             rating = 'rated'
             
-        elif self._not_rated_checkbox.isChecked():
-            
-            operator = '='
-            rating = 'not rated'
-            
-        elif self._rating_control.GetRatingState() != ClientRatings.NULL:
-            
-            operator = self._operator.GetStringSelection()
-            
-            rating = self._rating_control.GetRating()
-            
-        
-        if rating is None:
-            
-            return []
-            
         else:
             
-            predicate = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( operator, rating, self._service_key ) )
+            operator = choice
             
-            return [ predicate ]
+            if self._rating_control.GetRatingState() == ClientRatings.NULL:
+                
+                if operator != '=':
+                    
+                    return []
+                    
+                
+                rating = 'not rated'
+                
+            else:
+                
+                rating = self._rating_control.GetRating()
+                
             
+        
+        predicate = ClientSearch.Predicate( ClientSearch.PREDICATE_TYPE_SYSTEM_RATING, ( operator, rating, self._service_key ) )
+        
+        return [ predicate ]
         
     
 class PanelPredicateSystemMultiple( ClientGUIPredicatesSingle.PanelPredicateSystem ):
@@ -244,11 +405,6 @@ class PanelPredicateSystemMultiple( ClientGUIPredicatesSingle.PanelPredicateSyst
         raise NotImplementedError()
         
     
-    def SetPredicates( self, predicates: typing.Collection[ ClientSearch.Predicate ] ):
-        
-        raise NotImplementedError()
-        
-    
     def UsesCustomDefault( self ) -> bool:
         
         raise NotImplementedError()
@@ -262,11 +418,7 @@ class PanelPredicateSystemRating( PanelPredicateSystemMultiple ):
         
         #
         
-        local_like_service_keys = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_RATING_LIKE, ) )
-        
-        self._like_checkboxes_to_info = {}
-        
-        self._like_rating_ctrls = []
+        local_like_services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_LIKE, ) )
         
         gridbox = QP.GridLayout( cols = 5 )
         
@@ -278,7 +430,9 @@ class PanelPredicateSystemRating( PanelPredicateSystemMultiple ):
         
         self._rating_panels = []
         
-        for service_key in local_like_service_keys:
+        for service in local_like_services:
+            
+            service_key = service.GetServiceKey()
             
             if service_key in service_keys_to_predicates:
                 
@@ -296,13 +450,11 @@ class PanelPredicateSystemRating( PanelPredicateSystemMultiple ):
         
         #
         
-        local_numerical_service_keys = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_RATING_NUMERICAL, ) )
+        local_numerical_services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_NUMERICAL, ) )
         
-        self._numerical_checkboxes_to_info = {}
-        
-        self._numerical_rating_ctrls_to_info = {}
-        
-        for service_key in local_numerical_service_keys:
+        for service in local_numerical_services:
+            
+            service_key = service.GetServiceKey()
             
             if service_key in service_keys_to_predicates:
                 
@@ -314,6 +466,28 @@ class PanelPredicateSystemRating( PanelPredicateSystemMultiple ):
                 
             
             panel = PredicateSystemRatingNumericalControl( self, service_key, predicate )
+            
+            self._rating_panels.append( panel )
+            
+        
+        #
+        
+        local_incdec_services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_INCDEC, ) )
+        
+        for service in local_incdec_services:
+            
+            service_key = service.GetServiceKey()
+            
+            if service_key in service_keys_to_predicates:
+                
+                predicate = service_keys_to_predicates[ service_key ]
+                
+            else:
+                
+                predicate = None
+                
+            
+            panel = PredicateSystemRatingIncDecControl( self, service_key, predicate )
             
             self._rating_panels.append( panel )
             
@@ -332,7 +506,7 @@ class PanelPredicateSystemRating( PanelPredicateSystemMultiple ):
     
     def _FilterWhatICanEdit( self, predicates: typing.Collection[ ClientSearch.Predicate ] ) -> typing.Collection[ ClientSearch.Predicate ]:
         
-        local_rating_service_keys = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_RATING_LIKE, HC.LOCAL_RATING_NUMERICAL ) )
+        local_rating_service_keys = HG.client_controller.services_manager.GetServiceKeys( HC.RATINGS_SERVICES )
         
         good_predicates = []
         

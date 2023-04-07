@@ -392,6 +392,16 @@ class ImageRenderer( object ):
         return pixmap
         
     
+    def HasTransparency( self ):
+        
+        if not self.IsReady():
+            
+            raise Exception( 'I cannot know this yet--the image is not ready!' )
+            
+        
+        return HydrusImageHandling.NumPyImageHasAlphaChannel( self._numpy_image )
+        
+    
     def IsReady( self ):
         
         return self._numpy_image is not None
@@ -476,7 +486,7 @@ class RasterContainerVideo( RasterContainer ):
         self._buffer_start_index = -1
         self._buffer_end_index = -1
         
-        self._times_to_play_gif = 0
+        self._times_to_play_animation = 0
         
         self._stop = False
         
@@ -488,7 +498,7 @@ class RasterContainerVideo( RasterContainer ):
         
         video_buffer_size = new_options.GetInteger( 'video_buffer_size' )
         
-        duration = self._media.GetDuration()
+        duration = self._media.GetDurationMS()
         num_frames_in_video = self._media.GetNumFrames()
         
         if duration is None or duration == 0:
@@ -561,18 +571,20 @@ class RasterContainerVideo( RasterContainer ):
     
     def THREADRender( self ):
         
-        hash = self._media.GetHash()
         mime = self._media.GetMime()
-        duration = self._media.GetDuration()
+        duration = self._media.GetDurationMS()
         num_frames_in_video = self._media.GetNumFrames()
-        
-        client_files_manager = HG.client_controller.client_files_manager
         
         time.sleep( 0.00001 )
         
+        if self._media.GetMime() == HC.IMAGE_APNG:
+            
+            self._times_to_play_animation = HydrusVideoHandling.GetAPNGTimesToPlay( self._path )
+            
+        
         if self._media.GetMime() == HC.IMAGE_GIF:
             
-            ( self._durations, self._times_to_play_gif ) = HydrusImageHandling.GetGIFFrameDurations( self._path )
+            ( self._durations, self._times_to_play_animation ) = HydrusImageHandling.GetGIFFrameDurations( self._path )
             
             self._renderer = ClientVideoHandling.GIFRenderer( self._path, num_frames_in_video, self._target_resolution )
             
@@ -736,7 +748,7 @@ class RasterContainerVideo( RasterContainer ):
             
         
     
-    def GetDuration( self, index ):
+    def GetDurationMS( self, index ):
         
         if self._media.GetMime() == HC.IMAGE_GIF:
             
@@ -863,9 +875,9 @@ class RasterContainerVideo( RasterContainer ):
         return self._target_resolution
         
     
-    def GetTimesToPlayGIF( self ):
+    def GetTimesToPlayAnimation( self ):
         
-        return self._times_to_play_gif
+        return self._times_to_play_animation
         
     
     def GetFrameIndex( self, timestamp_ms ):
@@ -967,7 +979,7 @@ class HydrusBitmap( object ):
         
         if isinstance( data, memoryview ) and not data.c_contiguous:
             
-            data = data.copy()
+            data = data.tobytes() # this _should_ work and is an emergency relief
             
         
         if self._compressed:
@@ -1012,14 +1024,14 @@ class HydrusBitmap( object ):
         return self._depth
         
     
-    def GetQtImage( self ):
+    def GetQtImage( self ) -> QG.QImage:
         
         ( width, height ) = self._size
         
         return HG.client_controller.bitmap_manager.GetQtImageFromBuffer( width, height, self._depth * 8, self._GetData() )
         
     
-    def GetQtPixmap( self ):
+    def GetQtPixmap( self ) -> QG.QPixmap:
         
         ( width, height ) = self._size
         

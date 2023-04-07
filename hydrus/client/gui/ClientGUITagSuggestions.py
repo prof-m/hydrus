@@ -1,3 +1,4 @@
+import os
 import typing
 
 from qtpy import QtCore as QC
@@ -10,7 +11,6 @@ from hydrus.core import HydrusSerialisable
 
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
-from hydrus.client.media import ClientMedia
 from hydrus.client import ClientParsing
 from hydrus.client import ClientSearch
 from hydrus.client import ClientThreading
@@ -20,6 +20,7 @@ from hydrus.client.gui.lists import ClientGUIListBoxes
 from hydrus.client.gui.lists import ClientGUIListBoxesData
 from hydrus.client.gui.parsing import ClientGUIParsingLegacy
 from hydrus.client.gui.widgets import ClientGUICommon
+from hydrus.client.media import ClientMedia
 from hydrus.client.metadata import ClientTags
 from hydrus.client.metadata import ClientTagSorting
 
@@ -33,25 +34,33 @@ def FilterSuggestedPredicatesForMedia( predicates: typing.Sequence[ ClientSearch
     
     return predicates
     
+
 def FilterSuggestedTagsForMedia( tags: typing.Sequence[ str ], medias: typing.Collection[ ClientMedia.Media ], service_key: bytes ) -> typing.List[ str ]:
     
-    tags_filtered_set = set( tags )
+    num_media = len( medias )
+    
+    useful_tags_set = set( tags )
     
     ( current_tags_to_count, deleted_tags_to_count, pending_tags_to_count, petitioned_tags_to_count ) = ClientMedia.GetMediasTagCount( medias, service_key, ClientTags.TAG_DISPLAY_STORAGE )
     
     current_tags_to_count.update( pending_tags_to_count )
     
-    num_media = len( medias )
+    # TODO: figure out a nicer way to filter out siblings and parents here
+    # maybe have to wait for when tags always know their siblings
+    # then we could also filter out worse/better siblings of the same count
+    
+    # this is a sync way for now:
+    # db_tags_to_ideals_and_parents = HG.client_controller.Read( 'tag_display_decorators', service_key, tags_to_lookup )
     
     for ( tag, count ) in current_tags_to_count.items():
         
         if count == num_media:
             
-            tags_filtered_set.discard( tag )
+            useful_tags_set.discard( tag )
             
         
     
-    tags_filtered = [ tag for tag in tags if tag in tags_filtered_set ]
+    tags_filtered = [ tag for tag in tags if tag in useful_tags_set ]
     
     return tags_filtered
     
@@ -329,27 +338,51 @@ class RelatedTagsPanel( QW.QWidget ):
         
         self._last_fetched_predicates = []
         
-        self._have_fetched = False
+        self._have_done_search_with_this_media = False
+        
+        self._selected_tags = set()
         
         self._new_options = HG.client_controller.new_options
         
         vbox = QP.VBoxLayout()
         
+        self._status_label = ClientGUICommon.BetterStaticText( self, label = 'ready' )
+        
+        self._just_do_local_files = ClientGUICommon.OnOffButton( self, on_label = 'just for my files', off_label = 'for all known files', start_on = True )
+        self._just_do_local_files.setToolTip( 'Select how big the search is. Searching across all known files on a repository produces high quality results but takes a long time.' )
+        
+        tt = 'If you select some tags, this will search using only those as reference!'
+        
+        self._button_1 = QW.QPushButton( 'quick', self )
+        self._button_1.clicked.connect( self.RefreshQuick )
+        self._button_1.setMinimumWidth( 30 )
+        self._button_1.setToolTip( tt )
+        
         self._button_2 = QW.QPushButton( 'medium', self )
         self._button_2.clicked.connect( self.RefreshMedium )
         self._button_2.setMinimumWidth( 30 )
+        self._button_2.setToolTip( tt )
         
         self._button_3 = QW.QPushButton( 'thorough', self )
         self._button_3.clicked.connect( self.RefreshThorough )
         self._button_3.setMinimumWidth( 30 )
+        self._button_3.setToolTip( tt )
+        
+        if HG.client_controller.services_manager.GetServiceType( self._service_key ) == HC.LOCAL_TAG:
+            
+            self._just_do_local_files.setVisible( False )
+            
         
         self._related_tags = ListBoxTagsSuggestionsRelated( self, service_key, activate_callable )
         
         button_hbox = QP.HBoxLayout()
         
+        QP.AddToLayout( button_hbox, self._button_1, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
         QP.AddToLayout( button_hbox, self._button_2, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
         QP.AddToLayout( button_hbox, self._button_3, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
         
+        QP.AddToLayout( vbox, self._status_label, CC.FLAGS_EXPAND_PERPENDICULAR )
+        QP.AddToLayout( vbox, self._just_do_local_files, CC.FLAGS_EXPAND_PERPENDICULAR )
         QP.AddToLayout( vbox, button_hbox, CC.FLAGS_EXPAND_PERPENDICULAR )
         QP.AddToLayout( vbox, self._related_tags, CC.FLAGS_EXPAND_BOTH_WAYS )
         
@@ -358,49 +391,135 @@ class RelatedTagsPanel( QW.QWidget ):
         self._related_tags.mouseActivationOccurred.connect( self.mouseActivationOccurred )
         
     
-    def _FetchRelatedTags( self, max_time_to_take ):
+    def _FetchRelatedTagsNew( self, max_time_to_take ):
         
-        def do_it( service_key, hash, search_tags, max_results, max_time_to_take ):
+        def do_it( file_service_key, tag_service_key, search_tags, other_tags_to_exclude ):
             
-            def qt_code( predicates ):
+            def qt_code( predicates, num_done, num_to_do, num_skipped, total_time_took ):
                 
                 if not self or not QP.isValid( self ):
                     
                     return
                     
                 
+                if num_skipped == 0:
+                    
+                    tags_s = 'tags'
+                    
+                else:
+                    
+                    tags_s = 'tags ({} skipped)'.format( HydrusData.ToHumanInt( num_skipped ) )
+                    
+                
+                if num_done == num_to_do:
+                    
+                    num_done_s = 'Searched {} {} in '.format( HydrusData.ToHumanInt( num_done ), tags_s )
+                    
+                else:
+                    
+                    num_done_s = '{} {} searched fully in '.format( HydrusData.ConvertValueRangeToPrettyString( num_done, num_to_do ), tags_s )
+                    
+                
+                label = '{}{}.'.format( num_done_s, HydrusData.TimeDeltaToPrettyTimeDelta( total_time_took ) )
+                
+                self._status_label.setText( label )
+                
                 self._last_fetched_predicates = predicates
                 
                 self._UpdateTagDisplay()
                 
-                self._have_fetched = True
+                self._have_done_search_with_this_media = True
                 
             
-            predicates = HG.client_controller.Read( 'related_tags', service_key, hash, search_tags, max_results, max_time_to_take )
+            start_time = HydrusData.GetNowPrecise()
+            
+            concurrence_threshold = HG.client_controller.new_options.GetInteger( 'related_tags_concurrence_threshold_percent' ) / 100
+            search_tag_slices_weight_dict = { ':' : 1.0, '' : 1.0 }
+            result_tag_slices_weight_dict = { ':' : 1.0, '' : 1.0 }
+            
+            ( related_tags_search_tag_slices_weight_percent, related_tags_result_tag_slices_weight_percent ) = HG.client_controller.new_options.GetRelatedTagsTagSliceWeights()
+            
+            for ( tag_slice, weight_percent ) in related_tags_search_tag_slices_weight_percent:
+                
+                if tag_slice not in ( ':', '' ):
+                    
+                    if tag_slice.endswith( ':' ):
+                        
+                        tag_slice = tag_slice[ : -1 ]
+                        
+                    
+                
+                search_tag_slices_weight_dict[ tag_slice ] = weight_percent / 100
+                
+            
+            for ( tag_slice, weight_percent ) in related_tags_result_tag_slices_weight_percent:
+                
+                if tag_slice not in ( ':', '' ):
+                    
+                    if tag_slice.endswith( ':' ):
+                        
+                        tag_slice = tag_slice[ : -1 ]
+                        
+                    
+                
+                result_tag_slices_weight_dict[ tag_slice ] = weight_percent / 100
+                
+            
+            ( num_done, num_to_do, num_skipped, predicates ) = HG.client_controller.Read(
+                'related_tags',
+                file_service_key,
+                tag_service_key,
+                search_tags,
+                max_time_to_take = max_time_to_take,
+                concurrence_threshold = concurrence_threshold,
+                search_tag_slices_weight_dict = search_tag_slices_weight_dict,
+                result_tag_slices_weight_dict = result_tag_slices_weight_dict,
+                other_tags_to_exclude = other_tags_to_exclude
+            )
+            
+            total_time_took = HydrusData.GetNowPrecise() - start_time
             
             predicates = ClientSearch.SortPredicates( predicates )
             
-            QP.CallAfter( qt_code, predicates )
+            QP.CallAfter( qt_code, predicates, num_done, num_to_do, num_skipped, total_time_took )
             
         
         self._related_tags.SetPredicates( [] )
         
-        ( m, ) = self._media
+        if len( self._selected_tags ) == 0:
+            
+            search_tags = ClientMedia.GetMediasTags( self._media, self._service_key, ClientTags.TAG_DISPLAY_STORAGE, ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) )
+            other_tags_to_exclude = None
+            
+        else:
+            
+            search_tags = self._selected_tags
+            other_tags_to_exclude = set( ClientMedia.GetMediasTags( self._media, self._service_key, ClientTags.TAG_DISPLAY_STORAGE, ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) ) ).difference( self._selected_tags )
+            
         
-        hash = m.GetHash()
+        if len( search_tags ) == 0:
+            
+            self._status_label.setVisible( False )
+            
+            return
+            
         
-        search_tags = ClientMedia.GetMediasTags( self._media, self._service_key, ClientTags.TAG_DISPLAY_STORAGE, ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) )
+        self._status_label.setVisible( True )
         
-        max_results = 100
+        self._status_label.setText( 'searching\u2026' )
         
-        HG.client_controller.CallToThread( do_it, self._service_key, hash, search_tags, max_results, max_time_to_take )
+        if self._just_do_local_files.IsOn():
+            
+            file_service_key = CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY
+            
+        else:
+            
+            file_service_key = CC.COMBINED_FILE_SERVICE_KEY
+            
         
-    
-    def _QuickSuggestedRelatedTags( self ):
+        tag_service_key = self._service_key
         
-        max_time_to_take = self._new_options.GetInteger( 'related_tags_search_1_duration_ms' ) / 1000.0
-        
-        self._FetchRelatedTags( max_time_to_take )
+        HG.client_controller.CallToThread( do_it, file_service_key, tag_service_key, search_tags, other_tags_to_exclude )
         
     
     def _UpdateTagDisplay( self ):
@@ -410,18 +529,25 @@ class RelatedTagsPanel( QW.QWidget ):
         self._related_tags.SetPredicates( predicates )
         
     
+    def RefreshQuick( self ):
+        
+        max_time_to_take = self._new_options.GetInteger( 'related_tags_search_1_duration_ms' ) / 1000.0
+        
+        self._FetchRelatedTagsNew( max_time_to_take )
+        
+    
     def RefreshMedium( self ):
         
         max_time_to_take = self._new_options.GetInteger( 'related_tags_search_2_duration_ms' ) / 1000.0
         
-        self._FetchRelatedTags( max_time_to_take )
+        self._FetchRelatedTagsNew( max_time_to_take )
         
     
     def RefreshThorough( self ):
         
         max_time_to_take = self._new_options.GetInteger( 'related_tags_search_3_duration_ms' ) / 1000.0
         
-        self._FetchRelatedTags( max_time_to_take )
+        self._FetchRelatedTagsNew( max_time_to_take )
         
     
     def MediaUpdated( self ):
@@ -429,11 +555,28 @@ class RelatedTagsPanel( QW.QWidget ):
         self._UpdateTagDisplay()
         
     
+    def NotifyUserLooking( self ):
+        
+        if not self._have_done_search_with_this_media:
+            
+            self.RefreshQuick()
+            
+        
+    
     def SetMedia( self, media ):
         
         self._media = media
         
-        self._QuickSuggestedRelatedTags()
+        self._status_label.setText( 'ready' )
+        
+        self._related_tags.SetPredicates( [] )
+        
+        self._have_done_search_with_this_media = False
+        
+    
+    def SetSelectedTags( self, tags ):
+        
+        self._selected_tags = tags
         
     
     def TakeFocusForUser( self ):
@@ -628,7 +771,11 @@ class FileLookupScriptTagsPanel( QW.QWidget ):
         
         parse_results = script.DoQuery( job_key, file_identifier )
         
-        tags = ClientParsing.GetTagsFromParseResults( parse_results )
+        tags = list( ClientParsing.GetTagsFromParseResults( parse_results ) )
+        
+        tag_sort = ClientTagSorting.TagSort( ClientTagSorting.SORT_BY_HUMAN_TAG, sort_order = CC.SORT_ASC )
+        
+        ClientTagSorting.SortTags( tag_sort, tags )
         
         QP.CallAfter( qt_code, tags )
         
@@ -678,7 +825,7 @@ class SuggestedTagsPanel( QW.QWidget ):
         
         self._related_tags = None
         
-        if self._new_options.GetBoolean( 'show_related_tags' ) and len( media ) == 1:
+        if self._new_options.GetBoolean( 'show_related_tags' ):
             
             self._related_tags = RelatedTagsPanel( panel_parent, service_key, media, activate_callable )
             
@@ -720,11 +867,33 @@ class SuggestedTagsPanel( QW.QWidget ):
             
             QP.AddToLayout( hbox, self._notebook, CC.FLAGS_EXPAND_BOTH_WAYS )
             
+            name_to_page_dict = {
+                'favourites' : self._favourite_tags,
+                'related' : self._related_tags,
+                'file_lookup_scripts' : self._file_lookup_script_tags,
+                'recent' : self._recent_tags
+            }
+            
+            default_suggested_tags_notebook_page = self._new_options.GetString( 'default_suggested_tags_notebook_page' )
+            
+            choice = name_to_page_dict.get( default_suggested_tags_notebook_page, None )
+            
+            if choice is not None:
+                
+                self._notebook.setCurrentWidget( choice )
+                
+            
+            self._notebook.currentChanged.connect( self._PageChanged )
+            
         elif layout_mode == 'columns':
             
             for ( name, panel ) in panels:
                 
-                QP.AddToLayout( hbox, panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+                box_panel = ClientGUICommon.StaticBox( self, name )
+                
+                box_panel.Add( panel, CC.FLAGS_EXPAND_BOTH_WAYS )
+                
+                QP.AddToLayout( hbox, box_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
                 
             
         
@@ -733,6 +902,30 @@ class SuggestedTagsPanel( QW.QWidget ):
         if len( panels ) == 0:
             
             self.hide()
+            
+        else:
+            
+            self._PageChanged()
+            
+        
+    
+    def _PageChanged( self ):
+        
+        if self._related_tags is not None:
+            
+            if self._notebook is None:
+                
+                self._related_tags.NotifyUserLooking()
+                
+                return
+                
+            
+            current_page = self._notebook.currentWidget()
+            
+            if current_page == self._related_tags:
+                
+                self._related_tags.NotifyUserLooking()
+                
             
         
     
@@ -789,6 +982,16 @@ class SuggestedTagsPanel( QW.QWidget ):
         if self._related_tags is not None:
             
             self._related_tags.SetMedia( media )
+            
+        
+        self._PageChanged()
+        
+    
+    def SetSelectedTags( self, tags ):
+        
+        if self._related_tags is not None:
+            
+            self._related_tags.SetSelectedTags( tags )
             
         
     

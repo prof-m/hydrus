@@ -46,6 +46,15 @@ class EditFileImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         #
         
+        if file_import_options.IsDefault():
+            
+            file_import_options = HG.client_controller.new_options.GetDefaultFileImportOptions( FileImportOptions.IMPORT_TYPE_LOUD ).Duplicate()
+            
+            file_import_options.SetIsDefault( True )
+            
+        
+        #
+        
         default_panel = ClientGUICommon.StaticBox( self, 'default options' )
         
         self._use_default_dropdown = ClientGUICommon.BetterChoice( default_panel )
@@ -81,17 +90,45 @@ class EditFileImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         self._exclude_deleted.setToolTip( tt )
         
-        self._do_not_check_known_urls_before_importing = QW.QCheckBox( pre_import_panel )
-        self._do_not_check_hashes_before_importing = QW.QCheckBox( pre_import_panel )
+        #
         
-        tt = 'DO NOT SET THESE EXPENSIVE OPTIONS UNLESS YOU KNOW YOU NEED THEM FOR THIS ONE JOB'
-        tt += os.linesep * 2
-        tt += 'If hydrus recognises a file\'s URL or hash, if it is confident it already has it or previously deleted it, it will normally skip the download, saving a huge amount of time and bandwidth. The logic behind this gets quite complicated, and it is usually best to let it work normally.'
-        tt += os.linesep * 2
-        tt += 'However, if you believe the clientside url mappings or serverside hashes are inaccurate and the file is being wrongly skipped, turn these on to force a download. Only ever do this for one-time manually fired jobs. Do not turn this on for a normal download or a subscription! You do not need to turn these on for a file maintenance job that is filling in missing files, as missing files are automatically detected and essentially turn these on for you on a per-file basis.'
+        self._preimport_hash_check_type = ClientGUICommon.BetterChoice( default_panel )
+        self._preimport_url_check_type = ClientGUICommon.BetterChoice( default_panel )
         
-        self._do_not_check_known_urls_before_importing.setToolTip( tt )
-        self._do_not_check_hashes_before_importing.setToolTip( tt )
+        jobs = [
+            ( 'do not check', FileImportOptions.DO_NOT_CHECK ),
+            ( 'check', FileImportOptions.DO_CHECK ),
+            ( 'check - and matches are dispositive', FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE )
+        ]
+        
+        for ( display_string, client_data ) in jobs:
+            
+            self._preimport_hash_check_type.addItem( display_string, client_data )
+            self._preimport_url_check_type.addItem( display_string, client_data )
+            
+        
+        tt = 'DO NOT SET THESE AS THE EXPENSIVE "DO NOT CHECK" UNLESS YOU KNOW YOU NEED THEM FOR THIS ONE JOB'
+        tt += os.linesep * 2
+        tt += 'If hydrus recognises a file\'s URL or hash, it can determine that it is "already in db" or "previously deleted" and skip the download entirely, saving a huge amount of time and bandwidth. The logic behind this can get quite complicated, and it is usually best to let it work normally.'
+        tt += os.linesep * 2
+        tt += 'If the checking is set to "dispositive", then if a match is found, that match will be trusted and the other match type is not consulted. Note that, for now, SHA256 hashes your client has never seen before will never count as "matches", just like an MD5 it has not seen before, so in all cases the import will defer to any set url check that says "already in db/previously deleted". (This is to deal with some cloud-storage in-transfer optimisation hash-changing. Novel SHA256 hashes are not always trustworthy.)'
+        tt += os.linesep * 2
+        tt += 'If you believe your clientside parser or url mappings are completely broken, and these logical tests are producing false positive "deleted" or "already in db" results, then set one or both of these to "do not check". Only ever do this for one-time manually fired jobs. Do not turn this on for a normal download or a subscription! You do not need to switch off checking for a file maintenance job that is filling in missing files, as missing files are automatically detected in the logic.'
+        
+        self._preimport_hash_check_type.setToolTip( tt )
+        self._preimport_url_check_type.setToolTip( tt )
+        
+        self._preimport_url_check_looks_for_neighbours = QW.QCheckBox( pre_import_panel )
+        
+        tt = 'When a file-url mapping is found, and additional check can be performed to see if it is trustworthy.'
+        tt += os.linesep * 2
+        tt += 'If the URL has a Post URL Class, and the file has multiple other URLs with the same domain & URL Class (basically the file has multiple URLs on the same site), then the mapping is assumed to be some parse spam and not trustworthy (leading to more "this file looks new" results in the pre-check).'
+        tt += os.linesep * 2
+        tt += 'This test is best left on unless you are doing a single job that is messed up by the logic.'
+        
+        self._preimport_url_check_looks_for_neighbours.setToolTip( tt )
+        
+        #
         
         self._allow_decompression_bombs = QW.QCheckBox( pre_import_panel )
         
@@ -192,13 +229,15 @@ class EditFileImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         if show_downloader_options and HG.client_controller.new_options.GetBoolean( 'advanced_mode' ):
             
-            rows.append( ( 'force file downloading even if url recognised and already in db/deleted: ', self._do_not_check_known_urls_before_importing ) )
-            rows.append( ( 'force file downloading even if hash recognised and already in db/deleted: ', self._do_not_check_hashes_before_importing ) )
+            rows.append( ( 'check hashes to determine "already in db/previously deleted"?: ', self._preimport_hash_check_type ) )
+            rows.append( ( 'check URLs to determine "already in db/previously deleted"?: ', self._preimport_url_check_type ) )
+            rows.append( ( 'during URL check, check for neighbour-spam?: ', self._preimport_url_check_looks_for_neighbours ) )
             
         else:
             
-            self._do_not_check_known_urls_before_importing.setVisible( False )
-            self._do_not_check_hashes_before_importing.setVisible( False )
+            self._preimport_hash_check_type.setVisible( False )
+            self._preimport_url_check_type.setVisible( False )
+            self._preimport_url_check_looks_for_neighbours.setVisible( False )
             
         
         rows.append( ( 'allowed filetypes: ', self._mimes ) )
@@ -273,6 +312,12 @@ class EditFileImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         self._UpdateIsDefault()
         
+        self._preimport_hash_check_type.currentIndexChanged.connect( self._UpdateDispositiveFromHash )
+        self._preimport_url_check_type.currentIndexChanged.connect( self._UpdateDispositiveFromURL )
+        
+        self._UpdateDispositiveFromHash()
+        self._UpdateDispositiveFromURL()
+        
     
     def _LoadDefaultOptions( self ):
         
@@ -305,15 +350,18 @@ class EditFileImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         self._use_default_dropdown.SetValue( file_import_options.IsDefault() )
         
-        ( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution ) = file_import_options.GetPreImportOptions()
+        ( exclude_deleted, preimport_hash_check_type, preimport_url_check_type, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution ) = file_import_options.GetPreImportOptions()
+        
+        preimport_url_check_looks_for_neighbours = file_import_options.PreImportURLCheckLooksForNeighbours()
         
         mimes = file_import_options.GetAllowedSpecificFiletypes()
         
         self._mimes.SetValue( mimes )
         
         self._exclude_deleted.setChecked( exclude_deleted )
-        self._do_not_check_known_urls_before_importing.setChecked( do_not_check_known_urls_before_importing )
-        self._do_not_check_hashes_before_importing.setChecked( do_not_check_hashes_before_importing )
+        self._preimport_hash_check_type.SetValue( preimport_hash_check_type )
+        self._preimport_url_check_type.SetValue( preimport_url_check_type )
+        self._preimport_url_check_looks_for_neighbours.setChecked( preimport_url_check_looks_for_neighbours )
         self._allow_decompression_bombs.setChecked( allow_decompression_bombs )
         self._min_size.SetValue( min_size )
         self._max_size.SetValue( max_size )
@@ -377,6 +425,30 @@ If you have a very large (10k+ files) file import page, consider hiding some or 
         QW.QMessageBox.information( self, 'Information', help_message )
         
     
+    def _UpdateDispositiveFromHash( self ):
+        
+        preimport_hash_check_type = self._preimport_hash_check_type.GetValue()
+        preimport_url_check_type = self._preimport_url_check_type.GetValue()
+        
+        if preimport_hash_check_type == FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE and preimport_url_check_type == FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE:
+            
+            self._preimport_url_check_type.SetValue( FileImportOptions.DO_CHECK )
+            
+        
+    
+    def _UpdateDispositiveFromURL( self ):
+        
+        preimport_hash_check_type = self._preimport_hash_check_type.GetValue()
+        preimport_url_check_type = self._preimport_url_check_type.GetValue()
+        
+        if preimport_hash_check_type == FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE and preimport_url_check_type == FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE:
+            
+            self._preimport_hash_check_type.SetValue( FileImportOptions.DO_CHECK )
+            
+        
+        self._preimport_url_check_looks_for_neighbours.setEnabled( preimport_url_check_type != FileImportOptions.DO_NOT_CHECK )
+        
+    
     def _UpdateIsDefault( self ):
         
         is_default = self._use_default_dropdown.GetValue()
@@ -428,8 +500,9 @@ If you have a very large (10k+ files) file import page, consider hiding some or 
         else:
             
             exclude_deleted = self._exclude_deleted.isChecked()
-            do_not_check_known_urls_before_importing = self._do_not_check_known_urls_before_importing.isChecked()
-            do_not_check_hashes_before_importing = self._do_not_check_hashes_before_importing.isChecked()
+            preimport_hash_check_type = self._preimport_hash_check_type.GetValue()
+            preimport_url_check_type = self._preimport_url_check_type.GetValue()
+            preimport_url_check_looks_for_neighbours = self._preimport_url_check_looks_for_neighbours.isChecked()
             allow_decompression_bombs = self._allow_decompression_bombs.isChecked()
             min_size = self._min_size.GetValue()
             max_size = self._max_size.GetValue()
@@ -445,7 +518,8 @@ If you have a very large (10k+ files) file import page, consider hiding some or 
             
             destination_location_context = self._destination_location_context.GetValue()
             
-            file_import_options.SetPreImportOptions( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+            file_import_options.SetPreImportOptions( exclude_deleted, preimport_hash_check_type, preimport_url_check_type, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+            file_import_options.SetPreImportURLCheckLooksForNeighbours( preimport_url_check_looks_for_neighbours )
             file_import_options.SetAllowedSpecificFiletypes( self._mimes.GetValue() )
             file_import_options.SetDestinationLocationContext( destination_location_context )
             file_import_options.SetPostImportOptions( automatic_archive, associate_primary_urls, associate_source_urls )
@@ -474,13 +548,14 @@ class EditNoteImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
     
     isDefaultChanged = QC.Signal( bool )
     
-    def __init__( self, parent: QW.QWidget, note_import_options: NoteImportOptions.NoteImportOptions, allow_default_selection: bool ):
+    def __init__( self, parent: QW.QWidget, note_import_options: NoteImportOptions.NoteImportOptions, allow_default_selection: bool, simple_mode = False ):
         
         ClientGUIScrolledPanels.EditPanel.__init__( self, parent )
         
-        help_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().help, self._ShowHelp )
+        self._allow_default_selection = allow_default_selection
+        self._simple_mode = simple_mode
         
-        help_hbox = ClientGUICommon.WrapInText( help_button, self, 'help for this panel -->', object_name = 'HydrusIndeterminate' )
+        help_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().help, self._ShowHelp )
         
         #
         
@@ -569,9 +644,9 @@ class EditNoteImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         default_panel.Add( self._use_default_dropdown, CC.FLAGS_EXPAND_PERPENDICULAR )
         
-        if not allow_default_selection:
+        if not self._allow_default_selection:
             
-            default_panel.hide()
+            default_panel.setVisible( False )
             
         
         #
@@ -579,12 +654,37 @@ class EditNoteImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         rows = []
         
-        rows.append( ( 'get notes: ', self._get_notes ) )
-        rows.append( ( 'if possible, extend existing notes: ', self._extend_existing_note_if_possible ) )
-        rows.append( ( 'if existing note conflict, what to do: ', self._conflict_resolution ) )
-        rows.append( ( 'only allow these note names' + os.linesep + '(leave blank for \'get all\'): ', self._name_whitelist ) )
-        rows.append( ( 'rename these notes as they come in: ', self._names_to_name_overrides ) )
-        rows.append( ( 'rename spare note(s) to this: ', self._all_name_override ) )
+        if self._simple_mode:
+            
+            help_hbox = QP.HBoxLayout()
+            
+            QP.AddToLayout( help_hbox, help_button, CC.FLAGS_ON_RIGHT )
+            
+            help_button.setVisible( False )
+            
+            default_panel.setVisible( False )
+            self._load_default_options.setVisible( False )
+            
+            self._get_notes.setVisible( False )
+            self._name_whitelist.setVisible( False )
+            self._names_to_name_overrides.setVisible( False )
+            self._all_name_override.setVisible( False )
+            
+            rows.append( ( 'if possible, extend existing notes: ', self._extend_existing_note_if_possible ) )
+            rows.append( ( 'if existing note conflict, what to do: ', self._conflict_resolution ) )
+            
+            
+        else:
+            
+            rows.append( ( 'get notes: ', self._get_notes ) )
+            rows.append( ( 'if possible, extend existing notes: ', self._extend_existing_note_if_possible ) )
+            rows.append( ( 'if existing note conflict, what to do: ', self._conflict_resolution ) )
+            rows.append( ( 'only allow these note names' + os.linesep + '(leave blank for \'get all\'): ', self._name_whitelist ) )
+            rows.append( ( 'rename these notes as they come in: ', self._names_to_name_overrides ) )
+            rows.append( ( 'rename spare note(s) to this: ', self._all_name_override ) )
+            
+            help_hbox = ClientGUICommon.WrapInText( help_button, self, 'help for this panel -->', object_name = 'HydrusIndeterminate' )
+            
         
         gridbox = ClientGUICommon.WrapInGrid( self._specific_options_panel, rows )
         
@@ -707,11 +807,13 @@ class EditNoteImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         
         help_message = '''A \'note\' exists in hydrus as the pair of ( name, text ). A file can only have one note for each name. If a downloader provides some notes, normally they will simply be added to your files. The main tricky part comes when a new note conflicts with an existing one.
 
-If a new note coming in has exactly the same name and text, no change is made.
+If a new note coming in has exactly the same text as any note the file already has, no change is made.
 
-If a new note coming in has the same name but a different text, then two things can happen:
+If a new note coming in has the same name but different text, then two things can happen:
 
 1) If the new text is the same as the existing text but it has more appended (e.g. an artist comment that since had an extra paragraph added), then if you have \'extend existing notes\' checked, the new note will replace the existing one.
+
+- ADVANCED: Note this can also apply to 'name (1)' renames. If ( name, text ) comes in, and 'text' is an extension of 'name (1)' or 'name (3)', _that_ renamed note will be extended.
 
 2) If the new note is more complicated than an extension, or that checkbox is not checked, then the \'conflict\' action occurs. Think about what you want.
 
@@ -721,6 +823,11 @@ Beyond that, you can filter and rename notes. Check the tooltips for more info.'
         
     
     def _UpdateIsDefault( self ):
+        
+        if self._simple_mode or not self._allow_default_selection:
+            
+            return
+            
         
         is_default = self._use_default_dropdown.GetValue()
         
@@ -1152,7 +1259,7 @@ class EditTagImportOptionsPanel( ClientGUIScrolledPanels.EditPanel ):
         self._use_default_dropdown.addItem( 'use the default tag import options at the time of import', True )
         self._use_default_dropdown.addItem( 'set custom tag import options just for this importer', False )
         
-        tt = 'Normally, the client will refer to the defaults (as set under "network->downloaders->manage default tag import options") for the appropriate tag import options at the time of import.'
+        tt = 'Normally, the client will refer to the defaults (as set under "network->downloaders->manage default import options") for the appropriate tag import options at the time of import.'
         tt += os.linesep * 2
         tt += 'It is easier to work this way, since you can change a single default setting and update all current and future downloaders that refer to those defaults, whereas having specific options for every subscription or downloader means you have to update every single one just to make a little change somewhere.'
         tt += os.linesep * 2
@@ -1408,7 +1515,7 @@ You can also set some fixed 'explicit' tags (like, say, 'read later' or 'from my
 
 ---
 
-Please note that once you know what tags you like, you can (and should) set up the 'default' values for these tag import options under _network->downloaders->manage default tag import options_, both globally and on a per-parser basis. If you always want all the tags going to 'my tags', this is easy to set up there, and you won't have to put it in every time.'''
+Please note that once you know what tags you like, you can (and should) set up the 'default' values for these tag import options under _network->downloaders->manage default import options_, both globally and on a per-parser basis. If you always want all the tags going to 'my tags', this is easy to set up there, and you won't have to put it in every time.'''
         
         QW.QMessageBox.information( self, 'Information', message )
         

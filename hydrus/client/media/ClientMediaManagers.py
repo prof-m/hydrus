@@ -85,6 +85,8 @@ class FileInfoManager( object ):
         self.has_audio = has_audio
         self.num_words = num_words
         
+        self.has_exif = False
+        self.has_human_readable_embedded_metadata = False
         self.has_icc_profile = False
         
     
@@ -375,6 +377,11 @@ class TimestampManager( object ):
         return self._GetTimestamp( domain )
         
     
+    def GetDomainModifiedTimestamps( self ) -> typing.Dict[ str, int ]:
+        
+        return { domain : timestamp for ( domain, timestamp ) in self._domains_to_timestamps.items() if isinstance( domain, str ) }
+        
+    
     def GetFileModifiedTimestamp( self ) -> typing.Optional[ int ]:
         
         return self._GetTimestamp( self.DOMAIN_FILE_MODIFIED )
@@ -601,6 +608,23 @@ class LocationsManager( object ):
             
         
     
+    def GetServiceFilename( self, service_key ) -> typing.Optional[ str ]:
+        
+        if service_key in self._service_keys_to_filenames:
+            
+            return self._service_keys_to_filenames[ service_key ]
+            
+        else:
+            
+            return None
+            
+        
+    
+    def GetServiceFilenames( self ) -> typing.Dict[ bytes, str ]:
+        
+        return dict( self._service_keys_to_filenames )
+        
+    
     def GetTimestampManager( self ) -> TimestampManager:
         
         return self._timestamp_manager
@@ -636,9 +660,16 @@ class LocationsManager( object ):
         return CC.TRASH_SERVICE_KEY in self._current
         
     
-    def _AddToService( self, service_key, do_undelete = False ):
+    def _AddToService( self, service_key, do_undelete = False, forced_import_time = None ):
         
-        import_time = HydrusData.GetNow()
+        if forced_import_time is None:
+            
+            import_time = HydrusData.GetNow()
+            
+        else:
+            
+            import_time = forced_import_time
+            
         
         if service_key in self._deleted_to_timestamps:
             
@@ -671,8 +702,10 @@ class LocationsManager( object ):
                 self._current.discard( CC.TRASH_SERVICE_KEY )
                 
             
-            self._AddToService( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY )
-            self._AddToService( CC.COMBINED_LOCAL_FILE_SERVICE_KEY )
+            # forced import time here to handle do_undelete, ensuring old timestamp is propagated
+            
+            self._AddToService( CC.COMBINED_LOCAL_MEDIA_SERVICE_KEY, forced_import_time = import_time )
+            self._AddToService( CC.COMBINED_LOCAL_FILE_SERVICE_KEY, forced_import_time = import_time )
             
         
         if service_key not in self._current_to_timestamps:
@@ -749,30 +782,25 @@ class LocationsManager( object ):
         
         if data_type == HC.CONTENT_TYPE_FILES:
             
-            if action == HC.CONTENT_UPDATE_ADVANCED:
+            if action == HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD:
                 
-                ( sub_action, hashes ) = row
-                
-                if sub_action == 'delete_deleted':
+                if service_key in self._deleted:
                     
-                    if CC.TRASH_SERVICE_KEY not in self._current:
+                    if service_key == CC.COMBINED_LOCAL_FILE_SERVICE_KEY:
                         
-                        if service_key == CC.COMBINED_LOCAL_FILE_SERVICE_KEY:
-                            
-                            service_keys = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_FILE_DOMAIN, HC.COMBINED_LOCAL_FILE ) )
-                            
-                        else:
-                            
-                            service_keys = ( service_key, )
-                            
+                        service_keys = HG.client_controller.services_manager.GetServiceKeys( ( HC.LOCAL_FILE_DOMAIN, HC.COMBINED_LOCAL_FILE ) )
                         
-                        for service_key in service_keys:
+                    else:
+                        
+                        service_keys = ( service_key, )
+                        
+                    
+                    for service_key in service_keys:
+                        
+                        if service_key in self._deleted_to_timestamps:
                             
-                            if service_key in self._deleted_to_timestamps:
-                                
-                                del self._deleted_to_timestamps[ service_key ]
-                                self._deleted.discard( service_key )
-                                
+                            del self._deleted_to_timestamps[ service_key ]
+                            self._deleted.discard( service_key )
                             
                         
                     
@@ -1035,13 +1063,23 @@ class RatingsManager( object ):
             
         else:
             
-            return None
+            service_type = HG.client_controller.services_manager.GetServiceType( service_key )
+            
+            if service_type == HC.LOCAL_RATING_INCDEC:
+                
+                return 0
+                
+            else:
+                
+                return None
+                
             
         
     
-    def GetRatingSlice( self, service_keys ): return frozenset( { self._service_keys_to_ratings[ service_key ] for service_key in service_keys if service_key in self._service_keys_to_ratings } )
-    
-    def GetServiceKeysToRatings( self ): return self._service_keys_to_ratings
+    def GetStarRatingSlice( self, service_keys ):
+        
+        return frozenset( { self._service_keys_to_ratings[ service_key ] for service_key in service_keys if service_key in self._service_keys_to_ratings } )
+        
     
     def ProcessContentUpdate( self, service_key, content_update ):
         
@@ -1051,16 +1089,26 @@ class RatingsManager( object ):
             
             ( rating, hashes ) = row
             
-            if rating is None and service_key in self._service_keys_to_ratings: del self._service_keys_to_ratings[ service_key ]
-            else: self._service_keys_to_ratings[ service_key ] = rating
+            if rating is None and service_key in self._service_keys_to_ratings:
+                
+                del self._service_keys_to_ratings[ service_key ]
+                
+            else:
+                
+                self._service_keys_to_ratings[ service_key ] = rating
+                
             
         
     
     def ResetService( self, service_key ):
         
-        if service_key in self._service_keys_to_ratings: del self._service_keys_to_ratings[ service_key ]
+        if service_key in self._service_keys_to_ratings:
+            
+            del self._service_keys_to_ratings[ service_key ]
+            
         
     
+
 class TagsManager( object ):
     
     def __init__(
@@ -1503,7 +1551,14 @@ class TagsManager( object ):
             
             service_keys_to_statuses_to_tags = self._GetServiceKeysToStatusesToTags( tag_display_type )
             
-            return service_keys_to_statuses_to_tags[ service_key ]
+            if service_key in service_keys_to_statuses_to_tags:
+                
+                return service_keys_to_statuses_to_tags[ service_key ]
+                
+            else:
+                
+                return collections.defaultdict( set )
+                
             
         
     

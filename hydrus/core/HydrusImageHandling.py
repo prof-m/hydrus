@@ -1,5 +1,6 @@
 import hashlib
 import io
+import os
 import typing
 
 import numpy
@@ -53,23 +54,23 @@ if not hasattr( PILImage, 'DecompressionBombError' ):
     
     # super old versions don't have this, so let's just make a stub, wew
     
-    class DBE_stub( Exception ):
+    class DBEStub( Exception ):
         
         pass
         
     
-    PILImage.DecompressionBombError = DBE_stub
+    PILImage.DecompressionBombError = DBEStub
     
 if not hasattr( PILImage, 'DecompressionBombWarning' ):
     
     # super old versions don't have this, so let's just make a stub, wew
     
-    class DBW_stub( Exception ):
+    class DBWStub( Exception ):
         
         pass
         
     
-    PILImage.DecompressionBombWarning = DBW_stub
+    PILImage.DecompressionBombWarning = DBWStub
     
 warnings.simplefilter( 'ignore', PILImage.DecompressionBombWarning )
 warnings.simplefilter( 'ignore', PILImage.DecompressionBombError )
@@ -344,12 +345,7 @@ def GenerateNumPyImage( path, mime, force_pil = False ) -> numpy.array:
             
         
     
-    if NumPyImageHasOpaqueAlphaChannel( numpy_image ):
-        
-        convert = cv2.COLOR_RGBA2RGB
-        
-        numpy_image = cv2.cvtColor( numpy_image, convert )
-        
+    numpy_image = StripOutAnyUselessAlphaChannel( numpy_image )
     
     return numpy_image
     
@@ -440,7 +436,7 @@ def GenerateThumbnailBytesFromStaticImagePath( path, target_resolution, mime, cl
         
         try:
             
-            thumbnail_bytes = GenerateThumbnailBytesNumPy( thumbnail_numpy_image, mime )
+            thumbnail_bytes = GenerateThumbnailBytesNumPy( thumbnail_numpy_image )
             
             return thumbnail_bytes
             
@@ -459,24 +455,19 @@ def GenerateThumbnailBytesFromStaticImagePath( path, target_resolution, mime, cl
     
     thumbnail_pil_image = pil_image.resize( target_resolution, PILImage.ANTIALIAS )
     
-    thumbnail_bytes = GenerateThumbnailBytesPIL( pil_image, mime )
+    thumbnail_bytes = GenerateThumbnailBytesPIL( thumbnail_pil_image )
     
     return thumbnail_bytes
     
-def GenerateThumbnailBytesNumPy( numpy_image, mime ) -> bytes:
+def GenerateThumbnailBytesNumPy( numpy_image ) -> bytes:
     
     ( im_height, im_width, depth ) = numpy_image.shape
     
+    numpy_image = StripOutAnyUselessAlphaChannel( numpy_image )
+    
     if depth == 4:
         
-        if NumPyImageHasOpaqueAlphaChannel( numpy_image ):
-            
-            convert = cv2.COLOR_RGBA2BGR
-            
-        else:
-            
-            convert = cv2.COLOR_RGBA2BGRA
-            
+        convert = cv2.COLOR_RGBA2BGRA
         
     else:
         
@@ -513,11 +504,11 @@ def GenerateThumbnailBytesNumPy( numpy_image, mime ) -> bytes:
         raise HydrusExceptions.CantRenderWithCVException( 'Thumb failed to encode!' )
         
     
-def GenerateThumbnailBytesPIL( pil_image: PILImage.Image, mime ) -> bytes:
+def GenerateThumbnailBytesPIL( pil_image: PILImage.Image ) -> bytes:
     
     f = io.BytesIO()
     
-    if mime == HC.IMAGE_PNG or pil_image.mode == 'RGBA':
+    if PILImageHasTransparency( pil_image ):
         
         pil_image.save( f, 'PNG' )
         
@@ -543,7 +534,10 @@ def GetEXIFDict( pil_image: PILImage.Image ) -> typing.Optional[ dict ]:
             
             exif_dict = pil_image._getexif()
             
-            return exif_dict
+            if len( exif_dict ) > 0:
+                
+                return exif_dict
+                
             
         except:
             
@@ -709,6 +703,75 @@ def GetJPEGQuantizationQualityEstimate( path ):
     
     return ( 'unknown', None )
     
+
+def GetEmbeddedFileText( pil_image: PILImage.Image ) -> typing.Optional[ str ]:
+    
+    def render_dict( d, prefix ):
+        
+        texts = []
+        
+        keys = sorted( d.keys() )
+        
+        for key in keys:
+            
+            if key in ( 'exif', 'icc_profile' ):
+                
+                continue
+                
+            
+            value = d[ key ]
+            
+            if isinstance( value, bytes ):
+                
+                continue
+                
+            
+            if isinstance( value, dict ):
+                
+                value_string = render_dict( value, prefix = '    ' + prefix )
+                
+                if value_string is None:
+                    
+                    continue
+                    
+                
+            else:
+                
+                value_string = '    {}{}'.format( prefix, value )
+                
+            
+            row_text = '{}{}:'.format( prefix, key )
+            row_text += os.linesep
+            row_text += value_string
+            
+            texts.append( row_text )
+            
+        
+        if len( texts ) > 0:
+            
+            return os.linesep.join( texts )
+            
+        else:
+            
+            return None
+            
+        
+    
+    if hasattr( pil_image, 'info' ):
+        
+        try:
+            
+            return render_dict( pil_image.info, '' )
+            
+        except:
+            
+            pass
+            
+        
+    
+    return None
+    
+
 def GetPSDResolution( path ):
     
     with open( path, 'rb' ) as f:
@@ -780,12 +843,20 @@ thumbnail_scale_str_lookup = {
     THUMBNAIL_SCALE_TO_FILL : 'scale to fill'
 }
 
-def GetThumbnailResolutionAndClipRegion( image_resolution, bounding_dimensions, thumbnail_scale_type: int ):
+def GetThumbnailResolutionAndClipRegion( image_resolution: typing.Tuple[ int, int ], bounding_dimensions: typing.Tuple[ int, int ], thumbnail_scale_type: int, thumbnail_dpr_percent: int ):
     
     clip_rect = None
     
     ( im_width, im_height ) = image_resolution
     ( bounding_width, bounding_height ) = bounding_dimensions
+    
+    if thumbnail_dpr_percent != 100:
+        
+        thumbnail_dpr = thumbnail_dpr_percent / 100
+        
+        bounding_height = int( bounding_height * thumbnail_dpr )
+        bounding_width = int( bounding_width * thumbnail_dpr )
+        
     
     if thumbnail_scale_type == THUMBNAIL_SCALE_DOWN_ONLY:
         
@@ -873,6 +944,39 @@ def GetTimesToPlayGIFFromPIL( pil_image: PILImage.Image ) -> int:
     
     return times_to_play_gif
     
+
+def HasEXIF( path: str ) -> bool:
+    
+    try:
+        
+        pil_image = RawOpenPILImage( path )
+        
+    except:
+        
+        return False
+        
+    
+    result = GetEXIFDict( pil_image )
+    
+    return result is not None
+    
+
+def HasHumanReadableEmbeddedMetadata( path: str ) -> bool:
+    
+    try:
+        
+        pil_image = RawOpenPILImage( path )
+        
+    except:
+        
+        return False
+        
+    
+    result = GetEmbeddedFileText( pil_image )
+    
+    return result is not None
+    
+
 def HasICCProfile( pil_image: PILImage.Image ) -> bool:
     
     if 'icc_profile' in pil_image.info:
@@ -887,6 +991,7 @@ def HasICCProfile( pil_image: PILImage.Image ) -> bool:
     
     return False
     
+
 def IsDecompressionBomb( path ) -> bool:
     
     # there are two errors here, the 'Warning' and the 'Error', which atm is just a test vs a test x 2 for number of pixels
@@ -946,7 +1051,7 @@ def NormaliseICCProfilePILImageToSRGB( pil_image: PILImage.Image ) -> PILImage.I
             
         else:
             
-            if PILImageHasAlpha( pil_image ):
+            if PILImageHasTransparency( pil_image ):
                 
                 outputMode = 'RGBA'
                 
@@ -977,7 +1082,7 @@ def NormaliseICCProfilePILImageToSRGB( pil_image: PILImage.Image ) -> PILImage.I
     
 def NormalisePILImageToRGB( pil_image: PILImage.Image ) -> PILImage.Image:
     
-    if PILImageHasAlpha( pil_image ):
+    if PILImageHasTransparency( pil_image ):
         
         desired_mode = 'RGBA'
         
@@ -1000,35 +1105,93 @@ def NormalisePILImageToRGB( pil_image: PILImage.Image ) -> PILImage.Image:
     
     return pil_image
     
-def NumPyImageHasOpaqueAlphaChannel( numpy_image: numpy.array ) -> bool:
+def NumPyImageHasAllCellsTheSame( numpy_image: numpy.array, value: int ):
     
-    shape = numpy_image.shape
+    # I looked around for ways to do this iteratively at the c++ level but didn't have huge luck.
+    # unless some magic is going on, the '==' actually creates the bool array
+    # its ok for now!
+    return numpy.all( numpy_image == value )
     
-    if len( shape ) == 2:
+    # old way, which makes a third array:
+    # alpha_channel == numpy.full( ( shape[0], shape[1] ), 255, dtype = 'uint8' ) ).all()
+    
+
+def NumPyImageHasUselessAlphaChannel( numpy_image: numpy.array ) -> bool:
+    
+    if not NumPyImageHasAlphaChannel( numpy_image ):
         
         return False
         
     
-    if shape[2] == 4:
+    # RGBA image
+    
+    alpha_channel = numpy_image[:,:,3].copy()
+    
+    if NumPyImageHasAllCellsTheSame( alpha_channel, 255 ): # all opaque
         
-        # RGBA image
-        # if the alpha channel is all opaque, there is no use storing that info in our pixel hash
-        # opaque means 255
+        return True
         
-        alpha_channel = numpy_image[:,:,3]
+    
+    if NumPyImageHasAllCellsTheSame( alpha_channel, 0 ): # all transparent
         
-        if ( alpha_channel == numpy.full( ( shape[0], shape[1] ), 255, dtype = 'uint8' ) ).all():
-            
-            return True
-            
+        underlying_image_is_black = NumPyImageHasAllCellsTheSame( numpy_image, 0 )
+        
+        return not underlying_image_is_black
         
     
     return False
     
-def PILImageHasAlpha( pil_image: PILImage.Image ) -> bool:
+
+def NumPyImageHasOpaqueAlphaChannel( numpy_image: numpy.array ) -> bool:
+    
+    if not NumPyImageHasAlphaChannel( numpy_image ):
+        
+        return False
+        
+    
+    # RGBA image
+    # opaque means 255
+    
+    alpha_channel = numpy_image[:,:,3].copy()
+    
+    return NumPyImageHasAllCellsTheSame( alpha_channel, 255 )
+    
+
+def NumPyImageHasAlphaChannel( numpy_image: numpy.array ) -> bool:
+    
+    # note this does not test how useful the channel is, just if it exists
+    
+    shape = numpy_image.shape
+    
+    if len( shape ) <= 2:
+        
+        return False
+        
+    
+    # 2 for LA? think this works
+    return shape[2] in ( 2, 4 )
+    
+
+def NumPyImageHasTransparentAlphaChannel( numpy_image: numpy.array ) -> bool:
+    
+    if not NumPyImageHasAlphaChannel( numpy_image ):
+        
+        return False
+        
+    
+    # RGBA image
+    # transparent means 0
+    
+    alpha_channel = numpy_image[:,:,3].copy()
+    
+    return NumPyImageHasAllCellsTheSame( alpha_channel, 0 )
+    
+
+def PILImageHasTransparency( pil_image: PILImage.Image ) -> bool:
     
     return pil_image.mode in ( 'LA', 'RGBA' ) or ( pil_image.mode == 'P' and 'transparency' in pil_image.info )
     
+
 def RawOpenPILImage( path ) -> PILImage.Image:
     
     try:
@@ -1042,6 +1205,7 @@ def RawOpenPILImage( path ) -> PILImage.Image:
     
     return pil_image
     
+
 def ResizeNumPyImage( numpy_image: numpy.array, target_resolution ) -> numpy.array:
     
     ( target_width, target_height ) = target_resolution
@@ -1126,4 +1290,20 @@ def RotateEXIFPILImage( pil_image: PILImage.Image )-> PILImage.Image:
         
     
     return pil_image
+    
+
+def StripOutAnyUselessAlphaChannel( numpy_image: numpy.array ) -> numpy.array:
+    
+    if NumPyImageHasUselessAlphaChannel( numpy_image ):
+        
+        numpy_image = numpy_image[:,:,:3].copy()
+        
+        # old way, which doesn't actually remove the channel lmao lmao lmao
+        '''
+        convert = cv2.COLOR_RGBA2RGB
+        
+        numpy_image = cv2.cvtColor( numpy_image, convert )
+        '''
+    
+    return numpy_image
     

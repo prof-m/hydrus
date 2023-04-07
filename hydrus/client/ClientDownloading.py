@@ -225,7 +225,7 @@ class QuickDownloadManager( object ):
                         
                         job_key.SetStatusTitle( 'downloading' )
                         
-                        job_key.SetVariable( 'popup_text_1', 'initialising downloader' )
+                        job_key.SetStatusText( 'initialising downloader' )
                         
                         job_key_pub_job = self._controller.CallLater( 2.0, self._controller.pub, 'message', job_key )
                         
@@ -267,7 +267,7 @@ class QuickDownloadManager( object ):
             
             total_done = total_hashes_in_this_run - len( hashes_still_to_download_in_this_run )
             
-            job_key.SetVariable( 'popup_text_1', 'downloading files from remote services: {}'.format( HydrusData.ConvertValueRangeToPrettyString( total_done, total_hashes_in_this_run ) ) )
+            job_key.SetStatusText( 'downloading files from remote services: {}'.format( HydrusData.ConvertValueRangeToPrettyString( total_done, total_hashes_in_this_run ) ) )
             job_key.SetVariable( 'popup_gauge_1', ( total_done, total_hashes_in_this_run ) )
             
             try:
@@ -314,8 +314,9 @@ class QuickDownloadManager( object ):
                                     file_repository.Request( HC.GET, 'file', { 'hash' : hash }, temp_path = temp_path )
                                     
                                     exclude_deleted = False # this is the important part here
-                                    do_not_check_known_urls_before_importing = False
-                                    do_not_check_hashes_before_importing = False
+                                    preimport_hash_check_type = FileImportOptions.DO_CHECK_AND_MATCHES_ARE_DISPOSITIVE
+                                    preimport_url_check_type = FileImportOptions.DO_CHECK
+                                    preimport_url_check_looks_for_neighbours = True
                                     allow_decompression_bombs = True
                                     min_size = None
                                     max_size = None
@@ -328,7 +329,8 @@ class QuickDownloadManager( object ):
                                     
                                     file_import_options = FileImportOptions.FileImportOptions()
                                     
-                                    file_import_options.SetPreImportOptions( exclude_deleted, do_not_check_known_urls_before_importing, do_not_check_hashes_before_importing, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+                                    file_import_options.SetPreImportOptions( exclude_deleted, preimport_hash_check_type, preimport_url_check_type, allow_decompression_bombs, min_size, max_size, max_gif_size, min_resolution, max_resolution )
+                                    file_import_options.SetPreImportURLCheckLooksForNeighbours( preimport_url_check_looks_for_neighbours )
                                     file_import_options.SetPostImportOptions( automatic_archive, associate_primary_urls, associate_source_urls )
                                     
                                     file_import_job = ClientImportFiles.FileImportJob( temp_path, file_import_options )
@@ -347,11 +349,9 @@ class QuickDownloadManager( object ):
                             
                         elif service.GetServiceType() == HC.IPFS:
                             
-                            multihashes = HG.client_controller.Read( 'service_filenames', service_key, { hash } )
+                            multihash = media_result.GetLocationsManager().GetServiceFilename( service_key )
                             
-                            if len( multihashes ) > 0:
-                                
-                                multihash = multihashes[0]
+                            if multihash is not None:
                                 
                                 service.ImportFile( multihash, silent = True )
                                 
@@ -390,12 +390,12 @@ class QuickDownloadManager( object ):
                 
                 if len( hashes_still_to_download_in_this_run ) == 0:
                     
-                    job_key.DeleteVariable( 'popup_text_1' )
+                    job_key.DeleteStatusText()
                     job_key.DeleteVariable( 'popup_gauge_1' )
                     
                     if total_successful_hashes_in_this_run > 0:
                         
-                        job_key.SetVariable( 'popup_text_1', HydrusData.ToHumanInt( total_successful_hashes_in_this_run ) + ' files downloaded' )
+                        job_key.SetStatusText( HydrusData.ToHumanInt( total_successful_hashes_in_this_run ) + ' files downloaded' )
                         
                     
                     job_key_pub_job.Cancel()

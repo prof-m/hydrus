@@ -177,6 +177,18 @@ def RetryIgnored( win: QW.QWidget, file_seed_cache: ClientImportFileSeeds.FileSe
     
     file_seed_cache.RetryIgnored( ignored_regex = ignored_regex )
     
+def ReverseFileSeedCache( win: QW.QWidget, file_seed_cache: ClientImportFileSeeds.FileSeedCache ):
+    
+    message = 'Reverse this file log? Any outstanding imports will process in the opposite order.'
+    
+    result = ClientGUIDialogsQuick.GetYesNo( win, message )
+    
+    if result == QW.QDialog.Accepted:
+        
+        file_seed_cache.Reverse()
+        
+    
+
 def ShowFilesInNewPage( file_seed_cache: ClientImportFileSeeds.FileSeedCache, show = 'all' ):
     
     if show == 'all':
@@ -255,6 +267,10 @@ def PopulateFileSeedCacheMenu( win: QW.QWidget, menu: QW.QMenu, file_seed_cache:
     ClientGUIMenus.AppendSeparator( menu )
     
     if len( file_seed_cache ) > 0:
+        
+        ClientGUIMenus.AppendMenuItem( menu, 'reverse import order', 'Reverse the import list so outstanding imports process in the opposite order.', ReverseFileSeedCache, win, file_seed_cache )
+        
+        ClientGUIMenus.AppendSeparator( menu )
         
         submenu = QW.QMenu( menu )
         
@@ -514,6 +530,24 @@ class EditFileSeedCachePanel( ClientGUIScrolledPanels.EditPanel ):
                     
                     ClientGUIMenus.AppendMenu( menu, url_submenu, 'additional urls' )
                     
+                #
+                
+                headers = selected_file_seed.GetHTTPHeaders()
+                
+                if len( headers ) == 0:
+                    
+                    ClientGUIMenus.AppendMenuLabel( menu, 'no additional headers' )
+                    
+                else:
+                    
+                    header_submenu = QW.QMenu( menu )
+                    
+                    for ( key, value ) in headers.items():
+                        
+                        ClientGUIMenus.AppendMenuLabel( header_submenu, key + ': ' + value )
+                        
+                    
+                    ClientGUIMenus.AppendMenu( menu, header_submenu, 'additional headers' )
                 
                 #
                 
@@ -628,7 +662,7 @@ class EditFileSeedCachePanel( ClientGUIScrolledPanels.EditPanel ):
                     
                     ClientGUIMediaActions.UndeleteFiles( deletee_hashes )
                     
-                    content_update_erase_record = HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_ADVANCED, ( 'delete_deleted', deletee_hashes ) )
+                    content_update_erase_record = HydrusData.ContentUpdate( HC.CONTENT_TYPE_FILES, HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD, deletee_hashes )
                     
                     service_keys_to_content_updates = { CC.COMBINED_LOCAL_FILE_SERVICE_KEY : [ content_update_erase_record ] }
                     

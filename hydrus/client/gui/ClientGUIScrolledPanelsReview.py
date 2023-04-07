@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 import traceback
+import typing
 
 from PIL import ExifTags
 
@@ -61,6 +62,63 @@ from hydrus.client.networking import ClientNetworkingDomain
 from hydrus.client.networking import ClientNetworkingGUG
 from hydrus.client.networking import ClientNetworkingLogin
 from hydrus.client.networking import ClientNetworkingURLClass
+
+class AboutPanel( ClientGUIScrolledPanels.ReviewPanel ):
+    
+    def __init__( self, parent, name, version, description, license_text, developers, site ):
+        
+        ClientGUIScrolledPanels.ReviewPanel.__init__( self, parent )
+        
+        icon_label = ClientGUICommon.BetterStaticText( self )
+        icon_label.setPixmap( HG.client_controller.frame_icon_pixmap )
+        
+        name_label = ClientGUICommon.BetterStaticText( self, name )
+        name_label_font = name_label.font()
+        name_label_font.setBold( True )
+        name_label.setFont( name_label_font )
+        
+        version_label = ClientGUICommon.BetterStaticText( self, version )
+        
+        tabwidget = QW.QTabWidget( self )
+        
+        desc_panel = QW.QWidget( self )
+        
+        desc_label = ClientGUICommon.BetterStaticText( self, description )
+        desc_label.setAlignment( QC.Qt.AlignHCenter | QC.Qt.AlignVCenter )
+        
+        url_label = ClientGUICommon.BetterHyperLink( self, site, site )
+        
+        credits = QW.QTextEdit( self )
+        credits.setPlainText( 'Created by ' + ', '.join( developers ) )
+        credits.setReadOnly( True )
+        credits.setAlignment( QC.Qt.AlignHCenter )
+        
+        license_textedit = QW.QTextEdit( self )
+        license_textedit.setPlainText( license_text )
+        license_textedit.setReadOnly( True )
+        
+        tabwidget.addTab( desc_panel, 'Description' )
+        tabwidget.addTab( credits, 'Credits' )
+        tabwidget.addTab( license_textedit, 'License' )
+        tabwidget.setCurrentIndex( 0 )
+        
+        desc_layout = QP.VBoxLayout()
+        
+        QP.AddToLayout( desc_layout, desc_label, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( desc_layout, url_label, CC.FLAGS_CENTER_PERPENDICULAR )
+        
+        desc_panel.setLayout( desc_layout )
+        
+        vbox = QP.VBoxLayout()
+        
+        QP.AddToLayout( vbox, icon_label, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( vbox, name_label, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( vbox, version_label, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( vbox, tabwidget, CC.FLAGS_CENTER_PERPENDICULAR )
+        
+        self.widget().setLayout( vbox )
+        
+    
 
 class MigrateDatabasePanel( ClientGUIScrolledPanels.ReviewPanel ):
     
@@ -186,17 +244,6 @@ class MigrateDatabasePanel( ClientGUIScrolledPanels.ReviewPanel ):
     
     def _AddPath( self, path, starting_weight = 1 ):
         
-        try:
-            
-            path = os.path.realpath( path )
-            
-        except OSError as e:
-            
-            HydrusData.PrintException( e )
-            
-            QW.QMessageBox.warning( self, 'Warning', 'I tried to remove symlinks from this path, but that failed! If this path is a clever mount, this situation may be ok. I will let you continue, and if the path looks ok and you are confident you can read from and write to it, you can continue. I recommend you close the client and make a backup right now though. The full error has been printed to log.' )
-            
-        
         if path in self._locations_to_ideal_weights:
             
             QW.QMessageBox.warning( self, 'Warning', 'You already have that location entered!' )
@@ -254,7 +301,6 @@ class MigrateDatabasePanel( ClientGUIScrolledPanels.ReviewPanel ):
                         self._AddPath( location, starting_weight = amount )
                         
                     
-                
                 
             
             self._Update()
@@ -816,17 +862,6 @@ class MigrateDatabasePanel( ClientGUIScrolledPanels.ReviewPanel ):
                 
                 path = dlg.GetPath()
                 
-                try:
-                    
-                    path = os.path.realpath( path )
-                    
-                except OSError as e:
-                    
-                    HydrusData.PrintException( e )
-                    
-                    QW.QMessageBox.warning( self, 'Warning', 'I tried to remove symlinks from this path, but that failed! If this path is a clever mount, this situation may be ok. I will let you continue, and if the path looks ok and you are confident you can read from and write to it, you can continue. I recommend you close the client and make a backup right now though. The full error has been printed to log.' )
-                    
-                
                 if path in self._locations_to_ideal_weights:
                     
                     QW.QMessageBox.warning( self, 'Warning', 'That path already exists as a regular file location! Please choose another.' )
@@ -903,6 +938,7 @@ class MigrateDatabasePanel( ClientGUIScrolledPanels.ReviewPanel ):
         self._rebalance_status_st.style().polish( self._rebalance_status_st )
         
     
+
 def THREADMigrateDatabase( controller, source, portable_locations, dest ):
     
     time.sleep( 2 ) # important to have this, so the migrate dialog can close itself and clean its event loop, wew
@@ -933,28 +969,33 @@ def THREADMigrateDatabase( controller, source, portable_locations, dest ):
     
     try:
         
-        job_key.SetVariable( 'popup_text_1', 'waiting for db shutdown' )
+        job_key.SetStatusText( 'waiting for db shutdown' )
         
         while not db.LoopIsFinished():
             
             time.sleep( 1 )
             
         
-        job_key.SetVariable( 'popup_text_1', 'doing the move' )
+        job_key.SetStatusText( 'doing the move' )
         
         def text_update_hook( text ):
             
-            job_key.SetVariable( 'popup_text_1', text )
+            job_key.SetStatusText( text )
             
         
         for filename in os.listdir( source ):
             
             if filename.startswith( 'client' ) and filename.endswith( '.db' ):
                 
-                job_key.SetVariable( 'popup_text_1', 'moving ' + filename )
+                job_key.SetStatusText( 'moving ' + filename )
                 
                 source_path = os.path.join( source, filename )
                 dest_path = os.path.join( dest, filename )
+                
+                if os.path.exists( source_path ) and os.path.exists( dest_path ) and os.path.samefile( source_path, dest_path ):
+                    
+                    continue
+                    
                 
                 HydrusPaths.MergeFile( source_path, dest_path )
                 
@@ -965,16 +1006,21 @@ def THREADMigrateDatabase( controller, source, portable_locations, dest ):
             source_path = os.path.join( source, portable_location )
             dest_path = os.path.join( dest, portable_location )
             
+            if os.path.exists( source_path ) and os.path.exists( dest_path ) and os.path.samefile( source_path, dest_path ):
+                
+                continue
+                
+            
             HydrusPaths.MergeTree( source_path, dest_path, text_update_hook = text_update_hook )
             
         
-        job_key.SetVariable( 'popup_text_1', 'done!' )
+        job_key.SetStatusText( 'done!' )
         
     except:
         
         QP.CallAfter( QW.QMessageBox.critical, None, 'Error', traceback.format_exc() )
         
-        job_key.SetVariable( 'popup_text_1', 'error!' )
+        job_key.SetStatusText( 'error!' )
         
     finally:
         
@@ -1221,19 +1267,20 @@ class MigrateTagsPanel( ClientGUIScrolledPanels.ReviewPanel ):
         
         extra_info = ''
         
-        source_content_statuses_strings = {}
+        source_content_statuses_strings = {
+            ( HC.CONTENT_STATUS_CURRENT, ) : 'current',
+            ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) : 'current and pending',
+            ( HC.CONTENT_STATUS_PENDING, ) : 'pending',
+            ( HC.CONTENT_STATUS_DELETED, ) : 'deleted'
+        }
         
-        source_content_statuses_strings[ ( HC.CONTENT_STATUS_CURRENT, ) ] = 'current'
-        source_content_statuses_strings[ ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) ] = 'current and pending'
-        source_content_statuses_strings[ ( HC.CONTENT_STATUS_DELETED, ) ] = 'deleted'
-        
-        destination_action_strings = {}
-        
-        destination_action_strings[ HC.CONTENT_UPDATE_ADD ] = 'adding them to'
-        destination_action_strings[ HC.CONTENT_UPDATE_DELETE ] = 'deleting them from'
-        destination_action_strings[ HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD ] = 'clearing their deletion record from'
-        destination_action_strings[ HC.CONTENT_UPDATE_PEND ] = 'pending them to'
-        destination_action_strings[ HC.CONTENT_UPDATE_PETITION ] = 'petitioning them for removal from'
+        destination_action_strings = {
+            HC.CONTENT_UPDATE_ADD : 'adding them to',
+            HC.CONTENT_UPDATE_DELETE : 'deleting them from',
+            HC.CONTENT_UPDATE_CLEAR_DELETE_RECORD : 'clearing their deletion record from',
+            HC.CONTENT_UPDATE_PEND : 'pending them to',
+            HC.CONTENT_UPDATE_PETITION : 'petitioning them for removal from'
+        }
         
         content_type = self._migration_content_type.GetValue()
         content_statuses = self._migration_source_content_status_filter.GetValue()
@@ -1703,6 +1750,7 @@ class MigrateTagsPanel( ClientGUIScrolledPanels.ReviewPanel ):
             if source_service_type == HC.TAG_REPOSITORY:
                 
                 self._migration_source_content_status_filter.addItem( 'current and pending', ( HC.CONTENT_STATUS_CURRENT, HC.CONTENT_STATUS_PENDING ) )
+                self._migration_source_content_status_filter.addItem( 'pending', ( HC.CONTENT_STATUS_PENDING, ) )
                 
             
             self._migration_source_content_status_filter.addItem( 'deleted', ( HC.CONTENT_STATUS_DELETED, ) )
@@ -2219,7 +2267,7 @@ class ReviewDownloaderImport( ClientGUIScrolledPanels.ReviewPanel ):
         domain_manager.AutoAddURLClassesAndParsers( new_url_classes, dupe_url_classes, new_parsers )
         
         bandwidth_manager.AutoAddDomainMetadatas( new_domain_metadatas )
-        domain_manager.AutoAddDomainMetadatas( new_domain_metadatas, approved = True )
+        domain_manager.AutoAddDomainMetadatas( new_domain_metadatas, approved = ClientNetworkingDomain.VALID_APPROVED )
         login_manager.AutoAddLoginScripts( new_login_scripts )
         
         num_new_gugs = len( new_gugs )
@@ -2294,42 +2342,77 @@ class ReviewDownloaderImport( ClientGUIScrolledPanels.ReviewPanel ):
         
     
 
-class ReviewFileEXIF( ClientGUIScrolledPanels.ReviewPanel ):
+class ReviewFileEmbeddedMetadata( ClientGUIScrolledPanels.ReviewPanel ):
     
-    def __init__( self, parent, exif_dict ):
+    def __init__( self, parent, exif_dict: typing.Optional[ dict ], file_text: typing.Optional[ str ] ):
         
         ClientGUIScrolledPanels.ReviewPanel.__init__( self, parent )
         
-        vbox = QP.VBoxLayout()
+        #
+        
+        exif_panel = ClientGUICommon.StaticBox( self, 'EXIF' )
         
         label = 'Double-click a row to copy its value to clipboard.'
         
-        st = ClientGUICommon.BetterStaticText( self, label = label )
+        st = ClientGUICommon.BetterStaticText( exif_panel, label = label )
         
         st.setWordWrap( True )
         st.setAlignment( QC.Qt.AlignCenter )
         
-        QP.AddToLayout( vbox, st, CC.FLAGS_EXPAND_PERPENDICULAR )
+        self._exif_listctrl = ClientGUIListCtrl.BetterListCtrl( exif_panel, CGLC.COLUMN_LIST_EXIF_DATA.ID, 16, self._ConvertEXIFToListCtrlTuples, activation_callback = self._CopyRow )
         
-        self._exif_listctrl = ClientGUIListCtrl.BetterListCtrl( self, CGLC.COLUMN_LIST_EXIF_DATA.ID, 24, self._ConvertEXIFToListCtrlTuples, activation_callback = self._CopyRow )
+        exif_panel.Add( st, CC.FLAGS_EXPAND_PERPENDICULAR )
+        exif_panel.Add( self._exif_listctrl, CC.FLAGS_EXPAND_BOTH_WAYS )
         
-        datas = []
+        #
         
-        for ( exif_id, value ) in exif_dict.items():
+        text_panel = ClientGUICommon.StaticBox( self, 'embedded text' )
+        
+        self._text = QW.QPlainTextEdit( text_panel )
+        self._text.setReadOnly( True )
+        
+        text_panel.Add( self._text, CC.FLAGS_EXPAND_BOTH_WAYS )
+        
+        #
+        
+        if exif_dict is None:
             
-            if isinstance( value, dict ):
+            exif_panel.setVisible( False )
+            
+        else:
+            
+            datas = []
+            
+            for ( exif_id, value ) in exif_dict.items():
                 
-                datas.extend( value.items() )
-                
-            else:
-                
-                datas.append( ( exif_id, value ) )
+                if isinstance( value, dict ):
+                    
+                    datas.extend( value.items() )
+                    
+                else:
+                    
+                    datas.append( ( exif_id, value ) )
+                    
                 
             
+            self._exif_listctrl.AddDatas( datas )
+            
         
-        self._exif_listctrl.AddDatas( datas )
+        if file_text is None:
+            
+            text_panel.setVisible( False )
+            
+        else:
+            
+            self._text.setPlainText( file_text )
+            
         
-        QP.AddToLayout( vbox, self._exif_listctrl, CC.FLAGS_EXPAND_BOTH_WAYS )
+        #
+        
+        vbox = QP.VBoxLayout()
+        
+        QP.AddToLayout( vbox, exif_panel, CC.FLAGS_EXPAND_BOTH_WAYS )
+        QP.AddToLayout( vbox, text_panel, CC.FLAGS_EXPAND_BOTH_WAYS )
         
         self.widget().setLayout( vbox )
         
@@ -2413,15 +2496,6 @@ class ReviewFileHistory( ClientGUIScrolledPanels.ReviewPanel ):
         file_history_chart.setMinimumSize( 720, 480 )
         
         vbox = QP.VBoxLayout()
-        
-        label = 'Please note that delete and inbox time tracking are new so you may not have full data for them.'
-        
-        st = ClientGUICommon.BetterStaticText( self, label = label )
-        
-        st.setWordWrap( True )
-        st.setAlignment( QC.Qt.AlignCenter )
-        
-        QP.AddToLayout( vbox, st, CC.FLAGS_EXPAND_PERPENDICULAR )
         
         flip_deleted = QW.QCheckBox( 'show deleted', self )
         
@@ -2714,7 +2788,7 @@ class ReviewFileMaintenance( ClientGUIScrolledPanels.ReviewPanel ):
         
         def work_callable():
             
-            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context )
+            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context, apply_implicit_limit = False )
             
             return query_hash_ids
             
@@ -2754,7 +2828,7 @@ class ReviewFileMaintenance( ClientGUIScrolledPanels.ReviewPanel ):
         
         def work_callable():
             
-            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context )
+            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context, apply_implicit_limit = False )
             
             return query_hash_ids
             
@@ -2781,7 +2855,7 @@ class ReviewFileMaintenance( ClientGUIScrolledPanels.ReviewPanel ):
         
         def work_callable():
             
-            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context )
+            query_hash_ids = HG.client_controller.Read( 'file_query_ids', file_search_context, apply_implicit_limit = False )
             
             return query_hash_ids
             
@@ -2824,6 +2898,7 @@ class ReviewFileMaintenance( ClientGUIScrolledPanels.ReviewPanel ):
         return len( self._job_types_to_counts ) > 0
         
     
+
 class ReviewHowBonedAmI( ClientGUIScrolledPanels.ReviewPanel ):
     
     def __init__( self, parent, boned_stats ):
@@ -3136,7 +3211,7 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
         self._add_button = ClientGUICommon.BetterButton( self, 'import now', self._DoImport )
         self._add_button.setObjectName( 'HydrusAccept' )
         
-        self._tag_button = ClientGUICommon.BetterButton( self, 'add tags before the import >>', self._AddTags )
+        self._tag_button = ClientGUICommon.BetterButton( self, 'add tags/urls with the import >>', self._AddTags )
         self._tag_button.setObjectName( 'HydrusAccept' )
         
         self._tag_button.setToolTip( 'You can add specific tags to these files, import from sidecar files, or generate them based on filename. Don\'t be afraid to experiment!' )
@@ -3213,6 +3288,10 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
     
     def _AddTags( self ):
         
+        # TODO: convert this class to have a filenametaggingoptions and the structure for 'tags for these files', which is separate
+        # then make this button not start the import. just edit the options and routers and return
+        # if needed, we convert to paths_to_additional_tags on ultimate ok, or we convert the hdd import to just hold service_keys_to_filenametaggingoptions, like an import folder does
+        
         paths = self._paths_list.GetData()
         
         if len( paths ) > 0:
@@ -3227,11 +3306,11 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
                 
                 if dlg.exec() == QW.QDialog.Accepted:
                     
-                    paths_to_additional_service_keys_to_tags = panel.GetValue()
+                    ( metadata_routers, paths_to_additional_service_keys_to_tags ) = panel.GetValue()
                     
                     delete_after_success = self._delete_after_success.isChecked()
                     
-                    HG.client_controller.pub( 'new_hdd_import', paths, file_import_options, paths_to_additional_service_keys_to_tags, delete_after_success )
+                    HG.client_controller.pub( 'new_hdd_import', paths, file_import_options, metadata_routers, paths_to_additional_service_keys_to_tags, delete_after_success )
                     
                     self._OKParent()
                     
@@ -3261,11 +3340,12 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
             
             file_import_options = self._import_options_button.GetFileImportOptions()
             
+            metadata_routers = []
             paths_to_additional_service_keys_to_tags = collections.defaultdict( ClientTags.ServiceKeysToTags )
             
             delete_after_success = self._delete_after_success.isChecked()
             
-            HG.client_controller.pub( 'new_hdd_import', paths, file_import_options, paths_to_additional_service_keys_to_tags, delete_after_success )
+            HG.client_controller.pub( 'new_hdd_import', paths, file_import_options, metadata_routers, paths_to_additional_service_keys_to_tags, delete_after_success )
             
         
         self._OKParent()
@@ -3382,6 +3462,8 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
         num_unimportable_mime_files = 0
         num_occupied_files = 0
         
+        num_sidecars = 0
+        
         while not HG.started_shutdown:
             
             if not self or not QP.isValid( self ):
@@ -3420,7 +3502,7 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
                 message = HydrusData.ConvertValueRangeToPrettyString( num_good_files, total_paths ) + ' files parsed successfully'
                 
             
-            if num_empty_files + num_missing_files + num_unimportable_mime_files + num_occupied_files > 0:
+            if num_empty_files + num_missing_files + num_unimportable_mime_files + num_occupied_files + num_sidecars > 0:
                 
                 if num_good_files == 0:
                     
@@ -3432,6 +3514,11 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
                     
                 
                 bad_comments = []
+                
+                if num_sidecars > 0:
+                    
+                    bad_comments.append( '{} looked like txt/json/xml sidecars'.format( HydrusData.ToHumanInt( num_sidecars ) ) )
+                    
                 
                 if num_empty_files > 0:
                     
@@ -3502,9 +3589,10 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
                 try:
                     
                     raw_paths = unparsed_paths_queue.get( block = False )
+
+                    ( paths, num_sidecars_this_loop ) = ClientFiles.GetAllFilePaths( raw_paths, do_human_sort = do_human_sort ) # convert any dirs to subpaths
                     
-                    paths = ClientFiles.GetAllFilePaths( raw_paths, do_human_sort = do_human_sort ) # convert any dirs to subpaths
-                    
+                    num_sidecars += num_sidecars_this_loop
                     unparsed_paths.extend( paths )
                     
                 except queue.Empty:
@@ -3520,9 +3608,10 @@ class ReviewLocalFileImports( ClientGUIScrolledPanels.ReviewPanel ):
                 try:
                     
                     raw_paths = unparsed_paths_queue.get( timeout = 5 )
+
+                    ( paths, num_sidecars_this_loop ) = ClientFiles.GetAllFilePaths( raw_paths, do_human_sort = do_human_sort ) # convert any dirs to subpaths
                     
-                    paths = ClientFiles.GetAllFilePaths( raw_paths, do_human_sort = do_human_sort ) # convert any dirs to subpaths
-                    
+                    num_sidecars += num_sidecars_this_loop
                     unparsed_paths.extend( paths )
                     
                 except queue.Empty:

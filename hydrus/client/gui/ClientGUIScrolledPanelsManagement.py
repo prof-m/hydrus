@@ -1,7 +1,6 @@
 import collections
 import os
 import random
-import re
 import traceback
 
 from qtpy import QtCore as QC
@@ -20,7 +19,6 @@ from hydrus.core import HydrusText
 
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
-from hydrus.client import ClientLocation
 from hydrus.client.importing.options import FileImportOptions
 from hydrus.client.gui import ClientGUIDialogs
 from hydrus.client.gui import ClientGUIDialogsQuick
@@ -42,6 +40,7 @@ from hydrus.client.gui.lists import ClientGUIListCtrl
 from hydrus.client.gui.pages import ClientGUIResultsSortCollect
 from hydrus.client.gui.search import ClientGUIACDropdown
 from hydrus.client.gui.search import ClientGUILocation
+from hydrus.client.gui.widgets import ClientGUIColourPicker
 from hydrus.client.gui.widgets import ClientGUICommon
 from hydrus.client.gui.widgets import ClientGUIControls
 from hydrus.client.media import ClientMedia
@@ -54,7 +53,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
         
         ClientGUIScrolledPanels.ManagePanel.__init__( self, parent )
         
+        self._original_options = dict( HC.options )
+        
         self._new_options = HG.client_controller.new_options
+        self._original_new_options = self._new_options.Duplicate()
         
         self._listbook = ClientGUICommon.ListBook( self )
         
@@ -193,7 +195,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 
                 for colour_type in colour_types:
                     
-                    ctrl = ClientGUICommon.BetterColourControl( colour_panel )
+                    ctrl = ClientGUIColourPicker.ColourPickerButton( colour_panel )
                     
                     ctrl.setMaximumWidth( 20 )
                     
@@ -467,7 +469,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._default_gug = ClientGUIImport.GUGKeyAndNameSelector( gallery_downloader, gug_key_and_name )
             
-            self._gallery_page_wait_period_pages = ClientGUICommon.BetterSpinBox( gallery_downloader, min=1, max=120 )
+            self._gallery_page_wait_period_pages = ClientGUICommon.BetterSpinBox( gallery_downloader, min=1, max=3600 )
             self._gallery_file_limit = ClientGUICommon.NoneableSpinCtrl( gallery_downloader, none_phrase = 'no limit', min = 1, max = 1000000 )
             
             self._highlight_new_query = QW.QCheckBox( gallery_downloader )
@@ -476,7 +478,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             subscriptions = ClientGUICommon.StaticBox( self, 'subscriptions' )
             
-            self._gallery_page_wait_period_subscriptions = ClientGUICommon.BetterSpinBox( subscriptions, min=1, max=30 )
+            self._gallery_page_wait_period_subscriptions = ClientGUICommon.BetterSpinBox( subscriptions, min=1, max=3600 )
             self._max_simultaneous_subscriptions = ClientGUICommon.BetterSpinBox( subscriptions, min=1, max=100 )
             
             self._subscription_file_error_cancel_threshold = ClientGUICommon.NoneableSpinCtrl( subscriptions, min = 1, max = 1000000, unit = 'errors' )
@@ -493,7 +495,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             watchers = ClientGUICommon.StaticBox( self, 'watchers' )
             
-            self._watcher_page_wait_period = ClientGUICommon.BetterSpinBox( watchers, min=1, max=120 )
+            self._watcher_page_wait_period = ClientGUICommon.BetterSpinBox( watchers, min=1, max=3600 )
             self._highlight_new_watcher = QW.QCheckBox( watchers )
             
             checker_options = self._new_options.GetDefaultWatcherCheckerOptions()
@@ -685,7 +687,20 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._duplicate_comparison_score_nicer_ratio.setToolTip( 'For instance, 16:9 vs 640:357.')
             
-            self._duplicate_filter_max_batch_size = ClientGUICommon.BetterSpinBox( self, min = 5, max = 1024 )
+            batches_panel = ClientGUICommon.StaticBox( self, 'duplicate filter batches' )
+            
+            self._duplicate_filter_max_batch_size = ClientGUICommon.BetterSpinBox( batches_panel, min = 5, max = 1024 )
+            
+            colours_panel = ClientGUICommon.StaticBox( self, 'colours' )
+            
+            self._duplicate_background_switch_intensity_a = ClientGUICommon.NoneableSpinCtrl( colours_panel, none_phrase = 'do not change', min = 1, max = 9 )
+            self._duplicate_background_switch_intensity_a.setToolTip( 'This changes the background colour when you are looking at A. If you have a pure white/black background and do not have transparent images to show with checkerboard, it helps to highlight transparency vs opaque white/black image background.' )
+            
+            self._duplicate_background_switch_intensity_b = ClientGUICommon.NoneableSpinCtrl( colours_panel, none_phrase = 'do not change', min = 1, max = 9 )
+            self._duplicate_background_switch_intensity_b.setToolTip( 'This changes the background colour when you are looking at B. Making it different to the A value helps to highlight switches between the two.' )
+            
+            self._draw_transparency_checkerboard_media_canvas_duplicates = QW.QCheckBox( colours_panel )
+            self._draw_transparency_checkerboard_media_canvas_duplicates.setToolTip( 'Same as the setting in _media_, but only for the duplicate filter. Only applies if that _media_ setting is unchecked.' )
             
             #
             
@@ -700,6 +715,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._duplicate_comparison_score_nicer_ratio.setValue( self._new_options.GetInteger( 'duplicate_comparison_score_nicer_ratio' ) )
             
             self._duplicate_filter_max_batch_size.setValue( self._new_options.GetInteger( 'duplicate_filter_max_batch_size' ) )
+            
+            self._duplicate_background_switch_intensity_a.SetValue( self._new_options.GetNoneableInteger( 'duplicate_background_switch_intensity_a' ) )
+            self._duplicate_background_switch_intensity_b.SetValue( self._new_options.GetNoneableInteger( 'duplicate_background_switch_intensity_b' ) )
+            self._draw_transparency_checkerboard_media_canvas_duplicates.setChecked( self._new_options.GetBoolean( 'draw_transparency_checkerboard_media_canvas_duplicates' ) )
             
             #
             
@@ -729,17 +748,39 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            vbox = QP.VBoxLayout()
-            
-            QP.AddToLayout( vbox, weights_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
-            
             rows = []
             
             rows.append( ( 'Max size of duplicate filter pair batches:', self._duplicate_filter_max_batch_size ) )
             
-            gridbox = ClientGUICommon.WrapInGrid( self, rows )
+            gridbox = ClientGUICommon.WrapInGrid( batches_panel, rows )
             
-            QP.AddToLayout( vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            batches_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            
+            #
+            
+            st = ClientGUICommon.BetterStaticText( colours_panel, label = 'The duplicate filter can darken/lighten your normal background colour. This highlights the transitions between A and B and, if your background colour is normally pure white or black, can differentiate transparency vs white/black opaque image background.' )
+            st.setWordWrap( True )
+            
+            colours_panel.Add( st, CC.FLAGS_EXPAND_PERPENDICULAR )
+            
+            rows = []
+            
+            rows.append( ( 'background light/dark switch intensity for A:', self._duplicate_background_switch_intensity_a ) )
+            rows.append( ( 'background light/dark switch intensity for B:', self._duplicate_background_switch_intensity_b ) )
+            rows.append( ( 'draw image transparency as checkerboard in the duplicate filter:', self._draw_transparency_checkerboard_media_canvas_duplicates ) )
+            
+            gridbox = ClientGUICommon.WrapInGrid( batches_panel, rows )
+            
+            colours_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            
+            #
+            
+            vbox = QP.VBoxLayout()
+            
+            QP.AddToLayout( vbox, weights_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, batches_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, colours_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            
             vbox.addStretch( 1 )
             
             self.setLayout( vbox )
@@ -758,6 +799,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'duplicate_comparison_score_nicer_ratio', self._duplicate_comparison_score_nicer_ratio.value() )
             
             self._new_options.SetInteger( 'duplicate_filter_max_batch_size', self._duplicate_filter_max_batch_size.value() )
+            
+            self._new_options.SetNoneableInteger( 'duplicate_background_switch_intensity_a', self._duplicate_background_switch_intensity_a.GetValue() )
+            self._new_options.SetNoneableInteger( 'duplicate_background_switch_intensity_b', self._duplicate_background_switch_intensity_b.GetValue() )
+            self._new_options.SetBoolean( 'draw_transparency_checkerboard_media_canvas_duplicates', self._draw_transparency_checkerboard_media_canvas_duplicates.isChecked() )
             
         
     
@@ -924,17 +969,14 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._export_location = QP.DirPickerCtrl( self )
             
-            location_context = self._new_options.GetDefaultLocalLocationContext()
-            
-            self._default_local_location_context = ClientGUILocation.LocationSearchContextButton( self, location_context )
-            self._default_local_location_context.setToolTip( 'This initialised into a bunch of dialogs across the program as a fallback. You can probably leave it alone forever, but if you delete or move away from \'my files\' as your main place to do work, please update it here.' )
-            
-            self._default_local_location_context.SetOnlyImportableDomainsAllowed( True )
-            
             self._prefix_hash_when_copying = QW.QCheckBox( self )
             self._prefix_hash_when_copying.setToolTip( 'If you often paste hashes into boorus, check this to automatically prefix with the type, like "md5:2496dabcbd69e3c56a5d8caabb7acde5".' )
             
             self._delete_to_recycle_bin = QW.QCheckBox( self )
+            
+            self._ms_to_wait_between_physical_file_deletes = ClientGUICommon.BetterSpinBox( self, min=20, max = 5000 )
+            tt = 'Deleting a file from a hard disk can be resource expensive, so when files leave the trash, the actual physical file delete happens later, in the background. The operation is spread out so as not to give you lag spikes.'
+            self._ms_to_wait_between_physical_file_deletes.setToolTip( tt )
             
             self._confirm_trash = QW.QCheckBox( self )
             self._confirm_archive = QW.QCheckBox( self )
@@ -981,6 +1023,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._delete_to_recycle_bin.setChecked( HC.options[ 'delete_to_recycle_bin' ] )
             
+            self._ms_to_wait_between_physical_file_deletes.setValue( self._new_options.GetInteger( 'ms_to_wait_between_physical_file_deletes' ) )
+            
             self._confirm_trash.setChecked( HC.options[ 'confirm_trash' ] )
             
             self._confirm_archive.setChecked( HC.options[ 'confirm_archive' ] )
@@ -1016,13 +1060,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'Fallback local file search location: ', self._default_local_location_context ) )
             rows.append( ( 'When copying file hashes, prefix with booru-friendly hash type: ', self._prefix_hash_when_copying ) )
             rows.append( ( 'Confirm sending files to trash: ', self._confirm_trash ) )
             rows.append( ( 'Confirm sending more than one file to archive or inbox: ', self._confirm_archive ) )
             rows.append( ( 'Confirm when copying files across local file services: ', self._confirm_multiple_local_file_services_copy ) )
             rows.append( ( 'Confirm when moving files across local file services: ', self._confirm_multiple_local_file_services_move ) )
-            rows.append( ( 'When deleting files or folders, send them to the OS\'s recycle bin: ', self._delete_to_recycle_bin ) )
+            rows.append( ( 'When physically deleting files or folders, send them to the OS\'s recycle bin: ', self._delete_to_recycle_bin ) )
+            rows.append( ( 'When maintenance physically deletes files, wait this many ms between each delete: ', self._ms_to_wait_between_physical_file_deletes ) )
             rows.append( ( 'Remove files from view when they are filtered: ', self._remove_filtered_files ) )
             rows.append( ( 'Remove files from view when they are sent to the trash: ', self._remove_trashed_files ) )
             rows.append( ( 'Number of hours a file can be in the trash before being deleted: ', self._trash_max_age ) )
@@ -1102,8 +1146,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             HC.options[ 'export_path' ] = HydrusPaths.ConvertAbsPathToPortablePath( self._export_location.GetPath() )
             
-            self._new_options.SetDefaultLocalLocationContext( self._default_local_location_context.GetValue() )
-            
             self._new_options.SetBoolean( 'prefix_hash_when_copying', self._prefix_hash_when_copying.isChecked() )
             
             HC.options[ 'delete_to_recycle_bin' ] = self._delete_to_recycle_bin.isChecked()
@@ -1113,6 +1155,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             HC.options[ 'remove_trashed_files' ] = self._remove_trashed_files.isChecked()
             HC.options[ 'trash_max_age' ] = self._trash_max_age.GetValue()
             HC.options[ 'trash_max_size' ] = self._trash_max_size.GetValue()
+            
+            self._new_options.SetInteger( 'ms_to_wait_between_physical_file_deletes', self._ms_to_wait_between_physical_file_deletes.value() )
             
             self._new_options.SetBoolean( 'confirm_multiple_local_file_services_copy', self._confirm_multiple_local_file_services_copy.isChecked() )
             self._new_options.SetBoolean( 'confirm_multiple_local_file_services_move', self._confirm_multiple_local_file_services_move.isChecked() )
@@ -1137,11 +1181,16 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options = HG.client_controller.new_options
             
             self._file_viewing_statistics_active = QW.QCheckBox( self )
+            self._file_viewing_statistics_active_on_archive_delete_filter = QW.QCheckBox( self )
             self._file_viewing_statistics_active_on_dupe_filter = QW.QCheckBox( self )
             self._file_viewing_statistics_media_min_time = ClientGUICommon.NoneableSpinCtrl( self )
             self._file_viewing_statistics_media_max_time = ClientGUICommon.NoneableSpinCtrl( self )
+            max_tt = 'If you view a file for a very long time, the amount of viewtime recorded is clipped to this. This stops an outrageous viewtime being saved because you left something open in the background. If the media you view has duration, like a video, the max viewtime is five times its length or this, whichever is larger.'
+            self._file_viewing_statistics_media_max_time.setToolTip( max_tt )
+            
             self._file_viewing_statistics_preview_min_time = ClientGUICommon.NoneableSpinCtrl( self )
             self._file_viewing_statistics_preview_max_time = ClientGUICommon.NoneableSpinCtrl( self )
+            self._file_viewing_statistics_preview_max_time.setToolTip( max_tt )
             
             self._file_viewing_stats_menu_display = ClientGUICommon.BetterChoice( self )
             
@@ -1154,6 +1203,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             #
             
             self._file_viewing_statistics_active.setChecked( self._new_options.GetBoolean( 'file_viewing_statistics_active' ) )
+            self._file_viewing_statistics_active_on_archive_delete_filter.setChecked( self._new_options.GetBoolean( 'file_viewing_statistics_active_on_archive_delete_filter' ) )
             self._file_viewing_statistics_active_on_dupe_filter.setChecked( self._new_options.GetBoolean( 'file_viewing_statistics_active_on_dupe_filter' ) )
             self._file_viewing_statistics_media_min_time.SetValue( self._new_options.GetNoneableInteger( 'file_viewing_statistics_media_min_time' ) )
             self._file_viewing_statistics_media_max_time.SetValue( self._new_options.GetNoneableInteger( 'file_viewing_statistics_media_max_time' ) )
@@ -1169,7 +1219,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows = []
             
             rows.append( ( 'Enable file viewing statistics tracking?:', self._file_viewing_statistics_active ) )
-            rows.append( ( 'Enable file viewing statistics tracking on the duplicate filter?:', self._file_viewing_statistics_active_on_dupe_filter ) )
+            rows.append( ( 'Enable file viewing statistics tracking in the archive/delete filter?:', self._file_viewing_statistics_active_on_archive_delete_filter ) )
+            rows.append( ( 'Enable file viewing statistics tracking in the duplicate filter?:', self._file_viewing_statistics_active_on_dupe_filter ) )
             rows.append( ( 'Min time to view on media viewer to count as a view (seconds):', self._file_viewing_statistics_media_min_time ) )
             rows.append( ( 'Cap any view on the media viewer to this maximum time (seconds):', self._file_viewing_statistics_media_max_time ) )
             rows.append( ( 'Min time to view on preview viewer to count as a view (seconds):', self._file_viewing_statistics_preview_min_time ) )
@@ -1188,6 +1239,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
         def UpdateOptions( self ):
             
             self._new_options.SetBoolean( 'file_viewing_statistics_active', self._file_viewing_statistics_active.isChecked() )
+            self._new_options.SetBoolean( 'file_viewing_statistics_active_on_archive_delete_filter', self._file_viewing_statistics_active_on_archive_delete_filter.isChecked() )
             self._new_options.SetBoolean( 'file_viewing_statistics_active_on_dupe_filter', self._file_viewing_statistics_active_on_dupe_filter.isChecked() )
             self._new_options.SetNoneableInteger( 'file_viewing_statistics_media_min_time', self._file_viewing_statistics_media_min_time.GetValue() )
             self._new_options.SetNoneableInteger( 'file_viewing_statistics_media_max_time', self._file_viewing_statistics_media_max_time.GetValue() )
@@ -1224,6 +1276,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._always_show_iso_time = QW.QCheckBox( self._misc_panel )
             tt = 'In many places across the program (typically import status lists), the client will state a timestamp as "5 days ago". If you would prefer a standard ISO string, like "2018-03-01 12:40:23", check this.'
             self._always_show_iso_time.setToolTip( tt )
+            
+            self._menu_choice_buttons_can_mouse_scroll = QW.QCheckBox( self._misc_panel )
+            tt = 'Many buttons that produce menus when clicked are also "scrollable", so if you wheel your mouse over them, the selection will scroll through the underlying menu. If this is annoying for you, turn it off here!'
+            self._menu_choice_buttons_can_mouse_scroll.setToolTip( tt )
             
             self._human_bytes_sig_figs = ClientGUICommon.BetterSpinBox( self._misc_panel, min = 1, max = 6 )
             self._human_bytes_sig_figs.setToolTip( 'When the program presents a bytes size above 1KB, like 21.3KB or 4.11GB, how many total digits do we want in the number? 2 or 3 is best.')
@@ -1264,6 +1320,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._always_show_iso_time.setChecked( self._new_options.GetBoolean( 'always_show_iso_time' ) )
             
+            self._menu_choice_buttons_can_mouse_scroll.setChecked( self._new_options.GetBoolean( 'menu_choice_buttons_can_mouse_scroll' ) )
+            
             self._human_bytes_sig_figs.setValue( self._new_options.GetInteger( 'human_bytes_sig_figs' ) )
             
             self._discord_dnd_fix.setChecked( self._new_options.GetBoolean( 'discord_dnd_fix' ) )
@@ -1302,6 +1360,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows = []
             
             rows.append( ( 'Prefer ISO time ("2018-03-01 12:40:23") to "5 days ago": ', self._always_show_iso_time ) )
+            rows.append( ( 'Mouse wheel can "scroll" through menu buttons: ', self._menu_choice_buttons_can_mouse_scroll ) )
             rows.append( ( 'Copy temp files for drag-and-drop (works for <=25, <200MB file DnDs--fixes Discord!): ', self._discord_dnd_fix ) )
             rows.append( ( 'Drag-and-drop export filename pattern: ', self._discord_dnd_filename_pattern ) )
             rows.append( ( '', self._export_pattern_button ) )
@@ -1382,6 +1441,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             HC.options[ 'confirm_client_exit' ] = self._confirm_client_exit.isChecked()
             
             self._new_options.SetBoolean( 'always_show_iso_time', self._always_show_iso_time.isChecked() )
+            self._new_options.SetBoolean( 'menu_choice_buttons_can_mouse_scroll', self._menu_choice_buttons_can_mouse_scroll.isChecked() )
             
             self._new_options.SetInteger( 'human_bytes_sig_figs', self._human_bytes_sig_figs.value() )
             
@@ -1461,8 +1521,18 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._total_pages_warning.setToolTip( tt )
             
-            self._reverse_page_shift_drag_behaviour = QW.QCheckBox( self._pages_panel )
-            self._reverse_page_shift_drag_behaviour.setToolTip( 'By default, holding down shift when you drop off a page tab means the client will not \'chase\' the page tab. This makes this behaviour default, with shift-drop meaning to chase.' )
+            self._page_drop_chase_normally = QW.QCheckBox( self._pages_panel )
+            self._page_drop_chase_normally.setToolTip( 'When you drop a page to a new location, should hydrus follow the page selection to the new location?' )
+            self._page_drop_chase_with_shift = QW.QCheckBox( self._pages_panel )
+            self._page_drop_chase_with_shift.setToolTip( 'When you drop a page to a new location with shift held down, should hydrus follow the page selection to the new location?' )
+            
+            self._page_drag_change_tab_normally = QW.QCheckBox( self._pages_panel )
+            self._page_drag_change_tab_normally.setToolTip( 'When you drag media or a page to a new location, should hydrus navigate and change tabs as you move the mouse around?' )
+            self._page_drag_change_tab_with_shift = QW.QCheckBox( self._pages_panel )
+            self._page_drag_change_tab_with_shift.setToolTip( 'When you drag media or a page to a new location with shift held down, should hydrus navigate and change tabs as you move the mouse around?' )
+            
+            self._wheel_scrolls_tab_bar = QW.QCheckBox( self._pages_panel )
+            self._wheel_scrolls_tab_bar.setToolTip( 'When you scroll your mouse wheel over some tabs, the normal behaviour is to change the tab selection. If you often have overloaded tab bars, you might like to have the mouse wheel actually scroll the tab bar itself.' )
             
             self._force_hide_page_signal_on_new_page = QW.QCheckBox( self._pages_panel )
             
@@ -1537,7 +1607,12 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._import_page_progress_display.setChecked( self._new_options.GetBoolean( 'import_page_progress_display' ) )
             
-            self._reverse_page_shift_drag_behaviour.setChecked( self._new_options.GetBoolean( 'reverse_page_shift_drag_behaviour' ) )
+            self._page_drop_chase_normally.setChecked( self._new_options.GetBoolean( 'page_drop_chase_normally' ) )
+            self._page_drop_chase_with_shift.setChecked( self._new_options.GetBoolean( 'page_drop_chase_with_shift' ) )
+            self._page_drag_change_tab_normally.setChecked( self._new_options.GetBoolean( 'page_drag_change_tab_normally' ) )
+            self._page_drag_change_tab_with_shift.setChecked( self._new_options.GetBoolean( 'page_drag_change_tab_with_shift' ) )
+            
+            self._wheel_scrolls_tab_bar.setChecked( self._new_options.GetBoolean( 'wheel_scrolls_tab_bar' ) )
             
             self._total_pages_warning.setValue( self._new_options.GetInteger( 'total_pages_warning' ) )
             
@@ -1565,7 +1640,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows.append( ( 'By default, put new page tabs on: ', self._default_new_page_goes ) )
             rows.append( ( 'Notebook tab alignment: ', self._notebook_tab_alignment ) )
-            rows.append( ( 'Reverse page tab shift-drag behaviour: ', self._reverse_page_shift_drag_behaviour ) )
+            rows.append( ( 'Selection chases dropped page after drag and drop: ', self._page_drop_chase_normally ) )
+            rows.append( ( '  With shift held down?: ', self._page_drop_chase_with_shift ) )
+            rows.append( ( 'Navigate tabs during drag and drop: ', self._page_drag_change_tab_normally ) )
+            rows.append( ( '  With shift held down?: ', self._page_drag_change_tab_with_shift ) )
+            rows.append( ( 'EXPERIMENTAL: Mouse wheel scrolls tab bar, not page selection: ', self._wheel_scrolls_tab_bar ) )
             rows.append( ( 'Warn at this many total pages: ', self._total_pages_warning ) )
             rows.append( ( 'BUGFIX: Force \'hide page\' signal when creating a new page: ', self._force_hide_page_signal_on_new_page ) )
             
@@ -1582,13 +1661,15 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             label = 'If you have enough pages in a row, left/right arrows will appear to navigate them back and forth.'
             label += os.linesep
-            label += 'Due to an unfortunate Qt issue, the tab bar will scroll so the current tab is right-most visible whenever a page is renamed.'
+            label += 'Due to an unfortunate Qt issue, the tab bar will scroll so the current tab is right-most visible whenever you change page or a page is renamed. This is very annoying to live with.'
             label += os.linesep
-            label += 'Therefore, if you set pages to have current file count or import progress in their name (which will update from time to time), do not put import pages in a long row of tabs, as it will reset scroll position on every progress update.'
+            label += 'Therefore, do not put import pages in a long row of tabs, as it will reset scroll position on every progress update. Try to avoid long rows in general.'
             label += os.linesep
             label += 'Just make some nested \'page of pages\' so they are not all in the same row.'
             
             st = ClientGUICommon.BetterStaticText( self._page_names_panel, label )
+            
+            st.setToolTip( 'https://bugreports.qt.io/browse/QTBUG-45381' )
             
             st.setWordWrap( True )
             
@@ -1644,7 +1725,12 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._new_options.SetBoolean( 'force_hide_page_signal_on_new_page', self._force_hide_page_signal_on_new_page.isChecked() )
             
-            self._new_options.SetBoolean( 'reverse_page_shift_drag_behaviour', self._reverse_page_shift_drag_behaviour.isChecked() )
+            self._new_options.SetBoolean( 'page_drop_chase_normally', self._page_drop_chase_normally.isChecked() )
+            self._new_options.SetBoolean( 'page_drop_chase_with_shift', self._page_drop_chase_with_shift.isChecked() )
+            self._new_options.SetBoolean( 'page_drag_change_tab_normally', self._page_drag_change_tab_normally.isChecked() )
+            self._new_options.SetBoolean( 'page_drag_change_tab_with_shift', self._page_drag_change_tab_with_shift.isChecked() )
+            
+            self._new_options.SetBoolean( 'wheel_scrolls_tab_bar', self._wheel_scrolls_tab_bar.isChecked() )
             
             self._new_options.SetBoolean( 'set_search_focus_on_page_change', self._set_search_focus_on_page_change.isChecked() )
             
@@ -1977,8 +2063,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._use_system_ffmpeg = QW.QCheckBox( self )
             self._use_system_ffmpeg.setToolTip( 'Check this to always default to the system ffmpeg in your path, rather than using the static ffmpeg in hydrus\'s bin directory. (requires restart)' )
             
-            self._always_loop_gifs = QW.QCheckBox( self )
-            self._always_loop_gifs.setToolTip( 'Some GIFS have metadata specifying how many times they should be played, usually 1. Uncheck this to obey that number.' )
+            self._always_loop_animations = QW.QCheckBox( self )
+            self._always_loop_animations.setToolTip( 'Some GIFS and APNGs have metadata specifying how many times they should be played, usually 1. Uncheck this to obey that number.' )
+            
+            self._draw_transparency_checkerboard_media_canvas = QW.QCheckBox( self )
+            self._draw_transparency_checkerboard_media_canvas.setToolTip( 'If unchecked, will fill in with the normal background colour. Does not apply to MPV.' )
             
             self._media_viewer_cursor_autohide_time_ms = ClientGUICommon.NoneableSpinCtrl( self, none_phrase = 'do not autohide', min = 100, max = 100000, unit = 'ms' )
             
@@ -2025,7 +2114,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._disable_cv_for_gifs.setChecked( self._new_options.GetBoolean( 'disable_cv_for_gifs' ) )
             self._load_images_with_pil.setChecked( self._new_options.GetBoolean( 'load_images_with_pil' ) )
             self._use_system_ffmpeg.setChecked( self._new_options.GetBoolean( 'use_system_ffmpeg' ) )
-            self._always_loop_gifs.setChecked( self._new_options.GetBoolean( 'always_loop_gifs' ) )
+            self._always_loop_animations.setChecked( self._new_options.GetBoolean( 'always_loop_gifs' ) )
+            self._draw_transparency_checkerboard_media_canvas.setChecked( self._new_options.GetBoolean( 'draw_transparency_checkerboard_media_canvas' ) )
             self._media_viewer_cursor_autohide_time_ms.SetValue( self._new_options.GetNoneableInteger( 'media_viewer_cursor_autohide_time_ms' ) )
             self._anchor_and_hide_canvas_drags.setChecked( self._new_options.GetBoolean( 'anchor_and_hide_canvas_drags' ) )
             self._touchscreen_canvas_drags_unanchor.setChecked( self._new_options.GetBoolean( 'touchscreen_canvas_drags_unanchor' ) )
@@ -2060,7 +2150,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows.append( ( 'Start animations this % in:', self._animation_start_position ) )
             rows.append( ( 'Prefer system FFMPEG:', self._use_system_ffmpeg ) )
-            rows.append( ( 'Always Loop GIFs:', self._always_loop_gifs ) )
+            rows.append( ( 'Always Loop GIFs/APNGs:', self._always_loop_animations ) )
+            rows.append( ( 'Draw image transparency as checkerboard:', self._draw_transparency_checkerboard_media_canvas ) )
             rows.append( ( 'Centerpoint for media zooming:', self._media_viewer_zoom_center ) )
             rows.append( ( 'Media zooms:', self._media_zooms ) )
             rows.append( ( 'Set a new mpv.conf on dialog ok?:', self._mpv_conf_path ) )
@@ -2288,7 +2379,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetBoolean( 'disable_cv_for_gifs', self._disable_cv_for_gifs.isChecked() )
             self._new_options.SetBoolean( 'load_images_with_pil', self._load_images_with_pil.isChecked() )
             self._new_options.SetBoolean( 'use_system_ffmpeg', self._use_system_ffmpeg.isChecked() )
-            self._new_options.SetBoolean( 'always_loop_gifs', self._always_loop_gifs.isChecked() )
+            self._new_options.SetBoolean( 'always_loop_gifs', self._always_loop_animations.isChecked() )
+            self._new_options.SetBoolean( 'draw_transparency_checkerboard_media_canvas', self._draw_transparency_checkerboard_media_canvas.isChecked() )
             self._new_options.SetBoolean( 'anchor_and_hide_canvas_drags', self._anchor_and_hide_canvas_drags.isChecked() )
             self._new_options.SetBoolean( 'touchscreen_canvas_drags_unanchor', self._touchscreen_canvas_drags_unanchor.isChecked() )
             
@@ -2405,14 +2497,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._freeze_message_manager_when_main_gui_minimised = QW.QCheckBox( self._popup_panel )
             self._freeze_message_manager_when_main_gui_minimised.setToolTip( 'This is useful if the popup toaster restores strangely after minimised changes.' )
             
-            self._hide_message_manager_on_gui_iconise = QW.QCheckBox( self._popup_panel )
-            self._hide_message_manager_on_gui_iconise.setToolTip( 'If your message manager does not automatically minimise with your main gui, try this. It can lead to unusual show and positioning behaviour on window managers that do not support it, however.' )
-            
-            self._hide_message_manager_on_gui_deactive = QW.QCheckBox( self._popup_panel )
-            self._hide_message_manager_on_gui_deactive.setToolTip( 'If your message manager stays up after you minimise the program to the system tray using a custom window manager, try this out! It hides the popup messages as soon as the main gui loses focus.' )
-            
             self._notify_client_api_cookies = QW.QCheckBox( self._popup_panel )
-            self._notify_client_api_cookies.setToolTip( 'This will make a short-lived popup message every time you get new cookie information over the Client API.' )
+            self._notify_client_api_cookies.setToolTip( 'This will make a short-lived popup message every time you get new cookie or http header information over the Client API.' )
             
             #
             
@@ -2423,9 +2509,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._freeze_message_manager_when_mouse_on_other_monitor.setChecked( self._new_options.GetBoolean( 'freeze_message_manager_when_mouse_on_other_monitor' ) )
             self._freeze_message_manager_when_main_gui_minimised.setChecked( self._new_options.GetBoolean( 'freeze_message_manager_when_main_gui_minimised' ) )
             
-            self._hide_message_manager_on_gui_iconise.setChecked( self._new_options.GetBoolean( 'hide_message_manager_on_gui_iconise' ) )
-            self._hide_message_manager_on_gui_deactive.setChecked( self._new_options.GetBoolean( 'hide_message_manager_on_gui_deactive' ) )
-            
             self._notify_client_api_cookies.setChecked( self._new_options.GetBoolean( 'notify_client_api_cookies' ) )
             
             #
@@ -2433,12 +2516,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows = []
             
             rows.append( ( 'Approximate max width of popup messages (in characters): ', self._popup_message_character_width ) )
-            rows.append( ( 'BUGFIX: Force this width as the minimum width for all popup messages: ', self._popup_message_force_min_width ) )
+            rows.append( ( 'BUGFIX: Force this width as the fixed width for all popup messages: ', self._popup_message_force_min_width ) )
             rows.append( ( 'Freeze the popup toaster when mouse is on another display: ', self._freeze_message_manager_when_mouse_on_other_monitor ) )
             rows.append( ( 'Freeze the popup toaster when the main gui is minimised: ', self._freeze_message_manager_when_main_gui_minimised ) )
-            rows.append( ( 'BUGFIX: Hide the popup toaster when the main gui is minimised: ', self._hide_message_manager_on_gui_iconise ) )
-            rows.append( ( 'BUGFIX: Hide the popup toaster when the main gui loses focus: ', self._hide_message_manager_on_gui_deactive ) )
-            rows.append( ( 'Make a short-lived popup on cookie updates through the Client API: ', self._notify_client_api_cookies ) )
+            rows.append( ( 'Make a short-lived popup on cookie/header updates through the Client API: ', self._notify_client_api_cookies ) )
             
             gridbox = ClientGUICommon.WrapInGrid( self._popup_panel, rows )
             
@@ -2460,9 +2541,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._new_options.SetBoolean( 'freeze_message_manager_when_mouse_on_other_monitor', self._freeze_message_manager_when_mouse_on_other_monitor.isChecked() )
             self._new_options.SetBoolean( 'freeze_message_manager_when_main_gui_minimised', self._freeze_message_manager_when_main_gui_minimised.isChecked() )
-            
-            self._new_options.SetBoolean( 'hide_message_manager_on_gui_iconise', self._hide_message_manager_on_gui_iconise.isChecked() )
-            self._new_options.SetBoolean( 'hide_message_manager_on_gui_deactive', self._hide_message_manager_on_gui_deactive.isChecked() )
             
             self._new_options.SetBoolean( 'notify_client_api_cookies', self._notify_client_api_cookies.isChecked() )
             
@@ -2503,49 +2581,74 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            self._autocomplete_panel = ClientGUICommon.StaticBox( self, 'autocomplete' )
+            self._read_autocomplete_panel = ClientGUICommon.StaticBox( self, 'file search autocomplete' )
             
-            self._default_search_synchronised = QW.QCheckBox( self._autocomplete_panel )
+            location_context = self._new_options.GetDefaultLocalLocationContext()
+            
+            self._default_local_location_context = ClientGUILocation.LocationSearchContextButton( self._read_autocomplete_panel, location_context )
+            self._default_local_location_context.setToolTip( 'This initialised into a bunch of dialogs across the program as a fallback. You can probably leave it alone forever, but if you delete or move away from \'my files\' as your main place to do work, please update it here.' )
+            
+            self._default_local_location_context.SetOnlyImportableDomainsAllowed( True )
+            
+            self._default_tag_service_search_page = ClientGUICommon.BetterChoice( self._read_autocomplete_panel )
+            
+            self._default_search_synchronised = QW.QCheckBox( self._read_autocomplete_panel )
             tt = 'This refers to the button on the autocomplete dropdown that enables new searches to start. If this is on, then new search pages will search as soon as you enter the first search predicate. If off, no search will happen until you switch it back on.'
             self._default_search_synchronised.setToolTip( tt )
             
-            self._autocomplete_float_main_gui = QW.QCheckBox( self._autocomplete_panel )
-            tt = 'The autocomplete dropdown can either \'float\' on top of the main window, or if that does not work well for you, it can embed into the parent panel.'
+            self._autocomplete_float_main_gui = QW.QCheckBox( self._read_autocomplete_panel )
+            tt = 'The autocomplete dropdown can either \'float\' on top of the main window, or if that does not work well for you, it can embed into the parent page panel.'
             self._autocomplete_float_main_gui.setToolTip( tt )
             
-            self._autocomplete_float_frames = QW.QCheckBox( self._autocomplete_panel )
-            tt = 'The autocomplete dropdown can either \'float\' on top of dialogs like _manage tags_, or if that does not work well for you (it can sometimes annoyingly overlap the ok/cancel buttons), it can embed into the parent dialog panel.'
-            self._autocomplete_float_frames.setToolTip( tt )
+            self._ac_read_list_height_num_chars = ClientGUICommon.BetterSpinBox( self._read_autocomplete_panel, min = 1, max = 128 )
             
-            self._ac_read_list_height_num_chars = ClientGUICommon.BetterSpinBox( self._autocomplete_panel, min = 1, max = 128 )
-            tt = 'Read autocompletes are those in search pages, where you are looking through existing tags to find your files.'
-            self._ac_read_list_height_num_chars.setToolTip( tt )
-            
-            self._ac_write_list_height_num_chars = ClientGUICommon.BetterSpinBox( self._autocomplete_panel, min = 1, max = 128 )
-            tt = 'Write autocompletes are those in most dialogs, where you are adding new tags to files.'
-            self._ac_write_list_height_num_chars.setToolTip( tt )
-            
-            self._always_show_system_everything = QW.QCheckBox( self._autocomplete_panel )
+            self._always_show_system_everything = QW.QCheckBox( self._read_autocomplete_panel )
             tt = 'After users get some experience with the program and a larger collection, they tend to have less use for system:everything.'
             self._always_show_system_everything.setToolTip( tt )
             
-            self._filter_inbox_and_archive_predicates = QW.QCheckBox( self._autocomplete_panel )
+            self._filter_inbox_and_archive_predicates = QW.QCheckBox( self._read_autocomplete_panel )
             tt = 'If everything is current in the inbox (or archive), then there is no use listing it or its opposite--it either does not change the search or it produces nothing. If you find it jarring though, turn it off here!'
             self._filter_inbox_and_archive_predicates.setToolTip( tt )
             
             #
             
-            misc_panel = ClientGUICommon.StaticBox( self, 'misc' )
+            self._write_autocomplete_panel = ClientGUICommon.StaticBox( self, 'tag edit autocomplete' )
+            
+            self._default_tag_service_tab = ClientGUICommon.BetterChoice( self._write_autocomplete_panel )
+            
+            self._save_default_tag_service_tab_on_change = QW.QCheckBox( self._write_autocomplete_panel )
+            
+            self._ac_write_list_height_num_chars = ClientGUICommon.BetterSpinBox( self._write_autocomplete_panel, min = 1, max = 128 )
+            
+            #
+            
+            misc_panel = ClientGUICommon.StaticBox( self, 'file search' )
             
             self._forced_search_limit = ClientGUICommon.NoneableSpinCtrl( misc_panel, '', min = 1, max = 100000 )
             self._forced_search_limit.setToolTip( 'This is overruled if you set an explicit system:limit larger than it.' )
             
             #
             
+            self._default_tag_service_search_page.addItem( 'all known tags', CC.COMBINED_TAG_SERVICE_KEY )
+            
+            services = HG.client_controller.services_manager.GetServices( HC.REAL_TAG_SERVICES )
+            
+            for service in services:
+                
+                self._default_tag_service_tab.addItem( service.GetName(), service.GetServiceKey() )
+                
+                self._default_tag_service_search_page.addItem( service.GetName(), service.GetServiceKey() )
+                
+            
+            self._default_tag_service_tab.SetValue( self._new_options.GetKey( 'default_tag_service_tab' ) )
+            
+            self._save_default_tag_service_tab_on_change.setChecked( self._new_options.GetBoolean( 'save_default_tag_service_tab_on_change' ) )
+            
+            self._default_tag_service_search_page.SetValue( self._new_options.GetKey( 'default_tag_service_search_page' ) )
+            
             self._default_search_synchronised.setChecked( self._new_options.GetBoolean( 'default_search_synchronised' ) )
             
             self._autocomplete_float_main_gui.setChecked( self._new_options.GetBoolean( 'autocomplete_float_main_gui' ) )
-            self._autocomplete_float_frames.setChecked( self._new_options.GetBoolean( 'autocomplete_float_frames' ) )
             
             self._ac_read_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_read_list_height_num_chars' ) )
             self._ac_write_list_height_num_chars.setValue( self._new_options.GetInteger( 'ac_write_list_height_num_chars' ) )
@@ -2558,29 +2661,43 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            vbox = QP.VBoxLayout()
+            message = 'This tag autocomplete appears in file search pages and other places where you use tags and system predicates to search for files.'
             
-            message = 'The autocomplete dropdown list is the panel that hangs below the tag input text box on search pages.'
+            st = ClientGUICommon.BetterStaticText( self._read_autocomplete_panel, label = message )
             
-            st = ClientGUICommon.BetterStaticText( self._autocomplete_panel, label = message )
-            
-            self._autocomplete_panel.Add( st, CC.FLAGS_CENTER )
+            self._read_autocomplete_panel.Add( st, CC.FLAGS_CENTER )
             
             rows = []
             
-            #
-            
+            rows.append( ( 'Default/Fallback local file search location: ', self._default_local_location_context ) )
+            rows.append( ( 'Default tag service in search pages: ', self._default_tag_service_search_page ) )
+            rows.append( ( 'Autocomplete dropdown floats over file search pages: ', self._autocomplete_float_main_gui ) )
+            rows.append( ( 'Autocomplete list height: ', self._ac_read_list_height_num_chars ) )
             rows.append( ( 'Start new search pages in \'searching immediately\': ', self._default_search_synchronised ) )
-            rows.append( ( 'Autocomplete results float in main gui: ', self._autocomplete_float_main_gui ) )
-            rows.append( ( 'Autocomplete results float in other windows: ', self._autocomplete_float_frames ) )
-            rows.append( ( '\'Read\' autocomplete list height: ', self._ac_read_list_height_num_chars ) )
-            rows.append( ( '\'Write\' autocomplete list height: ', self._ac_write_list_height_num_chars ) )
             rows.append( ( 'show system:everything even if total files is over 10,000: ', self._always_show_system_everything ) )
             rows.append( ( 'hide inbox and archive system predicates if either has no files: ', self._filter_inbox_and_archive_predicates ) )
             
-            gridbox = ClientGUICommon.WrapInGrid( self._autocomplete_panel, rows )
+            gridbox = ClientGUICommon.WrapInGrid( self._read_autocomplete_panel, rows )
             
-            self._autocomplete_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+            self._read_autocomplete_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+            
+            #
+            
+            message = 'This tag autocomplete appears in the manage tags dialog and other places where you edit a list of tags.'
+            
+            st = ClientGUICommon.BetterStaticText( self._write_autocomplete_panel, label = message )
+            
+            self._write_autocomplete_panel.Add( st, CC.FLAGS_CENTER )
+            
+            rows = []
+            
+            rows.append( ( 'Remember last used default tag service in manage tag dialogs: ', self._save_default_tag_service_tab_on_change ) )
+            rows.append( ( 'Default tag service in manage tag dialogs: ', self._default_tag_service_tab ) )
+            rows.append( ( 'Autocomplete list height: ', self._ac_write_list_height_num_chars ) )
+            
+            gridbox = ClientGUICommon.WrapInGrid( self._write_autocomplete_panel, rows )
+            
+            self._write_autocomplete_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
             
             #
             
@@ -2594,22 +2711,35 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            #
+            vbox = QP.VBoxLayout()
             
-            QP.AddToLayout( vbox, self._autocomplete_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, self._read_autocomplete_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
             QP.AddToLayout( vbox, misc_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
+            QP.AddToLayout( vbox, self._write_autocomplete_panel, CC.FLAGS_EXPAND_PERPENDICULAR )
             
             vbox.addStretch( 1 )
             
             self.setLayout( vbox )
             
+            self._UpdateDefaultTagServiceControl()
+            
+            self._save_default_tag_service_tab_on_change.clicked.connect( self._UpdateDefaultTagServiceControl )
+            
+        
+        def _UpdateDefaultTagServiceControl( self ):
+            
+            enabled = not self._save_default_tag_service_tab_on_change.isChecked()
+            
+            self._default_tag_service_tab.setEnabled( enabled )
+            
         
         def UpdateOptions( self ):
+            
+            self._new_options.SetDefaultLocalLocationContext( self._default_local_location_context.GetValue() )
             
             self._new_options.SetBoolean( 'default_search_synchronised', self._default_search_synchronised.isChecked() )
             
             self._new_options.SetBoolean( 'autocomplete_float_main_gui', self._autocomplete_float_main_gui.isChecked() )
-            self._new_options.SetBoolean( 'autocomplete_float_frames', self._autocomplete_float_frames.isChecked() )
             
             self._new_options.SetInteger( 'ac_read_list_height_num_chars', self._ac_read_list_height_num_chars.value() )
             self._new_options.SetInteger( 'ac_write_list_height_num_chars', self._ac_write_list_height_num_chars.value() )
@@ -2830,8 +2960,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._media_viewer_prefetch_delay_base_ms.setToolTip( tt )
             
-            self._media_viewer_prefetch_num_previous = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 5 )
-            self._media_viewer_prefetch_num_next = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 5 )
+            self._media_viewer_prefetch_num_previous = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 50 )
+            self._media_viewer_prefetch_num_next = ClientGUICommon.BetterSpinBox( image_cache_panel, min = 0, max = 50 )
+            
+            self._prefetch_label_warning = ClientGUICommon.BetterStaticText( image_cache_panel )
+            self._prefetch_label_warning.setToolTip( 'If you boost the prefetch numbers, make sure your image cache is big enough to handle it! Doubly so if you frequently load images that at 100% are far larger than your screen size. You really don\'t want to be prefetching more than your cache can hold!' )
             
             image_tile_cache_panel = ClientGUICommon.StaticBox( self, 'image tile cache' )
             
@@ -2972,6 +3105,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Base ms delay for media viewer neighbour render prefetch:', self._media_viewer_prefetch_delay_base_ms ) )
             rows.append( ( 'Num previous to prefetch:', self._media_viewer_prefetch_num_previous ) )
             rows.append( ( 'Num next to prefetch:', self._media_viewer_prefetch_num_next ) )
+            rows.append( ( 'Prefetch numbers are good?:', self._prefetch_label_warning ) )
             
             gridbox = ClientGUICommon.WrapInGrid( image_cache_panel, rows )
             
@@ -3038,6 +3172,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._image_cache_storage_limit_percentage.valueChanged.connect( self.EventImageCacheUpdate )
             self._image_cache_prefetch_limit_percentage.valueChanged.connect( self.EventImageCacheUpdate )
             
+            self._media_viewer_prefetch_num_previous.valueChanged.connect( self.EventImageCacheUpdate )
+            self._media_viewer_prefetch_num_next.valueChanged.connect( self.EventImageCacheUpdate )
+            
             self.EventImageCacheUpdate()
             self.EventThumbnailsUpdate()
             self.EventImageTilesUpdate()
@@ -3052,9 +3189,9 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             estimated_bytes_per_fullscreen = 3 * display_size.width() * display_size.height()
             
-            estimate = cache_size // estimated_bytes_per_fullscreen
+            image_cache_estimate = cache_size // estimated_bytes_per_fullscreen
             
-            self._estimated_number_fullscreens.setText( '(about {}-{} images the size of your screen)'.format( HydrusData.ToHumanInt( estimate // 2 ), HydrusData.ToHumanInt( estimate * 2 ) ) )
+            self._estimated_number_fullscreens.setText( '(about {}-{} images the size of your screen)'.format( HydrusData.ToHumanInt( image_cache_estimate // 2 ), HydrusData.ToHumanInt( image_cache_estimate * 2 ) ) )
             
             num_pixels = cache_size * ( self._image_cache_storage_limit_percentage.value() / 100 ) / 3
             
@@ -3075,6 +3212,30 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             resolution = ( int( 16 * unit_length ), int( 9 * unit_length ) )
             
             self._image_cache_prefetch_limit_percentage_st.setText( '% - {} pixels, or about a {} image'.format( HydrusData.ToHumanInt( num_pixels ), HydrusData.ConvertResolutionToPrettyString( resolution ) ) )
+            
+            #
+            
+            num_prefetch = 1 + self._media_viewer_prefetch_num_previous.value() + self._media_viewer_prefetch_num_next.value()
+            
+            if num_prefetch > image_cache_estimate // 2:
+                
+                label = 'No, reduce or make your image cache bigger!'
+                object_name = 'HydrusWarning'
+                
+            else:
+                
+                label = 'Yes, looks good!'
+                object_name = ''
+                
+            
+            self._prefetch_label_warning.setText( label )
+            
+            if object_name != self._prefetch_label_warning.objectName():
+                
+                self._prefetch_label_warning.setObjectName( object_name )
+                
+                self._prefetch_label_warning.style().polish( self._prefetch_label_warning )
+                
             
         
         def EventImageTilesUpdate( self ):
@@ -3400,12 +3561,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             general_panel = ClientGUICommon.StaticBox( self, 'general tag options' )
             
-            self._default_tag_service_tab = ClientGUICommon.BetterChoice( general_panel )
-            
-            self._save_default_tag_service_tab_on_change = QW.QCheckBox( general_panel )
-            
-            self._default_tag_service_search_page = ClientGUICommon.BetterChoice( general_panel )
-            
             self._expand_parents_on_storage_taglists = QW.QCheckBox( general_panel )
             self._expand_parents_on_storage_autocomplete_taglists = QW.QCheckBox( general_panel )
             
@@ -3427,27 +3582,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             default_location_context = HG.client_controller.new_options.GetDefaultLocalLocationContext()
             
-            self._favourites = ClientGUIListBoxes.ListBoxTagsStringsAddRemove( favourites_panel, CC.COMBINED_TAG_SERVICE_KEY, ClientTags.TAG_DISPLAY_STORAGE )
+            self._favourites = ClientGUIListBoxes.ListBoxTagsStringsAddRemove( favourites_panel, CC.COMBINED_TAG_SERVICE_KEY, tag_display_type = ClientTags.TAG_DISPLAY_STORAGE )
             self._favourites_input = ClientGUIACDropdown.AutoCompleteDropdownTagsWrite( favourites_panel, self._favourites.AddTags, default_location_context, CC.COMBINED_TAG_SERVICE_KEY, show_paste_button = True )
             
             #
-            
-            self._default_tag_service_search_page.addItem( 'all known tags', CC.COMBINED_TAG_SERVICE_KEY )
-            
-            services = HG.client_controller.services_manager.GetServices( HC.REAL_TAG_SERVICES )
-            
-            for service in services:
-                
-                self._default_tag_service_tab.addItem( service.GetName(), service.GetServiceKey() )
-                
-                self._default_tag_service_search_page.addItem( service.GetName(), service.GetServiceKey() )
-                
-            
-            self._default_tag_service_tab.SetValue( self._new_options.GetKey( 'default_tag_service_tab' ) )
-            
-            self._save_default_tag_service_tab_on_change.setChecked( self._new_options.GetBoolean( 'save_default_tag_service_tab_on_change' ) )
-            
-            self._default_tag_service_search_page.SetValue( self._new_options.GetKey( 'default_tag_service_search_page' ) )
             
             self._expand_parents_on_storage_taglists.setChecked( self._new_options.GetBoolean( 'expand_parents_on_storage_taglists' ) )
             self._expand_parents_on_storage_taglists.setToolTip( 'This affects taglists in places like the manage tags dialog, where you edit tags as they actually are, and implied parents hang below tags.' )
@@ -3479,9 +3617,6 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'Default tag service in manage tag dialogs: ', self._default_tag_service_tab ) )
-            rows.append( ( 'Remember last used default tag service in manage tag dialogs: ', self._save_default_tag_service_tab_on_change ) )
-            rows.append( ( 'Default tag service in search pages: ', self._default_tag_service_search_page ) )
             rows.append( ( 'Show parent info by default on edit/write taglists: ', self._show_parent_decorators_on_storage_taglists ) )
             rows.append( ( 'Show parent info by default on edit/write autocomplete taglists: ', self._show_parent_decorators_on_storage_autocomplete_taglists ) )
             rows.append( ( 'Show parents expanded by default on edit/write taglists: ', self._expand_parents_on_storage_taglists ) )
@@ -3510,24 +3645,22 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             #
             
-            self._save_default_tag_service_tab_on_change.clicked.connect( self._UpdateDefaultTagServiceControl )
-            
-            self._UpdateDefaultTagServiceControl()
+            self._favourites_input.tagsPasted.connect( self.AddTagsOnlyAdd )
             
         
-        def _UpdateDefaultTagServiceControl( self ):
+        def AddTagsOnlyAdd( self, tags ):
             
-            enabled = not self._save_default_tag_service_tab_on_change.isChecked()
+            current_tags = self._favourites.GetTags()
             
-            self._default_tag_service_tab.setEnabled( enabled )
+            tags = { tag for tag in tags if tag not in current_tags }
+            
+            if len( tags ) > 0:
+                
+                self._favourites.AddTags( tags )
+                
             
         
         def UpdateOptions( self ):
-            
-            self._new_options.SetKey( 'default_tag_service_tab', self._default_tag_service_tab.GetValue() )
-            self._new_options.SetBoolean( 'save_default_tag_service_tab_on_change', self._save_default_tag_service_tab_on_change.isChecked() )
-            
-            self._new_options.SetKey( 'default_tag_service_search_page', self._default_tag_service_search_page.GetValue() )
             
             self._new_options.SetBoolean( 'show_parent_decorators_on_storage_taglists', self._show_parent_decorators_on_storage_taglists.isChecked() )
             self._new_options.SetBoolean( 'show_parent_decorators_on_storage_autocomplete_taglists', self._show_parent_decorators_on_storage_autocomplete_taglists.isChecked() )
@@ -3576,6 +3709,23 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._show_number_namespaces = QW.QCheckBox( render_panel )
             self._show_number_namespaces.setToolTip( 'This lets unnamespaced "16:9" show as that, not hiding the "16".' )
             self._namespace_connector = QW.QLineEdit( render_panel )
+            self._sibling_connector = QW.QLineEdit( render_panel )
+            
+            self._fade_sibling_connector = QW.QCheckBox( render_panel )
+            tt = 'If set, then if the sibling goes from one namespace to another, that colour will fade across the distance of the sibling connector. Just a bit of fun.'
+            self._fade_sibling_connector.setToolTip( tt )
+            
+            self._sibling_connector_custom_namespace_colour = ClientGUICommon.NoneableTextCtrl( render_panel, none_phrase = 'use ideal tag colour' )
+            tt = 'The sibling connector can use a particular namespace\'s colour.'
+            self._sibling_connector_custom_namespace_colour.setToolTip( tt )
+            
+            self._or_connector = QW.QLineEdit( render_panel )
+            tt = 'When an OR predicate is rendered, it splits the components by this text.'
+            self._or_connector.setToolTip( tt )
+            
+            self._or_connector_custom_namespace_colour = QW.QLineEdit( render_panel )
+            tt = 'The OR connector can use a particular namespace\'s colour.'
+            self._or_connector_custom_namespace_colour.setToolTip( tt )
             
             self._replace_tag_underscores_with_spaces = QW.QCheckBox( render_panel )
             
@@ -3585,24 +3735,33 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._namespace_colours = ClientGUIListBoxes.ListBoxTagsColourOptions( namespace_colours_panel, HC.options[ 'namespace_colours' ] )
             
-            self._edit_namespace_colour = QW.QPushButton( 'edit selected', namespace_colours_panel )
-            self._edit_namespace_colour.clicked.connect( self.EventEditNamespaceColour )
-            
-            self._new_namespace_colour = QW.QLineEdit( namespace_colours_panel )
-            self._new_namespace_colour.installEventFilter( ClientGUICommon.TextCatchEnterEventFilter( self._new_namespace_colour, self.AddNamespaceColour ) )
+            self._add_namespace_colour = ClientGUICommon.BetterButton( self, 'add', self._AddNamespaceColour )
+            self._edit_namespace_colour = ClientGUICommon.BetterButton( self, 'edit', self._EditNamespaceColour )
+            self._delete_namespace_colour = ClientGUICommon.BetterButton( self, 'delete', self._DeleteNamespaceColour )
             
             #
             
             self._show_namespaces.setChecked( new_options.GetBoolean( 'show_namespaces' ) )
-            self._show_number_namespaces.setChecked(( new_options.GetBoolean( 'show_number_namespaces' ) ) )
+            self._show_number_namespaces.setChecked( new_options.GetBoolean( 'show_number_namespaces' ) )
             self._namespace_connector.setText( new_options.GetString( 'namespace_connector' ) )
             self._replace_tag_underscores_with_spaces.setChecked( new_options.GetBoolean( 'replace_tag_underscores_with_spaces' ) )
+            self._sibling_connector.setText( new_options.GetString( 'sibling_connector' ) )
+            self._fade_sibling_connector.setChecked( new_options.GetBoolean( 'fade_sibling_connector' ) )
+            self._sibling_connector_custom_namespace_colour.SetValue( new_options.GetNoneableString( 'sibling_connector_custom_namespace_colour' ) )
+            self._or_connector.setText( new_options.GetString( 'or_connector' ) )
+            self._or_connector_custom_namespace_colour.setText( new_options.GetNoneableString( 'or_connector_custom_namespace_colour' ) )
             
             #
             
             namespace_colours_panel.Add( self._namespace_colours, CC.FLAGS_EXPAND_BOTH_WAYS )
-            namespace_colours_panel.Add( self._new_namespace_colour, CC.FLAGS_EXPAND_PERPENDICULAR )
-            namespace_colours_panel.Add( self._edit_namespace_colour, CC.FLAGS_EXPAND_PERPENDICULAR )
+            
+            hbox = QP.HBoxLayout()
+            
+            QP.AddToLayout( hbox, self._add_namespace_colour, CC.FLAGS_EXPAND_BOTH_WAYS )
+            QP.AddToLayout( hbox, self._edit_namespace_colour, CC.FLAGS_EXPAND_BOTH_WAYS )
+            QP.AddToLayout( hbox, self._delete_namespace_colour, CC.FLAGS_EXPAND_BOTH_WAYS )
+            
+            namespace_colours_panel.Add( hbox, CC.FLAGS_EXPAND_PERPENDICULAR )
             
             #
             
@@ -3627,6 +3786,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Show namespaces: ', self._show_namespaces ) )
             rows.append( ( 'Unless namespace is a number: ', self._show_number_namespaces ) )
             rows.append( ( 'If shown, namespace connecting string: ', self._namespace_connector ) )
+            rows.append( ( 'Sibling connecting string: ', self._sibling_connector ) )
+            rows.append( ( 'Fade the colour of the sibling connector string on Qt6: ', self._fade_sibling_connector ) )
+            rows.append( ( 'Namespace for the colour of the sibling connecting string: ', self._sibling_connector_custom_namespace_colour ) )
+            rows.append( ( 'OR connecting string: ', self._or_connector ) )
+            rows.append( ( 'Namespace for the colour of the OR connecting string: ', self._or_connector_custom_namespace_colour ) )
             rows.append( ( 'EXPERIMENTAL: Replace all underscores with spaces: ', self._replace_tag_underscores_with_spaces ) )
             
             gridbox = ClientGUICommon.WrapInGrid( render_panel, rows )
@@ -3643,18 +3807,61 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             #
             
             self._NamespacesUpdated()
+            self._SiblingColourStuffClicked()
             
             self._show_namespaces.clicked.connect( self._NamespacesUpdated )
+            self._fade_sibling_connector.clicked.connect( self._SiblingColourStuffClicked )
             
             self.setLayout( vbox )
             
         
-        def _NamespacesUpdated( self ):
+        def _AddNamespaceColour( self ):
             
-            self._show_number_namespaces.setEnabled( not self._show_namespaces.isChecked() )
+            with ClientGUIDialogs.DialogTextEntry( self, 'Enter the namespace', allow_blank = False ) as dlg:
+                
+                if dlg.exec() == QW.QDialog.Accepted:
+                    
+                    namespace = dlg.GetValue()
+                    
+                    namespace = namespace.lower().strip()
+                    
+                    if namespace.endswith( ':' ):
+                        
+                        namespace = namespace[:-1]
+                        
+                    
+                    if namespace != 'system':
+                        
+                        namespace = HydrusTags.StripTextOfGumpf( namespace )
+                        
+                    
+                    if namespace in ( '', ':' ):
+                        
+                        QW.QMessageBox.warning( self, 'Not allowed', 'Sorry, that namespace means unnamespaced/default namespaced, which are already listed.' )
+                        
+                        return
+                        
+                    
+                    existing_namespaces = self._namespace_colours.GetNamespaceColours().keys()
+                    
+                    if namespace in existing_namespaces:
+                        
+                        QW.QMessageBox.warning( self, 'Already exists', 'Sorry, that namespace is already listed!' )
+                        
+                        return
+                        
+                    
+                    self._namespace_colours.SetNamespaceColour( namespace, QG.QColor( random.randint(0,255), random.randint(0,255), random.randint(0,255) ) )
+                    
+                
             
         
-        def EventEditNamespaceColour( self ):
+        def _DeleteNamespaceColour( self ):
+            
+            self._namespace_colours.DeleteSelected()
+            
+        
+        def _EditNamespaceColour( self ):
             
             results = self._namespace_colours.GetSelectedNamespaceColours()
             
@@ -3662,25 +3869,22 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 
                 colour = QG.QColor( r, g, b )
                 
-                colour = QW.QColorDialog.getColor( colour, self, 'Namespace colour', QW.QColorDialog.ShowAlphaChannel )
+                colour = ClientGUIColourPicker.EditColour( self, colour )
                 
-                if colour.isValid():
-                
-                    self._namespace_colours.SetNamespaceColour( namespace, colour )
-                    
+                self._namespace_colours.SetNamespaceColour( namespace, colour )
                 
             
         
-        def AddNamespaceColour( self ):
+        def _SiblingColourStuffClicked( self ):
             
-            namespace = self._new_namespace_colour.text()
+            choice_available = not self._fade_sibling_connector.isChecked()
             
-            if namespace != '':
-                
-                self._namespace_colours.SetNamespaceColour( namespace, QG.QColor( random.randint(0,255), random.randint(0,255), random.randint(0,255) ) )
-                
-                self._new_namespace_colour.clear()
-                
+            self._sibling_connector_custom_namespace_colour.setEnabled( choice_available )
+            
+        
+        def _NamespacesUpdated( self ):
+            
+            self._show_number_namespaces.setEnabled( not self._show_namespaces.isChecked() )
             
         
         def UpdateOptions( self ):
@@ -3693,6 +3897,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetBoolean( 'show_number_namespaces', self._show_number_namespaces.isChecked() )
             self._new_options.SetString( 'namespace_connector', self._namespace_connector.text() )
             self._new_options.SetBoolean( 'replace_tag_underscores_with_spaces', self._replace_tag_underscores_with_spaces.isChecked() )
+            self._new_options.SetString( 'sibling_connector', self._sibling_connector.text() )
+            self._new_options.SetBoolean( 'fade_sibling_connector', self._fade_sibling_connector.isChecked() )
+            
+            self._new_options.SetNoneableString( 'sibling_connector_custom_namespace_colour', self._sibling_connector_custom_namespace_colour.GetValue() )
+            
+            self._new_options.SetString( 'or_connector', self._or_connector.text() )
+            self._new_options.SetNoneableString( 'or_connector_custom_namespace_colour', self._or_connector_custom_namespace_colour.text() )
             
             HC.options[ 'namespace_colours' ] = self._namespace_colours.GetNamespaceColours()
             
@@ -3715,6 +3926,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._suggested_tags_layout.addItem( 'notebook', 'notebook' )
             self._suggested_tags_layout.addItem( 'side-by-side', 'columns' )
             
+            self._default_suggested_tags_notebook_page = ClientGUICommon.BetterChoice( suggested_tags_panel )
+            
+            for item in [ 'favourites', 'related', 'file_lookup_scripts', 'recent' ]:
+                
+                self._default_suggested_tags_notebook_page.addItem( item, item )
+                
+            
             suggest_tags_panel_notebook = QW.QTabWidget( suggested_tags_panel )
             
             #
@@ -3732,7 +3950,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
                 self._suggested_favourites_services.addItem( tag_service.GetName(), tag_service.GetServiceKey() )
                 
             
-            self._suggested_favourites = ClientGUIListBoxes.ListBoxTagsStringsAddRemove( suggested_tags_favourites_panel, CC.COMBINED_TAG_SERVICE_KEY, ClientTags.TAG_DISPLAY_STORAGE )
+            self._suggested_favourites = ClientGUIListBoxes.ListBoxTagsStringsAddRemove( suggested_tags_favourites_panel, CC.COMBINED_TAG_SERVICE_KEY, tag_display_type = ClientTags.TAG_DISPLAY_STORAGE )
             
             self._current_suggested_favourites_service = None
             
@@ -3751,6 +3969,42 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._related_tags_search_1_duration_ms = ClientGUICommon.BetterSpinBox( suggested_tags_related_panel, min=50, max=60000 )
             self._related_tags_search_2_duration_ms = ClientGUICommon.BetterSpinBox( suggested_tags_related_panel, min=50, max=60000 )
             self._related_tags_search_3_duration_ms = ClientGUICommon.BetterSpinBox( suggested_tags_related_panel, min=50, max=60000 )
+            
+            self._related_tags_concurrence_threshold_percent = ClientGUICommon.BetterSpinBox( suggested_tags_related_panel, min = 1, max = 100 )
+            tt = 'The related tags system looks for tags that tend to be used on the same files. Here you can set how strict it is. How many percent of tag A\'s files must tag B on for tag B to be a good suggestion? Higher numbers will mean fewer but more relevant suggestions.'
+            self._related_tags_concurrence_threshold_percent.setToolTip( tt )
+            
+            #
+            
+            search_tag_slices_weight_box = ClientGUICommon.StaticBox( suggested_tags_related_panel, 'adjust scores by search tags' )
+            
+            search_tag_slices_weight_panel = ClientGUIListCtrl.BetterListCtrlPanel( search_tag_slices_weight_box )
+            
+            self._search_tag_slices_weights = ClientGUIListCtrl.BetterListCtrl( search_tag_slices_weight_panel, CGLC.COLUMN_LIST_TAG_SLICE_WEIGHT.ID, 8, self._ConvertTagSliceAndWeightToListCtrlTuples, activation_callback = self._EditSearchTagSliceWeight, use_simple_delete = True, can_delete_callback = self._CanDeleteSearchTagSliceWeight )
+            tt = 'ADVANCED! These weights adjust the ranking scores of suggested tags by the tag type that searched for them. Set to 0 to not search with that type of tag.'
+            self._search_tag_slices_weights.setToolTip( tt )
+            
+            search_tag_slices_weight_panel.SetListCtrl( self._search_tag_slices_weights )
+            
+            search_tag_slices_weight_panel.AddButton( 'add', self._AddSearchTagSliceWeight )
+            search_tag_slices_weight_panel.AddButton( 'edit', self._EditSearchTagSliceWeight, enabled_only_on_single_selection = True )
+            search_tag_slices_weight_panel.AddDeleteButton( enabled_check_func = self._CanDeleteSearchTagSliceWeight )
+            
+            #
+            
+            result_tag_slices_weight_box = ClientGUICommon.StaticBox( suggested_tags_related_panel, 'adjust scores by suggested tags' )
+            
+            result_tag_slices_weight_panel = ClientGUIListCtrl.BetterListCtrlPanel( result_tag_slices_weight_box )
+            
+            self._result_tag_slices_weights = ClientGUIListCtrl.BetterListCtrl( result_tag_slices_weight_panel, CGLC.COLUMN_LIST_TAG_SLICE_WEIGHT.ID, 8, self._ConvertTagSliceAndWeightToListCtrlTuples, activation_callback = self._EditResultTagSliceWeight, use_simple_delete = True, can_delete_callback = self._CanDeleteResultTagSliceWeight )
+            tt = 'ADVANCED! These weights adjust the ranking scores of suggested tags by their tag type. Set to 0 to not suggest that type of tag at all.'
+            self._result_tag_slices_weights.setToolTip( tt )
+            
+            result_tag_slices_weight_panel.SetListCtrl( self._result_tag_slices_weights )
+            
+            result_tag_slices_weight_panel.AddButton( 'add', self._AddResultTagSliceWeight )
+            result_tag_slices_weight_panel.AddButton( 'edit', self._EditResultTagSliceWeight, enabled_only_on_single_selection = True )
+            result_tag_slices_weight_panel.AddDeleteButton( enabled_check_func = self._CanDeleteResultTagSliceWeight )
             
             #
             
@@ -3779,11 +4033,22 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._suggested_tags_layout.SetValue( self._new_options.GetNoneableString( 'suggested_tags_layout' ) )
             
+            self._default_suggested_tags_notebook_page.SetValue( self._new_options.GetString( 'default_suggested_tags_notebook_page' ) )
+            
+            #
+            
             self._show_related_tags.setChecked( self._new_options.GetBoolean( 'show_related_tags' ) )
             
             self._related_tags_search_1_duration_ms.setValue( self._new_options.GetInteger( 'related_tags_search_1_duration_ms' ) )
             self._related_tags_search_2_duration_ms.setValue( self._new_options.GetInteger( 'related_tags_search_2_duration_ms' ) )
             self._related_tags_search_3_duration_ms.setValue( self._new_options.GetInteger( 'related_tags_search_3_duration_ms' ) )
+            
+            self._related_tags_concurrence_threshold_percent.setValue( self._new_options.GetInteger( 'related_tags_concurrence_threshold_percent' ) )
+
+            ( related_tags_search_tag_slices_weight_percent, related_tags_result_tag_slices_weight_percent ) = self._new_options.GetRelatedTagsTagSliceWeights()
+            
+            self._search_tag_slices_weights.SetData( related_tags_search_tag_slices_weight_percent )
+            self._result_tag_slices_weights.SetData( related_tags_result_tag_slices_weight_percent )
             
             self._show_file_lookup_script_tags.setChecked( self._new_options.GetBoolean( 'show_file_lookup_script_tags' ) )
             
@@ -3807,17 +4072,24 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows = []
             
-            rows.append( ( 'Show related tags on single-file manage tags windows: ', self._show_related_tags ) )
-            rows.append( ( 'Initial search duration (ms): ', self._related_tags_search_1_duration_ms ) )
+            rows.append( ( 'Show related tags: ', self._show_related_tags ) )
+            rows.append( ( 'Initial/Quick search duration (ms): ', self._related_tags_search_1_duration_ms ) )
             rows.append( ( 'Medium search duration (ms): ', self._related_tags_search_2_duration_ms ) )
             rows.append( ( 'Thorough search duration (ms): ', self._related_tags_search_3_duration_ms ) )
+            rows.append( ( 'Tag concurrence threshold %: ', self._related_tags_concurrence_threshold_percent ) )
             
             gridbox = ClientGUICommon.WrapInGrid( suggested_tags_related_panel, rows )
             
-            desc = 'This will search the database for statistically related tags based on what your focused file already has.'
+            desc = 'This will search the database for tags statistically related to what your files already have.'
             
-            QP.AddToLayout( panel_vbox, ClientGUICommon.BetterStaticText(suggested_tags_related_panel,desc), CC.FLAGS_EXPAND_PERPENDICULAR )
+            search_tag_slices_weight_box.Add( search_tag_slices_weight_panel, CC.FLAGS_EXPAND_BOTH_WAYS )
+            
+            result_tag_slices_weight_box.Add( result_tag_slices_weight_panel, CC.FLAGS_EXPAND_BOTH_WAYS )
+            
+            QP.AddToLayout( panel_vbox, ClientGUICommon.BetterStaticText( suggested_tags_related_panel, desc ), CC.FLAGS_EXPAND_PERPENDICULAR )
             QP.AddToLayout( panel_vbox, gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
+            QP.AddToLayout( panel_vbox, search_tag_slices_weight_box, CC.FLAGS_EXPAND_BOTH_WAYS )
+            QP.AddToLayout( panel_vbox, result_tag_slices_weight_box, CC.FLAGS_EXPAND_BOTH_WAYS )
             
             suggested_tags_related_panel.setLayout( panel_vbox )
             
@@ -3859,10 +4131,11 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             rows.append( ( 'Width of suggested tags columns: ', self._suggested_tags_width ) )
             rows.append( ( 'Column layout: ', self._suggested_tags_layout ) )
+            rows.append( ( 'Default notebook page: ', self._default_suggested_tags_notebook_page ) )
             
             gridbox = ClientGUICommon.WrapInGrid( suggested_tags_panel, rows )
             
-            desc = 'The manage tags dialog can provide several kinds of tag suggestions. For simplicity, most are turned off by default.'
+            desc = 'The manage tags dialog can provide several kinds of tag suggestions.'
             
             suggested_tags_panel.Add( ClientGUICommon.BetterStaticText( suggested_tags_panel, desc ), CC.FLAGS_EXPAND_PERPENDICULAR )
             suggested_tags_panel.Add( gridbox, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
@@ -3879,8 +4152,169 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             #
             
             self._suggested_favourites_services.currentIndexChanged.connect( self.EventSuggestedFavouritesService )
+            self._suggested_tags_layout.currentIndexChanged.connect( self._NotifyLayoutChanged )
             
+            self._NotifyLayoutChanged()
             self.EventSuggestedFavouritesService( None )
+            
+        
+        def _AddResultTagSliceWeight( self ):
+            
+            self._AddTagSliceWeight( self._result_tag_slices_weights )
+            
+        
+        def _AddSearchTagSliceWeight( self ):
+            
+            self._AddTagSliceWeight( self._search_tag_slices_weights )
+            
+        
+        def _AddTagSliceWeight( self, list_ctrl ):
+            
+            message = 'enter namespace'
+            
+            with ClientGUIDialogs.DialogTextEntry( self, message, allow_blank = False ) as dlg:
+                
+                if dlg.exec() == QW.QDialog.Accepted:
+                    
+                    tag_slice = dlg.GetValue()
+                    
+                    if tag_slice in ( '', ':' ):
+                        
+                        QW.QMessageBox.warning( self, 'Warning', 'Sorry, you cannot re-add unnamespaced or namespaced!' )
+                        
+                        return
+                        
+                    
+                    if not tag_slice.endswith( ':' ):
+                        
+                        tag_slice = tag_slice + ':'
+                        
+                    
+                    existing_tag_slices = { existing_tag_slice for ( existing_tag_slice, existing_weight ) in list_ctrl.GetData() }
+                    
+                    if tag_slice in existing_tag_slices:
+                        
+                        QW.QMessageBox.warning( self, 'Warning', 'Sorry, that namespace already exists!' )
+                        
+                        return
+                        
+                    
+                    with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'set weight' ) as dlg:
+                        
+                        panel = ClientGUIScrolledPanels.EditSingleCtrlPanel( dlg )
+                        
+                        control = ClientGUICommon.BetterSpinBox( panel, initial = 100, min = 0, max = 10000 )
+                        
+                        panel.SetControl( control )
+                        
+                        dlg.SetPanel( panel )
+                        
+                        if dlg.exec() == QW.QDialog.Accepted:
+                            
+                            weight = control.value()
+                            
+                            new_data = ( tag_slice, weight )
+                            
+                            list_ctrl.AddDatas( [ new_data ] )
+                            
+                            list_ctrl.Sort()
+                            
+                        
+                    
+                
+            
+        
+        def _CanDeleteResultTagSliceWeight( self ) -> bool:
+            
+            return self._CanDeleteTagSliceWeight( self._result_tag_slices_weights )
+            
+        
+        def _CanDeleteSearchTagSliceWeight( self ) -> bool:
+            
+            return self._CanDeleteTagSliceWeight( self._search_tag_slices_weights )
+            
+        
+        def _CanDeleteTagSliceWeight( self, list_ctrl ) -> bool:
+            
+            selected_tag_slices_and_weights = list_ctrl.GetData( only_selected = True )
+            
+            for ( tag_slice, weight ) in selected_tag_slices_and_weights:
+                
+                if tag_slice in ( '', ':' ):
+                    
+                    return False
+                    
+                
+            
+            return True
+            
+        
+        def _ConvertTagSliceAndWeightToListCtrlTuples( self, tag_slice_and_weight ):
+            
+            ( tag_slice, weight ) = tag_slice_and_weight
+            
+            pretty_tag_slice = HydrusTags.ConvertTagSliceToString( tag_slice )
+            sort_tag_slice = pretty_tag_slice
+            
+            pretty_weight = HydrusData.ToHumanInt( weight ) + '%'
+            
+            display_tuple = ( pretty_tag_slice, pretty_weight )
+            sort_tuple = ( sort_tag_slice, weight )
+            
+            return ( display_tuple, sort_tuple )
+            
+        
+        def _EditResultTagSliceWeight( self ):
+            
+            self._EditTagSliceWeight( self._result_tag_slices_weights )
+            
+        
+        def _EditSearchTagSliceWeight( self ):
+            
+            self._EditTagSliceWeight( self._search_tag_slices_weights )
+            
+        
+        def _EditTagSliceWeight( self, list_ctrl ):
+            
+            selected_tag_slices_and_weights = list_ctrl.GetData( only_selected = True )
+            
+            if len( selected_tag_slices_and_weights ) > 0:
+                
+                original_data = selected_tag_slices_and_weights[0]
+                
+                ( tag_slice, weight ) = original_data
+                
+                with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit weight' ) as dlg:
+                    
+                    panel = ClientGUIScrolledPanels.EditSingleCtrlPanel( dlg )
+                    
+                    control = ClientGUICommon.BetterSpinBox( panel, initial = weight, min = 0, max = 10000 )
+                    
+                    panel.SetControl( control )
+                    
+                    dlg.SetPanel( panel )
+                    
+                    if dlg.exec() == QW.QDialog.Accepted:
+                        
+                        edited_weight = control.value()
+                        
+                        list_ctrl.DeleteDatas( [ original_data ] )
+                        
+                        edited_data = ( tag_slice, edited_weight )
+                        
+                        list_ctrl.AddDatas( [ edited_data ] )
+                        
+                        list_ctrl.Sort()
+                        
+                    
+                
+            
+        
+        def _NotifyLayoutChanged( self ):
+            
+            enable_default_page = self._suggested_tags_layout.GetValue() == 'notebook'
+            
+            self._default_suggested_tags_notebook_page.setEnabled( enable_default_page )
             
         
         def _SaveCurrentSuggestedFavourites( self ):
@@ -3919,6 +4353,8 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'suggested_tags_width', self._suggested_tags_width.value() )
             self._new_options.SetNoneableString( 'suggested_tags_layout', self._suggested_tags_layout.GetValue() )
             
+            self._new_options.SetString( 'default_suggested_tags_notebook_page', self._default_suggested_tags_notebook_page.GetValue() )
+            
             self._SaveCurrentSuggestedFavourites()
             
             for ( service_key, favourites ) in list(self._suggested_favourites_dict.items()):
@@ -3931,6 +4367,13 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'related_tags_search_1_duration_ms', self._related_tags_search_1_duration_ms.value() )
             self._new_options.SetInteger( 'related_tags_search_2_duration_ms', self._related_tags_search_2_duration_ms.value() )
             self._new_options.SetInteger( 'related_tags_search_3_duration_ms', self._related_tags_search_3_duration_ms.value() )
+            
+            self._new_options.SetInteger( 'related_tags_concurrence_threshold_percent', self._related_tags_concurrence_threshold_percent.value() )
+            
+            related_tags_search_tag_slices_weight_percent = self._search_tag_slices_weights.GetData()
+            related_tags_result_tag_slices_weight_percent = self._result_tag_slices_weights.GetData()
+            
+            self._new_options.SetRelatedTagsTagSliceWeights( related_tags_search_tag_slices_weight_percent, related_tags_result_tag_slices_weight_percent )
             
             self._new_options.SetBoolean( 'show_file_lookup_script_tags', self._show_file_lookup_script_tags.isChecked() )
             self._new_options.SetNoneableString( 'favourite_file_lookup_script', self._favourite_file_lookup_script.GetValue() )
@@ -3955,12 +4398,21 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             
             self._thumbnail_scale_type = ClientGUICommon.BetterChoice( self )
             
-            self._video_thumbnail_percentage_in = ClientGUICommon.BetterSpinBox( self, min=0, max=100 )
-            
             for t in ( HydrusImageHandling.THUMBNAIL_SCALE_DOWN_ONLY, HydrusImageHandling.THUMBNAIL_SCALE_TO_FIT, HydrusImageHandling.THUMBNAIL_SCALE_TO_FILL ):
                 
                 self._thumbnail_scale_type.addItem( HydrusImageHandling.thumbnail_scale_str_lookup[ t ], t )
                 
+            
+            # I tried <100%, but Qt seems to cap it to 1.0. Sad!
+            self._thumbnail_dpr_percentage = ClientGUICommon.BetterSpinBox( self, min = 100, max = 800 )
+            
+            tt = 'If your OS runs at an UI scale greater than 100%, mirror it here and your thumbnails will look crisp. If you have multiple monitors at different UI scales, or you change UI scale regularly, set it to the largest one you use.'
+            tt += os.linesep * 2
+            tt += 'I believe the UI scale on the monitor this dialog opened on was {}'.format( HydrusData.ConvertFloatToPercentage( self.devicePixelRatio() ) )
+            
+            self._thumbnail_dpr_percentage.setToolTip( tt )
+            
+            self._video_thumbnail_percentage_in = ClientGUICommon.BetterSpinBox( self, min=0, max=100 )
             
             self._thumbnail_visibility_scroll_percent = ClientGUICommon.BetterSpinBox( self, min=1, max=99 )
             self._thumbnail_visibility_scroll_percent.setToolTip( 'Lower numbers will cause fewer scrolls, higher numbers more.' )
@@ -3985,6 +4437,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._thumbnail_margin.setValue( self._new_options.GetInteger( 'thumbnail_margin' ) )
             
             self._thumbnail_scale_type.SetValue( self._new_options.GetInteger( 'thumbnail_scale_type' ) )
+            self._thumbnail_dpr_percentage.setValue( self._new_options.GetInteger( 'thumbnail_dpr_percent' ) )
             
             self._video_thumbnail_percentage_in.setValue( self._new_options.GetInteger( 'video_thumbnail_percentage_in' ) )
             
@@ -4013,9 +4466,10 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             rows.append( ( 'Thumbnail border: ', self._thumbnail_border ) )
             rows.append( ( 'Thumbnail margin: ', self._thumbnail_margin ) )
             rows.append( ( 'Thumbnail scaling: ', self._thumbnail_scale_type ) )
-            rows.append( ( 'Focus thumbnails in the preview window on ctrl-click: ', self._focus_preview_on_ctrl_click ) )
+            rows.append( ( 'Thumbnail UI-scale supersampling %: ', self._thumbnail_dpr_percentage ) )
+            rows.append( ( 'On ctrl-click, focus thumbnails in the preview window: ', self._focus_preview_on_ctrl_click ) )
             rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_ctrl_click_only_static ) )
-            rows.append( ( 'Focus thumbnails in the preview window on shift-click: ', self._focus_preview_on_shift_click ) )
+            rows.append( ( 'On shift-click, focus thumbnails in the preview window: ', self._focus_preview_on_shift_click ) )
             rows.append( ( '  Only on files with no duration: ', self._focus_preview_on_shift_click_only_static ) )
             rows.append( ( 'Generate video thumbnails this % in: ', self._video_thumbnail_percentage_in ) )
             rows.append( ( 'Do not scroll down on key navigation if thumbnail at least this % visible: ', self._thumbnail_visibility_scroll_percent ) )
@@ -4049,6 +4503,7 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             self._new_options.SetInteger( 'thumbnail_margin', self._thumbnail_margin.value() )
             
             self._new_options.SetInteger( 'thumbnail_scale_type', self._thumbnail_scale_type.GetValue() )
+            self._new_options.SetInteger( 'thumbnail_dpr_percent', self._thumbnail_dpr_percentage.value() )
             
             self._new_options.SetInteger( 'video_thumbnail_percentage_in', self._video_thumbnail_percentage_in.value() )
             
@@ -4095,6 +4550,23 @@ class ManageOptionsPanel( ClientGUIScrolledPanels.ManagePanel ):
             HG.client_controller.WriteSynchronous( 'save_options', HC.options )
             
             HG.client_controller.WriteSynchronous( 'serialisable', self._new_options )
+            
+            # we do this to convert tuples to lists and so on
+            test_new_options = self._new_options.Duplicate()
+            
+            if test_new_options.GetMediaViewOptions() != self._original_new_options.GetMediaViewOptions():
+                
+                HG.client_controller.pub( 'clear_image_tile_cache' )
+                
+            
+            res_changed = HC.options[ 'thumbnail_dimensions' ] != self._original_options[ 'thumbnail_dimensions' ]
+            type_changed = test_new_options.GetInteger( 'thumbnail_scale_type' ) != self._original_new_options.GetInteger( 'thumbnail_scale_type' )
+            dpr_changed = test_new_options.GetInteger( 'thumbnail_dpr_percent' ) != self._original_new_options.GetInteger( 'thumbnail_dpr_percent' )
+            
+            if res_changed or type_changed or dpr_changed:
+                
+                HG.client_controller.pub( 'reset_thumbnail_cache' )
+                
             
         except:
             

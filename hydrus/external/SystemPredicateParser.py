@@ -61,6 +61,10 @@ class Predicate( Enum ):
     NOT_BEST_QUALITY_OF_GROUP = auto()
     HAS_AUDIO = auto()
     NO_AUDIO = auto()
+    HAS_EXIF = auto()
+    NO_EXIF = auto()
+    HAS_HUMAN_READABLE_EMBEDDED_METADATA = auto()
+    NO_HUMAN_READABLE_EMBEDDED_METADATA = auto()
     HAS_ICC_PROFILE = auto()
     NO_ICC_PROFILE = auto()
     HAS_TAGS = auto()
@@ -78,6 +82,8 @@ class Predicate( Enum ):
     LAST_VIEWED_TIME = auto()
     TIME_IMPORTED = auto()
     DURATION = auto()
+    FRAMERATE = auto()
+    NUM_OF_FRAMES = auto()
     FILE_SERVICE = auto()
     NUM_FILE_RELS = auto()
     RATIO = auto()
@@ -112,7 +118,7 @@ class Value( Enum ):
     HASHLIST_WITH_ALGORITHM = auto()  # A 2-tuple, where the first part is a set of potential hashes (as strings), the second part is one of 'sha256', 'md5', 'sha1', 'sha512'
     FILETYPE_LIST = auto()  # A set of file types using the enum set in InitialiseFiletypes as defined in FILETYPES
     # Either a tuple of 4 non-negative integers: (years, months, days, hours) where the latter is < 24 OR
-    # a datetime.date object. For the latter, only the YYYY-MM-DD format is accepted.
+    # a datetime.datetime object. For the latter, only the YYYY-MM-DD format is accepted.
     # dateutils has a function to try to guess and parse arbitrary date formats but I didn't use it here since it would be an additional dependency.
     DATE_OR_TIME_INTERVAL = auto()
     TIME_SEC_MSEC = auto()  # A tuple of two non-negative integers: (seconds, milliseconds) where the latter is <1000
@@ -141,6 +147,7 @@ class Units( Enum ):
     FILE_RELATIONSHIP_TYPE = auto()  # One of 'not related/false positive', 'duplicates', 'alternates', 'potential duplicates'
     PIXELS_OR_NONE = auto()  # Always None (meaning pixels)
     PIXELS = auto()  # One of 'pixels', 'kilopixels', 'megapixels'
+    FPS_OR_NONE = auto() # 'fps'
 
 
 # All system predicates
@@ -157,6 +164,10 @@ SYSTEM_PREDICATES = {
     '(((is )?not)|(isn\'t))( the)? best quality( file)? of( its)?( duplicate)? group': (Predicate.NOT_BEST_QUALITY_OF_GROUP, None, None, None),
     'has audio': (Predicate.HAS_AUDIO, None, None, None),
     'no audio': (Predicate.NO_AUDIO, None, None, None),
+    'has exif': (Predicate.HAS_EXIF, None, None, None),
+    'no exif': (Predicate.NO_EXIF, None, None, None),
+    'has.*embedded.*metadata': (Predicate.HAS_HUMAN_READABLE_EMBEDDED_METADATA, None, None, None),
+    'no.*embedded.*metadata': (Predicate.NO_HUMAN_READABLE_EMBEDDED_METADATA, None, None, None),
     'has icc profile': (Predicate.HAS_ICC_PROFILE, None, None, None),
     'no icc profile': (Predicate.NO_ICC_PROFILE, None, None, None),
     'has tags': (Predicate.HAS_TAGS, None, None, None),
@@ -174,6 +185,8 @@ SYSTEM_PREDICATES = {
     'last viewed time|last view time': (Predicate.LAST_VIEWED_TIME, Operators.RELATIONAL, Value.DATE_OR_TIME_INTERVAL, None),
     'time imported|import time': (Predicate.TIME_IMPORTED, Operators.RELATIONAL, Value.DATE_OR_TIME_INTERVAL, None),
     'duration': (Predicate.DURATION, Operators.RELATIONAL, Value.TIME_SEC_MSEC, None),
+    'framerate': (Predicate.FRAMERATE, Operators.RELATIONAL_EXACT, Value.NATURAL, Units.FPS_OR_NONE),
+    'number of frames': (Predicate.NUM_OF_FRAMES, Operators.RELATIONAL, Value.NATURAL, None),
     'file service': (Predicate.FILE_SERVICE, Operators.FILESERVICE_STATUS, Value.ANY_STRING, None),
     'num(ber of)? file relationships': (Predicate.NUM_FILE_RELS, Operators.RELATIONAL, Value.NATURAL, Units.FILE_RELATIONSHIP_TYPE),
     'ratio': (Predicate.RATIO, Operators.RATIO_OPERATORS, Value.RATIO, None),
@@ -206,6 +219,7 @@ SYSTEM_PREDICATES = {
 # The parse_* functions consume some of the string and return a (remaining part of the string, parsed value) tuple.
 def parse_system_predicate( string: str ):
     string = string.lower().strip()
+    string = string.replace( '_', ' ' )
     if string.startswith( "-" ):
         raise ValueError( "System predicate can't start with negation" )
     if not string.startswith( SYSTEM_PREDICATE_PREFIX ):
@@ -263,6 +277,13 @@ def parse_unit( string: str, spec ):
         match = re.match( 'mpx|megapixels|megapixel', string )
         if match: return string[ len( match[ 0 ] ): ], 'megapixels'
         raise ValueError( "Invalid unit, expected pixels" )
+    elif spec == Units.FPS_OR_NONE:
+        if not string:
+            return string, None
+        else:
+            match = re.match( 'fps', string )
+            if match: return string[ len( match[ 0 ] ): ], None
+        raise ValueError( "Invalid unit, expected no unit or fps" )
     raise ValueError( "Invalid unit specification" )
 
 
@@ -282,7 +303,7 @@ def parse_value( string: str, spec ):
             return string[ len( match[ 0 ] ): ], (hashes, distance)
         raise ValueError( "Invalid value, expected a list of hashes with distance" )
     elif spec == Value.HASHLIST_WITH_ALGORITHM:
-        match = re.match( '(?P<hashes>[0-9a-f]+((\s|,)+[0-9a-f]+)*)((with\s+)?algorithm)?\s*(?P<algorithm>sha256|sha512|md5|sha1|)', string )
+        match = re.match( '(?P<hashes>([0-9a-f]+(\s|,)*)+)((with\s+)?algorithm)?\s*(?P<algorithm>sha256|sha512|md5|sha1|)', string )
         if match:
             hashes = set( hsh.strip() for hsh in re.sub( '\s', ' ', match[ 'hashes' ].replace( ',', ' ' ) ).split( ' ' ) if len( hsh ) > 0 )
             algorithm = match[ 'algorithm' ] if len( match[ 'algorithm' ] ) > 0 else 'sha256'
@@ -312,10 +333,11 @@ def parse_value( string: str, spec ):
             return string[ len( match[ 0 ] ): ], (years, months, days, hours)
         match = re.match( '(?P<year>[0-9][0-9][0-9][0-9])-(?P<month>[0-9][0-9]?)-(?P<day>[0-9][0-9]?)', string )
         if match:
-            return string[ len( match[ 0 ] ): ], datetime.date( int( match.group( 'year' ) ), int( match.group( 'month' ) ), int( match.group( 'day' ) ) )
+            # good expansion here would be to parse a full date with 08:20am kind of thing, but we'll wait for better datetime parsing library for that I think!
+            return string[ len( match[ 0 ] ): ], datetime.datetime( int( match.group( 'year' ) ), int( match.group( 'month' ) ), int( match.group( 'day' ) ) )
         raise ValueError( "Invalid value, expected a date or a time interval" )
     elif spec == Value.TIME_SEC_MSEC:
-        match = re.match( '((?P<sec>0|([1-9][0-9]*))\s*(seconds|second|secs|sec|s))?\s*((?P<msec>0|([1-9][0-9]*))\s*(milliseconds|milliseconds|msecs|msec|ms))?', string )
+        match = re.match( '((?P<sec>0|([1-9][0-9]*))\s*(seconds|second|secs|sec|s))?\s*((?P<msec>0|([1-9][0-9]*))\s*(milliseconds|millisecond|msecs|msec|ms))?', string )
         if match and (match.group( 'sec' ) or match.group( 'msec' )):
             seconds = int( match.group( 'sec' ) ) if match.group( 'sec' ) else 0
             mseconds = int( match.group( 'msec' ) ) if match.group( 'msec' ) else 0
@@ -470,12 +492,15 @@ examples = [
     "system:import time > 2011-06-04",
     "system:import time > 7 years 2 months",
     "system:import time < 1 day",
+    "system:import time = 1 day",
     "system:import time < 0 years 1 month 1 day 1 hour",
     " system:import time ~= 2011-1-3 ",
     "system:import time ~= 1996-05-2",
     "system:duration < 5 seconds",
     "system:duration ~= 5 sec 6000 msecs",
     "system:duration > 3 milliseconds",
+    "system:framerate > 60fps",
+    "system:number of frames > 6000",
     "system:file service is pending to my files",
     "   system:file service currently in my files",
     "system:file service isn't currently in my files",

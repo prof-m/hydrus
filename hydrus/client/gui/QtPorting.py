@@ -3,6 +3,7 @@
 import os
 
 import qtpy
+
 from qtpy import QtCore as QC
 from qtpy import QtWidgets as QW
 from qtpy import QtGui as QG
@@ -166,16 +167,15 @@ class DirPickerCtrl( QW.QWidget ):
         
         existing_path = self._path_edit.text()
         
+        kwargs = {}
+        
         if HG.client_controller.new_options.GetBoolean( 'use_qt_file_dialogs' ):
             
-            options = QW.QFileDialog.Options( QW.QFileDialog.DontUseNativeDialog )
-            
-        else:
-            
-            options = QW.QFileDialog.Options()
+            # careful here, QW.QFileDialog.Options doesn't exist on PyQt6
+            kwargs[ 'options' ] = QW.QFileDialog.Option.DontUseNativeDialog
             
         
-        path = QW.QFileDialog.getExistingDirectory( self, '', existing_path, options = options )
+        path = QW.QFileDialog.getExistingDirectory( self, '', existing_path, **kwargs )
         
         if path == '':
             
@@ -254,35 +254,34 @@ class FilePickerCtrl( QW.QWidget ):
             existing_path = self._starting_directory
             
         
+        kwargs = {}
+        
         if HG.client_controller.new_options.GetBoolean( 'use_qt_file_dialogs' ):
             
-            options = QW.QFileDialog.Options( QW.QFileDialog.DontUseNativeDialog )
-            
-        else:
-            
-            options = QW.QFileDialog.Options()
+            # careful here, QW.QFileDialog.Options doesn't exist on PyQt6
+            kwargs[ 'options' ] = QW.QFileDialog.Option.DontUseNativeDialog
             
         
         if self._save_mode:
             
             if self._wildcard:
                 
-                path = QW.QFileDialog.getSaveFileName( self, '', existing_path, filter = self._wildcard, selectedFilter = self._wildcard, options = options )[0]
+                path = QW.QFileDialog.getSaveFileName( self, '', existing_path, filter = self._wildcard, selectedFilter = self._wildcard, **kwargs )[0]
                 
             else:
                 
-                path = QW.QFileDialog.getSaveFileName( self, '', existing_path, options = options )[0]
+                path = QW.QFileDialog.getSaveFileName( self, '', existing_path, **kwargs )[0]
                 
             
         else:
             
             if self._wildcard:
                 
-                path = QW.QFileDialog.getOpenFileName( self, '', existing_path, filter = self._wildcard, selectedFilter = self._wildcard, options = options )[0]
+                path = QW.QFileDialog.getOpenFileName( self, '', existing_path, filter = self._wildcard, selectedFilter = self._wildcard, **kwargs )[0]
                 
             else:
                 
-                path = QW.QFileDialog.getOpenFileName( self, '', existing_path, options = options )[0]
+                path = QW.QFileDialog.getOpenFileName( self, '', existing_path, **kwargs )[0]
                 
             
         
@@ -320,6 +319,11 @@ class TabBar( QW.QTabBar ):
     def __init__( self, parent = None ):
         
         QW.QTabBar.__init__( self, parent )
+        
+        if HC.PLATFORM_MACOS:
+            
+            self.setDocumentMode( True )
+            
         
         self.setMouseTracking( True )
         self.setAcceptDrops( True )
@@ -436,7 +440,21 @@ class TabBar( QW.QTabBar ):
             
             if tab_index != -1:
                 
-                self.parentWidget().setCurrentIndex( tab_index )
+                shift_down = event.modifiers() & QC.Qt.ShiftModifier
+                
+                if shift_down:
+                    
+                    do_navigate = HG.client_controller.new_options.GetBoolean( 'page_drag_change_tab_with_shift' )
+                    
+                else:
+                    
+                    do_navigate = HG.client_controller.new_options.GetBoolean( 'page_drag_change_tab_normally' )
+                    
+                
+                if do_navigate:
+                    
+                    self.parentWidget().setCurrentIndex( tab_index )
+                    
                 
             
         else:
@@ -461,6 +479,48 @@ class TabBar( QW.QTabBar ):
             event.ignore()
             
         
+    
+    def wheelEvent( self, event ):
+        
+        try:
+            
+            if HG.client_controller.new_options.GetBoolean( 'wheel_scrolls_tab_bar' ):
+                
+                children = self.children()
+                
+                if len( children ) >= 2:
+                    
+                    scroll_left = children[0]
+                    scroll_right = children[1]
+                    
+                    if event.angleDelta().y() > 0:
+                        
+                        b = scroll_left
+                        
+                    else:
+                        
+                        b = scroll_right
+                        
+                    
+                    if isinstance( b, QW.QAbstractButton ):
+                        
+                        b.click()
+                        
+                    
+                
+                event.accept()
+                
+                return
+                
+            
+        except:
+            
+            pass
+            
+        
+        QW.QTabBar.wheelEvent( self, event )
+        
+    
 
 # A heavily extended/tweaked version of https://forum.qt.io/topic/67542/drag-tabs-between-qtabwidgets/
 class TabWidgetWithDnD( QW.QTabWidget ):
@@ -633,7 +693,19 @@ class TabWidgetWithDnD( QW.QTabWidget ):
             
             shift_down = event.modifiers() & QC.Qt.ShiftModifier
             
-            self.setCurrentIndex( tab_index )
+            if shift_down:
+                
+                do_navigate = HG.client_controller.new_options.GetBoolean( 'page_drag_change_tab_with_shift' )
+                
+            else:
+                
+                do_navigate = HG.client_controller.new_options.GetBoolean( 'page_drag_change_tab_normally' )
+                
+            
+            if do_navigate:
+                
+                self.setCurrentIndex( tab_index )
+                
             
         
         if 'application/hydrus-tab' not in event.mimeData().formats():
@@ -797,10 +869,14 @@ class TabWidgetWithDnD( QW.QTabWidget ):
             follow_dropped_page = not shift_down
 
             new_options = HG.client_controller.new_options
-
-            if new_options.GetBoolean( 'reverse_page_shift_drag_behaviour' ):
+            
+            if shift_down:
                 
-                follow_dropped_page = not follow_dropped_page
+                follow_dropped_page = new_options.GetBoolean( 'page_drop_chase_with_shift' )
+                
+            else:
+                
+                follow_dropped_page = new_options.GetBoolean( 'page_drop_chase_normally' )
                 
             
             if follow_dropped_page:
@@ -940,28 +1016,31 @@ def AddToLayout( layout, item, flag = None, alignment = None ):
             
         
     else:
-
+        
         if isinstance( item, QW.QLayout ):
-
+            
             layout.addLayout( item )
             
             if alignment is not None:
                 
                 layout.setAlignment( item, alignment )
-
+                
+            
         elif isinstance( item, QW.QWidget ):
-
+            
             layout.addWidget( item )
             
             if alignment is not None:
                 
                 layout.setAlignment( item, alignment )
-
+                
+            
         elif isinstance( item, tuple ):
-
+            
             layout.addStretch( 1 )
             
             return
+            
         
     
     zero_border = False
@@ -1050,15 +1129,15 @@ def AddToLayout( layout, item, flag = None, alignment = None ):
             
             if flag in ( CC.FLAGS_EXPAND_BOTH_WAYS, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS ):
                 
-                stretch_factor = 5
+                stretch_factor = 50
                 
             elif flag == CC.FLAGS_EXPAND_BOTH_WAYS_POLITE:
                 
-                stretch_factor = 3
+                stretch_factor = 30
                 
             elif flag == CC.FLAGS_EXPAND_BOTH_WAYS_SHY:
                 
-                stretch_factor = 1
+                stretch_factor = 10
                 
             
             layout.setStretchFactor( item, stretch_factor )
@@ -1076,6 +1155,7 @@ def AddToLayout( layout, item, flag = None, alignment = None ):
         
         item.setContentsMargins( margin, margin, margin, margin )
         
+    
 
 def ScrollAreaVisibleRect( scroll_area ):
     
@@ -1472,47 +1552,6 @@ class StatusBar( QW.QStatusBar ):
             
         
     
-class AboutDialogInfo:
-    
-    def __init__( self ):
-        
-        self.name = ''
-        self.version = ''
-        self.description = ''
-        self.license = ''
-        self.developers = []
-        self.website = ''
-
-    def SetName( self, name ):
-        
-        self.name = name
-
-
-    def SetVersion( self, version ):
-        
-        self.version = version
-
-
-    def SetDescription( self, description ):
-        
-        self.description = description
-
-
-    def SetLicense( self, license ):
-        
-        self.license = license
-
-
-    def SetDevelopers( self, developers_list ):
-        
-        self.developers = developers_list
-
-
-    def SetWebSite( self, url ):
-        
-        self.website = url
-
-
 class UIActionSimulator:
     
     def __init__( self ):
@@ -1534,80 +1573,12 @@ class UIActionSimulator:
         QW.QApplication.instance().postEvent( widget, ev2 )
         
 
-# TODO: rewrite this to be on my newer panel system so this can resize for lads on small screens etc..
-class AboutBox( QW.QDialog ):
-    
-    def __init__( self, parent, about_info ):
-        
-        QW.QDialog.__init__( self, parent )
-        
-        self.setWindowFlag( QC.Qt.WindowContextHelpButtonHint, on = False )
-        
-        self.setAttribute( QC.Qt.WA_DeleteOnClose )
-        
-        self.setWindowIcon( QG.QIcon( HG.client_controller.frame_icon_pixmap ) )
-        
-        layout = QW.QVBoxLayout( self )
-        
-        self.setWindowTitle( 'About ' + about_info.name )
-        
-        icon_label = QW.QLabel( self )
-        name_label = QW.QLabel( about_info.name, self )
-        version_label = QW.QLabel( about_info.version, self )
-        tabwidget = QW.QTabWidget( self )
-        desc_panel = QW.QWidget( self )
-        desc_label = QW.QLabel( about_info.description, self )
-        url_label = QW.QLabel( '<a href="{0}">{0}</a>'.format( about_info.website ), self )
-        credits = QW.QTextEdit( self )
-        license = QW.QTextEdit( self )
-        close_button = QW.QPushButton( 'close', self )
-        icon_label.setPixmap( HG.client_controller.frame_icon_pixmap )
-        layout.addWidget( icon_label, alignment = QC.Qt.AlignHCenter )
-        
-        name_label_font = name_label.font()
-        name_label_font.setBold( True )
-        name_label.setFont( name_label_font )
-        layout.addWidget( name_label, alignment = QC.Qt.AlignHCenter )
-        
-        layout.addWidget( version_label, alignment = QC.Qt.AlignHCenter )
-        
-        layout.addWidget( tabwidget, alignment =  QC.Qt.AlignHCenter )
-        tabwidget.addTab( desc_panel, 'Description' )
-        tabwidget.addTab( credits, 'Credits' )
-        tabwidget.addTab( license, 'License' )
-        tabwidget.setCurrentIndex( 0 )
-        
-        credits.setPlainText( 'Created by ' + ', '.join(about_info.developers) )
-        credits.setReadOnly( True )
-        credits.setAlignment( QC.Qt.AlignHCenter )
-        
-        license.setPlainText( about_info.license )
-        license.setReadOnly( True )
-        
-        desc_layout = QW.QVBoxLayout()
-        
-        desc_layout.addWidget( desc_label, alignment = QC.Qt.AlignHCenter )
-        desc_label.setWordWrap( True )
-        desc_label.setAlignment( QC.Qt.AlignHCenter | QC.Qt.AlignVCenter )
-        desc_layout.addWidget( url_label, alignment = QC.Qt.AlignHCenter )
-        url_label.setTextFormat( QC.Qt.RichText )
-        url_label.setTextInteractionFlags( QC.Qt.TextBrowserInteraction )
-        url_label.setOpenExternalLinks( True )
-        desc_panel.setLayout( desc_layout )
-        
-        layout.addWidget( close_button, alignment = QC.Qt.AlignRight )
-        close_button.clicked.connect( self.accept )
-        
-        self.setLayout( layout )
-        
-        self.exec_()
-
 class RadioBox( QW.QFrame ):
     
     radioBoxChanged = QC.Signal()
     
-    def __init__( self, parent = None, choices = [], vertical = False ):
-    
+    def __init__( self, parent, choices, vertical = False ):
+        
         QW.QFrame.__init__( self, parent )
         
         self.setFrameStyle( QW.QFrame.Box | QW.QFrame.Raised )
@@ -1633,15 +1604,17 @@ class RadioBox( QW.QFrame ):
             
             self.layout().addWidget( radiobutton )
             
+        
         if vertical and len( self._choices ):
             
             self._choices[0].setChecked( True )
-        
+            
         elif len( self._choices ):
             
             self._choices[-1].setChecked( True )
+            
         
-        
+    
     def _GetCurrentChoiceWidget( self ):
         
         for choice in self._choices:
@@ -1654,14 +1627,16 @@ class RadioBox( QW.QFrame ):
         
         return None
         
+    
     def GetCurrentIndex( self ):
         
         for i in range( len( self._choices ) ):
             
             if self._choices[ i ].isChecked(): return i
             
+        
         return -1
-    
+        
     
     def SetStringSelection( self, str ):
 
@@ -1707,6 +1682,101 @@ class RadioBox( QW.QFrame ):
     
         self._choices[ idx ].setChecked( True )
 
+
+class DataRadioBox( QW.QFrame ):
+    
+    radioBoxChanged = QC.Signal()
+    
+    def __init__( self, parent, choice_tuples, vertical = False ):
+        
+        QW.QFrame.__init__( self, parent )
+        
+        self.setFrameStyle( QW.QFrame.Box | QW.QFrame.Raised )
+        
+        if vertical:
+            
+            self.setLayout( VBoxLayout() )
+            
+        else:
+            
+            self.setLayout( HBoxLayout() )
+            
+        
+        self._choices = []
+        self._buttons_to_data = {}
+        
+        for ( text, data ) in choice_tuples:
+            
+            radiobutton = QW.QRadioButton( text, self )
+            
+            self._choices.append( radiobutton )
+            
+            self._buttons_to_data[ radiobutton ] = data
+            
+            radiobutton.clicked.connect( self.radioBoxChanged )
+            
+            self.layout().addWidget( radiobutton )
+            
+        
+        if vertical and len( self._choices ):
+            
+            self._choices[0].setChecked( True )
+            
+        elif len( self._choices ) > 0:
+            
+            self._choices[-1].setChecked( True )
+            
+        
+    
+    def _GetCurrentChoiceWidget( self ):
+        
+        for choice in self._choices:
+            
+            if choice.isChecked():
+                
+                return choice
+                
+            
+        
+        return None
+        
+    
+    def GetValue( self ):
+        
+        for ( button, data ) in self._buttons_to_data.items():
+            
+            if button.isChecked():
+                
+                return data
+                
+            
+        
+        raise Exception( 'No button selected!' )
+        
+    
+    def setFocus( self, reason ):
+        
+        for button in self._choices:
+            
+            if button.isChecked():
+                
+                button.setFocus( reason )
+                
+                return
+                
+            
+        
+        QW.QFrame.setFocus( self, reason )
+        
+    
+    def SetValue( self, select_data ):
+        
+        for ( button, data ) in self._buttons_to_data.items():
+            
+            button.setChecked( data == select_data )
+            
+        
+    
 
 # Adapted from https://doc.qt.io/qt-5/qtwidgets-widgets-elidedlabel-example.html
 class EllipsizedLabel( QW.QLabel ):
@@ -2089,81 +2159,6 @@ class TreeWidgetWithInheritedCheckState( QW.QTreeWidget ):
             
         
     
-class ColourPickerCtrl( QW.QPushButton ):
-    
-    def __init__( self, parent = None ):
-        
-        QW.QPushButton.__init__( self, parent )
-        
-        self._colour = QG.QColor( 0, 0, 0, 0 )
-        
-        self.clicked.connect( self._ChooseColour )
-        
-        self._highlighted = False
-    
-    
-    def SetColour( self, colour ):
-        
-        self._colour = colour
-
-        self._UpdatePixmap()
-        
-
-    def _UpdatePixmap( self ):
-        
-        px = QG.QPixmap( self.contentsRect().height(), self.contentsRect().height() )
-        
-        painter = QG.QPainter( px )
-        
-        colour = self._colour
-        
-        if self._highlighted:
-            
-            colour = self._colour.lighter( 125 ) # 25% lighter
-            
-        
-        painter.fillRect( px.rect(), QG.QBrush( colour ) )
-        
-        painter.end()
-        
-        self.setIcon( QG.QIcon( px ) )
-        
-        self.setIconSize( px.size() )
-        
-        self.setFlat( True )
-        
-        self.setFixedSize( px.size() )
-        
-    
-    def enterEvent( self, event ):
-        
-        self._highlighted = True
-        
-        self._UpdatePixmap()
-        
-    
-    def leaveEvent( self, event ):
-        
-        self._highlighted = False
-        
-        self._UpdatePixmap()
-        
-    
-    def GetColour( self ):
-        
-        return self._colour
-        
-    
-    def _ChooseColour( self ):
-        
-        new_colour = QW.QColorDialog.getColor( initial = self._colour )
-        
-        if new_colour.isValid():
-            
-            self.SetColour( new_colour )
-            
-        
-    
 def ListsToTuples( l ): # Since lists are not hashable, we need to (recursively) convert lists to tuples in data that is to be added to BetterListCtrl
     
     if isinstance( l, list ) or isinstance( l, tuple ):
@@ -2224,8 +2219,6 @@ class WidgetEventFilter ( QC.QObject ):
             
             if isValid( self._parent_widget ):
                 
-                if self._parent_widget.isMinimized() or (event.oldState() & QC.Qt.WindowMinimized): event_killed = event_killed or self._ExecuteCallbacks( 'EVT_ICONIZE', event )
-            
                 if self._parent_widget.isMaximized() or (event.oldState() & QC.Qt.WindowMaximized): event_killed = event_killed or self._ExecuteCallbacks( 'EVT_MAXIMIZE', event )
         
         elif type == QC.QEvent.MouseMove:
@@ -2317,10 +2310,6 @@ class WidgetEventFilter ( QC.QObject ):
             self._parent_widget.setFocusPolicy( QC.Qt.StrongFocus )
             
         self._callback_map[ evt_name ].append( callback )
-
-    def EVT_ICONIZE( self, callback ):
-        
-        self._AddCallback( 'EVT_ICONIZE', callback )
 
     def EVT_KEY_DOWN( self, callback ):
         

@@ -12,6 +12,7 @@ from hydrus.core import HydrusSerialisable
 from hydrus.client import ClientApplicationCommand as CAC
 from hydrus.client import ClientConstants as CC
 from hydrus.client import ClientData
+from hydrus.client import ClientDuplicates
 from hydrus.client.gui import ClientGUIDragDrop
 from hydrus.client.gui import ClientGUICore as CGC
 from hydrus.client.gui import ClientGUIFunctions
@@ -28,8 +29,102 @@ from hydrus.client.gui.canvas import ClientGUIMPV
 from hydrus.client.gui.lists import ClientGUIListBoxes
 from hydrus.client.gui.widgets import ClientGUICommon
 from hydrus.client.gui.widgets import ClientGUIMenuButton
-from hydrus.client.media import ClientMedia
 from hydrus.client.metadata import ClientRatings
+
+class RatingIncDecCanvas( ClientGUIRatings.RatingIncDec ):
+
+    def __init__( self, parent, service_key, canvas_key ):
+        
+        ClientGUIRatings.RatingIncDec.__init__( self, parent, service_key )
+        
+        self._canvas_key = canvas_key
+        self._current_media = None
+        self._rating_state = None
+        self._rating = None
+        
+        self._hashes = set()
+        
+        HG.client_controller.sub( self, 'ProcessContentUpdates', 'content_updates_gui' )
+        HG.client_controller.sub( self, 'SetDisplayMedia', 'canvas_new_display_media' )
+        
+    
+    def _Draw( self, painter ):
+        
+        painter.setBackground( QG.QBrush( QP.GetBackgroundColour( self.parentWidget() ) ) )
+        
+        painter.eraseRect( painter.viewport() )
+        
+        if self._current_media is not None:
+            
+            ( self._rating_state, self._rating ) = ClientRatings.GetIncDecStateFromMedia( ( self._current_media, ), self._service_key )
+            
+            ClientGUIRatings.DrawIncDec( painter, 0, 0, self._service_key, self._rating_state, self._rating )
+            
+        
+    
+    def _SetRating( self, rating ):
+        
+        ClientGUIRatings.RatingIncDec._SetRating( self, rating )
+        
+        if self._current_media is not None and rating is not None:
+            
+            content_update = HydrusData.ContentUpdate( HC.CONTENT_TYPE_RATINGS, HC.CONTENT_UPDATE_ADD, ( rating, self._hashes ) )
+            
+            HG.client_controller.Write( 'content_updates', { self._service_key : ( content_update, ) } )
+            
+        
+    
+    def ProcessContentUpdates( self, service_keys_to_content_updates ):
+        
+        if self._current_media is not None:
+            
+            for ( service_key, content_updates ) in service_keys_to_content_updates.items():
+                
+                for content_update in content_updates:
+                    
+                    ( data_type, action, row ) = content_update.ToTuple()
+                    
+                    if data_type == HC.CONTENT_TYPE_RATINGS:
+                        
+                        hashes = content_update.GetHashes()
+                        
+                        if HydrusData.SetsIntersect( self._hashes, hashes ):
+                            
+                            ( self._rating_state, self._rating ) = ClientRatings.GetIncDecStateFromMedia( ( self._current_media, ), self._service_key )
+                            
+                            self.update()
+                            
+                            self._UpdateTooltip()
+                            
+                            return
+                            
+                        
+                    
+                
+            
+        
+    
+    def SetDisplayMedia( self, canvas_key, media ):
+        
+        if canvas_key == self._canvas_key:
+            
+            self._current_media = media
+            
+            if self._current_media is None:
+                
+                self._hashes = set()
+                
+            else:
+                
+                self._hashes = self._current_media.GetHashes()
+                
+            
+            self.update()
+            
+            self._UpdateTooltip()
+            
+        
+    
 
 class RatingLikeCanvas( ClientGUIRatings.RatingLike ):
     
@@ -54,8 +149,6 @@ class RatingLikeCanvas( ClientGUIRatings.RatingLike ):
             
             ClientGUIRatings.DrawLike( painter, 0, 0, self._service_key, self._rating_state )
             
-        
-        self._dirty = False
         
     
     def EventLeftDown( self, event ):
@@ -102,8 +195,6 @@ class RatingLikeCanvas( ClientGUIRatings.RatingLike ):
                             
                             self._SetRatingFromCurrentMedia()
                             
-                            self._dirty = True
-                            
                             self.update()
                             
                             return
@@ -144,8 +235,6 @@ class RatingLikeCanvas( ClientGUIRatings.RatingLike ):
                 
             
             self._SetRatingFromCurrentMedia()
-            
-            self._dirty = True
             
             self.update()
             
@@ -195,8 +284,6 @@ class RatingNumericalCanvas( ClientGUIRatings.RatingNumerical ):
             ClientGUIRatings.DrawNumerical( painter, 0, 0, self._service_key, self._rating_state, self._rating )
             
         
-        self._dirty = False
-        
     
     def _SetRating( self, rating ):
         
@@ -226,7 +313,7 @@ class RatingNumericalCanvas( ClientGUIRatings.RatingNumerical ):
                         
                         if HydrusData.SetsIntersect( self._hashes, hashes ):
                             
-                            self._dirty = True
+                            ( self._rating_state, self._rating ) = ClientRatings.GetIncDecStateFromMedia( ( self._current_media, ), self._service_key )
                             
                             self.update()
                             
@@ -254,8 +341,6 @@ class RatingNumericalCanvas( ClientGUIRatings.RatingNumerical ):
                 
                 self._hashes = self._current_media.GetHashes()
                 
-            
-            self._dirty = True
             
             self.update()
             
@@ -684,9 +769,8 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
         shortcuts.setToolTip( 'shortcuts' )
         shortcuts.setFocusPolicy( QC.Qt.TabFocus )
         
-        self._cog_icon = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().cog, self._ShowCogMenu )
-        self._cog_icon.setToolTip( 'extra options' )
-        self._cog_icon.setFocusPolicy( QC.Qt.TabFocus )
+        self._show_embedded_metadata_button = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().listctrl, self._ShowFileEmbeddedMetadata )
+        self._show_embedded_metadata_button.setFocusPolicy( QC.Qt.TabFocus )
         
         fullscreen_switch = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().fullscreen_switch, HG.client_controller.pub, 'canvas_fullscreen_switch', self._canvas_key )
         fullscreen_switch.setToolTip( 'fullscreen switch' )
@@ -705,7 +789,7 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
         drag_button.setIcon( QG.QIcon( CC.global_pixmaps().drag ) )
         drag_button.setIconSize( CC.global_pixmaps().drag.size() )
         drag_button.setToolTip( 'drag from here to export file' )
-        drag_button.pressed.connect( self.EventDragButton )
+        drag_button.pressed.connect( self.DragButtonHit )
         drag_button.setFocusPolicy( QC.Qt.TabFocus )
         
         close = ClientGUICommon.BetterBitmapButton( self, CC.global_pixmaps().stop, HG.client_controller.pub, 'canvas_close', self._canvas_key )
@@ -718,7 +802,7 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
         QP.AddToLayout( self._top_hbox, zoom_switch, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( self._top_hbox, self._volume_control, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( self._top_hbox, shortcuts, CC.FLAGS_CENTER_PERPENDICULAR )
-        QP.AddToLayout( self._top_hbox, self._cog_icon, CC.FLAGS_CENTER_PERPENDICULAR )
+        QP.AddToLayout( self._top_hbox, self._show_embedded_metadata_button, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( self._top_hbox, fullscreen_switch, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( self._top_hbox, open_externally, CC.FLAGS_CENTER_PERPENDICULAR )
         QP.AddToLayout( self._top_hbox, drag_button, CC.FLAGS_CENTER_PERPENDICULAR )
@@ -768,9 +852,29 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
                 self._undelete_button.show()
                 
             
-            exif_possible = self._current_media.GetMime() in ( HC.IMAGE_JPEG, HC.IMAGE_TIFF )
+            has_exif = self._current_media.GetMediaResult().GetFileInfoManager().has_exif
+            has_human_readable_embedded_metadata = self._current_media.GetMediaResult().GetFileInfoManager().has_human_readable_embedded_metadata
             
-            self._cog_icon.setEnabled( exif_possible )
+            if has_exif or has_human_readable_embedded_metadata:
+                
+                tt_components = []
+                
+                if has_exif:
+                    
+                    tt_components.append( 'exif' )
+                    
+                
+                if has_human_readable_embedded_metadata:
+                    
+                    tt_components.append( 'non-exif human-readable embedded metadata')
+                    
+                
+                tt = 'show {}'.format( ' and '.join( tt_components ) )
+                
+                self._show_embedded_metadata_button.setToolTip( tt )
+                
+            
+            self._show_embedded_metadata_button.setVisible( has_exif or has_human_readable_embedded_metadata )
             
         
     
@@ -791,9 +895,12 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
                 
                 self._title_text.show()
                 
-            else: self._title_text.hide()
+            else:
+                
+                self._title_text.hide()
+                
             
-            lines = self._current_media.GetPrettyInfoLines( only_interesting_lines = True )
+            lines = [ line for line in self._current_media.GetPrettyInfoLines( only_interesting_lines = True ) if isinstance( line, str ) ]
             
             label = ' | '.join( lines )
             
@@ -823,18 +930,14 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
         new_options.SetStringList( 'default_media_viewer_custom_shortcuts', default_media_viewer_custom_shortcuts )
         
     
-    def _ShowCogMenu( self ):
+    def _ShowFileEmbeddedMetadata( self ):
         
         if self._current_media is None:
             
             return
             
         
-        menu = QW.QMenu()
-        
-        ClientGUIMenus.AppendMenuItem( menu, 'check for exif data', 'See if the file has any EXIF data.', ClientGUIMediaActions.ShowFileEXIF, self, self._current_media )
-        
-        CGC.core().PopupMenu( self._cog_icon, menu )
+        ClientGUIMediaActions.ShowFileEmbeddedMetadata( self, self._current_media )
         
     
     def _ShowShortcutMenu( self ):
@@ -874,11 +977,11 @@ class CanvasHoverFrameTop( CanvasHoverFrame ):
         CGC.core().PopupMenu( self, menu )
         
     
-    def EventDragButton( self ):
+    def DragButtonHit( self ):
         
         if self._current_media is None:
             
-            return True # was: event.ignore()
+            return
             
         
         page_key = None
@@ -1106,9 +1209,9 @@ class CanvasHoverFrameTopRight( CanvasHoverFrame ):
             QP.AddToLayout( like_hbox, control, CC.FLAGS_NONE )
             
         
-        # each numerical one in turn
-        
         QP.AddToLayout( vbox, like_hbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+        
+        # each numerical one in turn
         
         numerical_services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_NUMERICAL, ) )
         
@@ -1122,6 +1225,30 @@ class CanvasHoverFrameTopRight( CanvasHoverFrame ):
             
             vbox.setAlignment( control, QC.Qt.AlignRight )
             
+        
+        # now incdec
+        
+        incdec_hbox = QP.HBoxLayout( spacing = 0 )
+        
+        incdec_services = HG.client_controller.services_manager.GetServices( ( HC.LOCAL_RATING_INCDEC, ) )
+        
+        if len( incdec_services ) > 0:
+            
+            incdec_hbox.addStretch( 1 )
+            
+        
+        for service in incdec_services:
+            
+            service_key = service.GetServiceKey()
+            
+            control = RatingIncDecCanvas( self, service_key, canvas_key )
+            
+            QP.AddToLayout( incdec_hbox, control, CC.FLAGS_NONE )
+            
+        
+        QP.AddToLayout( vbox, incdec_hbox, CC.FLAGS_EXPAND_SIZER_BOTH_WAYS )
+        
+        #
         
         QP.AddToLayout( vbox, self._icon_panel, CC.FLAGS_EXPAND_SIZER_PERPENDICULAR )
         QP.AddToLayout( vbox, self._file_repos, CC.FLAGS_EXPAND_PERPENDICULAR )
@@ -1711,7 +1838,7 @@ class CanvasHoverFrameRightDuplicates( CanvasHoverFrame ):
         
         self._comparison_statements_vbox = QP.VBoxLayout()
         
-        self._comparison_statement_names = [ 'filesize', 'resolution', 'ratio', 'mime', 'num_tags', 'time_imported', 'jpeg_quality', 'pixel_duplicates', 'exif_data', 'icc_profile' ]
+        self._comparison_statement_names = [ 'filesize', 'resolution', 'ratio', 'mime', 'num_tags', 'time_imported', 'jpeg_quality', 'pixel_duplicates', 'exif_data', 'embedded_metadata', 'icc_profile' ]
         
         self._comparison_statements_sts = {}
         
@@ -1770,19 +1897,33 @@ class CanvasHoverFrameRightDuplicates( CanvasHoverFrame ):
         
         new_options = HG.client_controller.new_options
         
-        value = new_options.GetNoneableInteger( 'duplicate_background_switch_intensity' )
-        
-        with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit lighten/darken intensity' ) as dlg:
+        for ( message, tooltip, variable_name ) in [
+            ( 'intensity for A', 'This changes the background colour when you are looking at A. If you have a pure white/black background, it helps to highlight transparency vs opaque white/black image background.', 'duplicate_background_switch_intensity_a' ),
+            ( 'intensity for B', 'This changes the background colour when you are looking at B. Making it different to the A value helps to highlight switches between the two.', 'duplicate_background_switch_intensity_b' )
+        ]:
             
-            panel = ClientGUIScrolledPanelsEdit.EditNoneableIntegerPanel( dlg, value, message = 'intensity: ', none_phrase = 'do not change', min = 1, max = 9 )
+            value = new_options.GetNoneableInteger( variable_name )
             
-            dlg.SetPanel( panel )
-            
-            if dlg.exec() == QW.QDialog.Accepted:
+            with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit lighten/darken intensity' ) as dlg:
                 
-                new_value = panel.GetValue()
+                panel = ClientGUIScrolledPanelsEdit.EditNoneableIntegerPanel( dlg, value, message = message, none_phrase = 'do not change', min = 1, max = 9 )
                 
-                new_options.SetNoneableInteger( 'duplicate_background_switch_intensity', new_value )
+                panel.setToolTip( tooltip )
+                
+                dlg.SetPanel( panel )
+                
+                if dlg.exec() == QW.QDialog.Accepted:
+                    
+                    new_value = panel.GetValue()
+                    
+                    new_options.SetNoneableInteger( variable_name, new_value )
+                    
+                    self.window().update()
+                    
+                else:
+                    
+                    return
+                    
                 
             
         
@@ -1791,19 +1932,19 @@ class CanvasHoverFrameRightDuplicates( CanvasHoverFrame ):
         
         new_options = HG.client_controller.new_options
         
-        duplicate_action_options = new_options.GetDuplicateActionOptions( duplicate_type )
+        duplicate_content_merge_options = new_options.GetDuplicateContentMergeOptions( duplicate_type )
         
         with ClientGUITopLevelWindowsPanels.DialogEdit( self, 'edit duplicate merge options' ) as dlg:
             
-            panel = ClientGUIScrolledPanelsEdit.EditDuplicateActionOptionsPanel( dlg, duplicate_type, duplicate_action_options )
+            panel = ClientGUIScrolledPanelsEdit.EditDuplicateContentMergeOptionsPanel( dlg, duplicate_type, duplicate_content_merge_options )
             
             dlg.SetPanel( panel )
             
             if dlg.exec() == QW.QDialog.Accepted:
                 
-                duplicate_action_options = panel.GetValue()
+                duplicate_content_merge_options = panel.GetValue()
                 
-                new_options.SetDuplicateActionOptions( duplicate_type, duplicate_action_options )
+                new_options.SetDuplicateContentMergeOptions( duplicate_type, duplicate_content_merge_options )
                 
             
         
@@ -1866,7 +2007,7 @@ class CanvasHoverFrameRightDuplicates( CanvasHoverFrame ):
     
     def _ResetComparisonStatements( self ):
         
-        statements_and_scores = ClientMedia.GetDuplicateComparisonStatements( self._current_media, self._comparison_media )
+        statements_and_scores = ClientDuplicates.GetDuplicateComparisonStatements( self._current_media, self._comparison_media )
         
         for name in self._comparison_statement_names:
             

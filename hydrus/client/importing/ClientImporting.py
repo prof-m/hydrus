@@ -43,6 +43,8 @@ def ConvertAllParseResultsToFileSeeds( all_parse_results, source_url, file_impor
     
     for parse_results in all_parse_results:
         
+        parsed_request_headers = ClientParsing.GetHTTPHeadersFromParseResults( parse_results )
+        
         parsed_urls = ClientParsing.GetURLsFromParseResults( parse_results, ( HC.URL_TYPE_DESIRED, ), only_get_top_priority = True )
         
         parsed_urls = HydrusData.DedupeList( parsed_urls )
@@ -58,6 +60,8 @@ def ConvertAllParseResultsToFileSeeds( all_parse_results, source_url, file_impor
             file_seed = ClientImportFileSeeds.FileSeed( ClientImportFileSeeds.FILE_SEED_TYPE_URL, url )
             
             file_seed.SetReferralURL( source_url )
+            
+            file_seed.SetRequestHeaders( parsed_request_headers )
             
             file_seed.AddParseResults( parse_results, file_import_options )
             
@@ -115,8 +119,8 @@ def PublishPresentationHashes( publishing_label, hashes, publish_to_popup_button
         
         files_job_key = ClientThreading.JobKey()
         
-        files_job_key.SetVariable( 'popup_files_mergable', True )
-        files_job_key.SetVariable( 'popup_files', ( list( hashes ), publishing_label ) )
+        files_job_key.SetVariable( 'attached_files_mergable', True )
+        files_job_key.SetFiles( list( hashes ), publishing_label )
         
         HG.client_controller.pub( 'message', files_job_key )
         
@@ -129,7 +133,7 @@ def PublishPresentationHashes( publishing_label, hashes, publish_to_popup_button
 def THREADDownloadURL( job_key, url, url_string ):
     
     job_key.SetStatusTitle( url_string )
-    job_key.SetVariable( 'popup_text_1', 'initialising' )
+    job_key.SetStatusText( 'initialising' )
     
     #
     
@@ -152,7 +156,7 @@ def THREADDownloadURL( job_key, url, url_string ):
             text = text.splitlines()[0]
             
         
-        job_key.SetVariable( 'popup_text_1', text )
+        job_key.SetStatusText( text )
         
     
     network_job_presentation_context_factory = GenerateSinglePopupNetworkJobPresentationContextFactory( job_key )
@@ -171,23 +175,23 @@ def THREADDownloadURL( job_key, url, url_string ):
             
             if status == CC.STATUS_SUCCESSFUL_AND_NEW:
                 
-                job_key.SetVariable( 'popup_text_1', 'successful!' )
+                job_key.SetStatusText( 'successful!' )
                 
             elif status == CC.STATUS_SUCCESSFUL_BUT_REDUNDANT:
                 
-                job_key.SetVariable( 'popup_text_1', 'was already in the database!' )
+                job_key.SetStatusText( 'was already in the database!' )
                 
             
             if file_seed.HasHash():
                 
                 hash = file_seed.GetHash()
                 
-                job_key.SetVariable( 'popup_files', ( [ hash ], 'download' ) )
+                job_key.SetFiles( [ hash ], 'download' )
                 
             
         elif status == CC.STATUS_DELETED:
             
-            job_key.SetVariable( 'popup_text_1', 'had already been deleted!' )
+            job_key.SetStatusText( 'had already been deleted!' )
             
         
     finally:
@@ -198,7 +202,7 @@ def THREADDownloadURL( job_key, url, url_string ):
 def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
     
     job_key.SetStatusTitle( title )
-    job_key.SetVariable( 'popup_text_1', 'initialising' )
+    job_key.SetStatusText( 'initialising' )
     
     num_successful = 0
     num_redundant = 0
@@ -227,7 +231,7 @@ def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
             text = text.splitlines()[0]
             
         
-        job_key.SetVariable( 'popup_text_2', text )
+        job_key.SetStatusText( text, 2 )
         
     
     network_job_presentation_context_factory = GenerateMultiplePopupNetworkJobPresentationContextFactory( job_key )
@@ -241,7 +245,7 @@ def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
             break
             
         
-        job_key.SetVariable( 'popup_text_1', HydrusData.ConvertValueRangeToPrettyString( i + 1, len( urls ) ) )
+        job_key.SetStatusText( HydrusData.ConvertValueRangeToPrettyString( i + 1, len( urls ) ) )
         job_key.SetVariable( 'popup_gauge_1', ( i + 1, len( urls ) ) )
         
         file_seed = ClientImportFileSeeds.FileSeed( ClientImportFileSeeds.FILE_SEED_TYPE_URL, url )
@@ -277,7 +281,7 @@ def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
                 
                 if len( presentation_hashes ) > 0:
                     
-                    job_key.SetVariable( 'popup_files', ( presentation_hashes, 'downloads' ) )
+                    job_key.SetFiles( presentation_hashes, 'downloads' )
                     
                 
             elif status == CC.STATUS_DELETED:
@@ -294,7 +298,7 @@ def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
             
         finally:
             
-            job_key.DeleteVariable( 'popup_text_2' )
+            job_key.DeleteStatusText( 2 )
             
         
     
@@ -322,11 +326,11 @@ def THREADDownloadURLs( job_key: ClientThreading.JobKey, urls, title ):
         text_components.append( HydrusData.ToHumanInt( num_failed ) + ' failed (errors written to log)' )
         
     
-    job_key.SetVariable( 'popup_text_1', ', '.join( text_components ) )
+    job_key.SetStatusText( ', '.join( text_components ) )
     
     if len( presentation_hashes ) > 0:
         
-        job_key.SetVariable( 'popup_files', ( presentation_hashes, 'downloads' ) )
+        job_key.SetFiles( presentation_hashes, 'downloads' )
         
     
     job_key.DeleteVariable( 'popup_gauge_1' )

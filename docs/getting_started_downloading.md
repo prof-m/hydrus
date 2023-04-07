@@ -4,7 +4,7 @@ title: Downloading
 
 # Getting started with downloading
 
-The hydrus client has a sophisticated and completely user-customisable download system. It can pull from any booru or regular gallery site or imageboard, and also from some special examples like twitter and tumblr. A fresh install will by default have support for the bigger sites, but it _is_ possible, with some work, for any user to [create a new shareable downloader](downloader_intro.md) for a new site.
+The hydrus client has a sophisticated and completely user-customisable download system. It can pull from any booru or regular gallery site or imageboard, and also from some special examples like twitter and tumblr. A single file or URL to massive imports, the downloader can handle it all. A fresh install will by default have support for the bigger sites, but it _is_ possible, with some work, for any user to [create a new shareable downloader](downloader_intro.md) for a new site.
 
 The downloader is highly parallelisable, and while the default [bandwidth rules](#bandwidth) should stop you from running too hot and downloading so much at once that you annoy the servers you are downloading from, there are no brakes in the program on what you can get.
 
@@ -68,7 +68,7 @@ The **url downloader** works like the gallery downloader but does not do searche
 The button next to the input field lets you paste multiple URLs at once such as if you've copied from a document or browser bookmarks. The URLs need to be newline separated.
 
 ### API
-If you use [API-connected](client_api.md) programs such as the Hydrus Companion, then any [non-watchable](downloader_url_classes.md#the-types-of-url--id"urltypes") URLs sent to Hydrus through them will end up in an URL downloader page, the specifics depending on the program's settings. You can't use this to force Hydrus to download paged galleries since the URL downloader page doesn't support traversing to the next page, use the gallery downloader for this.
+If you use [API-connected](client_api.md) programs such as the Hydrus Companion, then any [non-watchable](downloader_url_classes.md#url_types) URLs sent to Hydrus through them will end up in an URL downloader page, the specifics depending on the program's settings. You can't use this to force Hydrus to download paged galleries since the URL downloader page doesn't support traversing to the next page, use the gallery downloader for this.
 
 ## Gallery download
 ![](images/downloader_page.png)
@@ -107,7 +107,7 @@ It is important to note that while subscriptions can have multiple queries (even
 
 ### Setting up subscriptions
 
-Here's the dialog, which is under _network->downloaders->manage subscriptions_:
+Here's the dialog, which is under _network->manage subscriptions_:
 
 ![](images/subscriptions_edit_subscriptions.png)
 
@@ -139,7 +139,7 @@ With only one URL to check, watchers are a little simpler than gallery searches,
 In general, you can leave the checker options alone, but you might like to revisit them if you are always visiting faster or slower boards and find you are missing files or getting DEAD too early.
 
 ### API
-If you use [API-connected](client_api.md) programs such as the Hydrus Companion, then any [watchable](downloader_url_classes.md#the-types-of-url--id"urltypes") URLs sent to Hydrus through them will end up in a watcher page, the specifics depending on the program's settings.
+If you use [API-connected](client_api.md) programs such as the Hydrus Companion, then any [watchable](downloader_url_classes.md#url_types) URLs sent to Hydrus through them will end up in a watcher page, the specifics depending on the program's settings.
 
 ## Simple downloader
 The **simple downloader** will do very simple parsing for unusual jobs. If you want to download all the images in a page, or all the image link destinations, this is the one to use. There are several default parsing rules to choose from, and if you learn the downloader system yourself, it will be easy to make more.
@@ -156,7 +156,7 @@ Again: the real problem with downloading is not finding new things, it is keepin
 
 ## Logins
 
-The client now supports a flexible (but slightly prototype and ugly) login system. It can handle simple sites and is as [completely user-customisable as the downloader system](downloader_login.md). The client starts with multiple login scripts by default, which you can review under _network->downloaders->manage logins_:
+The client now supports a flexible (but slightly prototype and ugly) login system. It can handle simple sites and is as [completely user-customisable as the downloader system](downloader_login.md). The client starts with multiple login scripts by default, which you can review under _network->logins->manage logins_:
 
 ![](images/manage_logins.png)
 

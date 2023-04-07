@@ -6,6 +6,7 @@ import threading
 from hydrus.core import HydrusConstants as HC
 from hydrus.core import HydrusExceptions
 from hydrus.core import HydrusSerialisable
+from hydrus.core import HydrusData
 from hydrus.core import HydrusText
 
 def CensorshipMatch( tag, censorships ):
@@ -166,6 +167,7 @@ def FilterNamespaces( tags, namespaces ):
     
     return result
     
+
 def SortNumericTags( tags ):
     
     tags = list( tags )
@@ -174,6 +176,7 @@ def SortNumericTags( tags ):
     
     return tags
     
+
 def CheckTagNotEmpty( tag ):
     
     ( namespace, subtag ) = SplitTag( tag )
@@ -183,6 +186,7 @@ def CheckTagNotEmpty( tag ):
         raise HydrusExceptions.TagSizeException( 'Received a zero-length tag!' )
         
     
+
 def CleanTag( tag ):
     
     try:
@@ -196,7 +200,12 @@ def CleanTag( tag ):
         
         tag = tag.lower()
         
-        tag = HydrusText.re_leading_single_colon.sub( '::', tag ) # Convert anything starting with one colon to start with two i.e. :D -> ::D
+        if HydrusText.re_leading_single_colon_and_no_more_colons.match( tag ) is not None:
+            
+            # Convert anything starting with one colon to start with two i.e. :D -> ::D
+            # but don't do :weird:stuff, which is a forced unnamespaced tag that includes a colon in the subtag
+            tag = ':' + tag
+            
         
         if ':' in tag:
             
@@ -224,6 +233,7 @@ def CleanTag( tag ):
         
     
     return tag
+    
 
 def CleanTags( tags ):
     
@@ -252,11 +262,12 @@ def CleanTags( tags ):
     
     return clean_tags
     
+
 def CombineTag( namespace, subtag ):
     
     if namespace == '':
         
-        if HydrusText.re_leading_single_colon.search( subtag ) is not None:
+        if ':' in subtag:
             
             return ':' + subtag
             
@@ -270,6 +281,7 @@ def CombineTag( namespace, subtag ):
         return namespace + ':' + subtag
         
     
+
 def ConvertTagSliceToString( tag_slice ):
     
     if tag_slice == '':
@@ -291,10 +303,12 @@ def ConvertTagSliceToString( tag_slice ):
         return tag_slice
         
     
+
 def IsUnnamespaced( tag ):
     
     return SplitTag( tag )[0] == ''
     
+
 def SplitTag( tag ):
     
     if ':' in tag:
@@ -306,21 +320,28 @@ def SplitTag( tag ):
         return ( '', tag )
         
     
+
 NULL_CHARACTER = '\x00'
+HANGUL_FILLER_CHARACTER = '\u3164'
 
 def StripTextOfGumpf( t ):
     
-    t = HydrusText.re_newlines.sub( '', t )
-    
-    t = HydrusText.re_multiple_spaces.sub( ' ', t )
+    t = HydrusText.re_one_or_more_whitespace.sub( ' ', t )
     
     t = t.strip()
     
-    t = HydrusText.re_leading_space_or_garbage.sub( '', t )
+    t = HydrusText.re_leading_garbage.sub( '', t )
+    
+    t = t.strip()
     
     if NULL_CHARACTER in t:
         
         t = t.replace( NULL_CHARACTER, '' )
+        
+    
+    if t == HANGUL_FILLER_CHARACTER:
+        
+        t = ''
         
     
     return t
@@ -343,6 +364,8 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
     SERIALISABLE_TYPE = HydrusSerialisable.SERIALISABLE_TYPE_TAG_FILTER
     SERIALISABLE_NAME = 'Tag Filter Rules'
     SERIALISABLE_VERSION = 1
+    
+    WOAH_TOO_MANY_RULES_THRESHOLD = 12
     
     def __init__( self ):
         
@@ -669,6 +692,68 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
             
         
     
+    def GetChanges( self, old_tag_filter: "TagFilter" ):
+        
+        old_slices_to_rules = old_tag_filter.GetTagSlicesToRules()
+        
+        new_rules = [ ( slice, rule ) for ( slice, rule ) in self._tag_slices_to_rules.items() if slice not in old_slices_to_rules ]
+        changed_rules = [ ( slice, rule ) for ( slice, rule ) in self._tag_slices_to_rules.items() if slice in old_slices_to_rules and rule != old_slices_to_rules[ slice ] ]
+        deleted_rules = [ ( slice, rule ) for ( slice, rule ) in old_slices_to_rules.items() if slice not in self._tag_slices_to_rules ]
+        
+        return ( new_rules, changed_rules, deleted_rules )
+        
+    
+    def GetChangesSummaryText( self, old_tag_filter: "TagFilter" ):
+        
+        ( new_rules, changed_rules, deleted_rules ) = self.GetChanges( old_tag_filter )
+        
+        summary_components = []
+        
+        if len( new_rules ) > 0:
+            
+            if len( new_rules ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                
+                summary_components.append( 'Added {} rules'.format( HydrusData.ToHumanInt( len( new_rules ) ) ) )
+                
+            else:
+                
+                rows = [ 'Added rule: {} - {}'.format( HC.filter_black_white_str_lookup[ rule ], ConvertTagSliceToString( slice ) ) for ( slice, rule ) in new_rules ]
+                
+                summary_components.append( os.linesep.join( rows ) )
+                
+            
+        
+        if len( changed_rules ) > 0:
+            
+            if len( new_rules ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                
+                summary_components.append( 'Changed {} rules'.format( HydrusData.ToHumanInt( len( new_rules ) ) ) )
+                
+            else:
+                
+                rows = [ 'Flipped rule: to {} - {}'.format( HC.filter_black_white_str_lookup[ rule ], ConvertTagSliceToString( slice ) ) for ( slice, rule ) in changed_rules ]
+                
+                summary_components.append( os.linesep.join( rows ) )
+                
+            
+        
+        if len( deleted_rules ) > 0:
+            
+            if len( new_rules ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                
+                summary_components.append( 'Deleted {} rules'.format( HydrusData.ToHumanInt( len( new_rules ) ) ) )
+                
+            else:
+                
+                rows = [ 'Deleted rule: {} - {}'.format( HC.filter_black_white_str_lookup[ rule ], ConvertTagSliceToString( slice ) ) for ( slice, rule ) in deleted_rules ]
+                
+                summary_components.append( os.linesep.join( rows ) )
+                
+            
+        
+        return os.linesep.join( summary_components )
+        
+    
     def GetTagSlicesToRules( self ):
         
         with self._lock:
@@ -729,12 +814,26 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
                     
                 else:
                     
-                    text = 'blacklisting on ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) )
+                    if len( blacklist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text = 'blacklisting on {} rules'.format( HydrusData.ToHumanInt( len( blacklist ) ) )
+                        
+                    else:
+                        
+                        text = 'blacklisting on ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) )
+                        
                     
                 
                 if len( whitelist ) > 0:
                     
-                    text += ' except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
+                    if len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text += ' except {} other rules'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
+                    else:
+                        
+                        text += ' except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
+                        
                     
                 
                 return text
@@ -776,12 +875,26 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
                     
                 else:
                     
-                    text = 'all but ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) ) + ' allowed'
+                    if len( blacklist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text = 'all but {} rules allowed'.format( HydrusData.ToHumanInt( len( blacklist ) ) )
+                        
+                    else:
+                        
+                        text = 'all but ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) ) + ' allowed'
+                        
                     
                 
                 if len( whitelist ) > 0:
                     
-                    text += ' except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
+                    if len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text += ' except for {} other rules'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
+                    else:
+                        
+                        text += ' except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
+                        
                     
                 
                 return text
@@ -796,7 +909,7 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
             blacklist = []
             whitelist = []
             
-            for ( tag_slice, rule ) in list(self._tag_slices_to_rules.items()):
+            for ( tag_slice, rule ) in self._tag_slices_to_rules.items():
                 
                 if rule == HC.FILTER_BLACKLIST:
                     
@@ -823,6 +936,10 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
                         
                         text = 'no tags'
                         
+                    elif len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text = '{} rules that allow'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
                     else:
                         
                         text = 'only ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
@@ -832,7 +949,11 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
                     
                     text = 'all namespaced tags'
                     
-                    if len( whitelist ) > 0:
+                    if len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text += ' and {} other rules'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
+                    elif len( whitelist ) > 0:
                         
                         text += ' and ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
                         
@@ -841,16 +962,31 @@ class TagFilter( HydrusSerialisable.SerialisableBase ):
                     
                     text = 'all unnamespaced tags'
                     
-                    if len( whitelist ) > 0:
+                    if len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text += ' and {} other rules'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
+                    elif len( whitelist ) > 0:
                         
                         text += ' and ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) )
                         
                     
                 else:
                     
-                    text = 'all tags except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) )
+                    if len( blacklist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text = 'all tags except {} other rules'.format( HydrusData.ToHumanInt( len( blacklist ) ) )
+                        
+                    else:
+                        
+                        text = 'all tags except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in blacklist ) )
+                        
                     
-                    if len( whitelist ) > 0:
+                    if len( whitelist ) > self.WOAH_TOO_MANY_RULES_THRESHOLD:
+                        
+                        text += ' (except {} other rules)'.format( HydrusData.ToHumanInt( len( whitelist ) ) )
+                        
+                    elif len( whitelist ) > 0:
                         
                         text += ' (except ' + ', '.join( ( ConvertTagSliceToString( tag_slice ) for tag_slice in whitelist ) ) + ')'
                         

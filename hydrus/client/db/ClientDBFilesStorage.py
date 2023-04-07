@@ -218,6 +218,11 @@ class DBLocationContextBranch( DBLocationContext, ClientDBModule.ClientDBModule 
         return '{} CROSS JOIN {} USING ( hash_id )'.format( table_phrase, self.SINGLE_TABLE_NAME )
         
     
+    def GetTablesAndColumnsThatUseDefinitions( self, content_type: int ) -> typing.List[ typing.Tuple[ str, str ] ]:
+        
+        return []
+        
+    
     def SingleTableIsFast( self ) -> bool:
         
         return False
@@ -368,7 +373,7 @@ class ClientDBFilesStorage( ClientDBModule.ClientDBModule ):
         
         service_ids_to_nums_cleared = {}
         
-        local_non_trash_service_ids = self.modules_services.GetServiceIds( ( HC.COMBINED_LOCAL_FILE, HC.LOCAL_FILE_DOMAIN ) )
+        local_non_trash_service_ids = self.modules_services.GetServiceIds( ( HC.COMBINED_LOCAL_FILE, HC.COMBINED_LOCAL_MEDIA, HC.LOCAL_FILE_DOMAIN ) )
         
         if hash_ids is None:
             
